@@ -7,7 +7,7 @@ required = [
 
 [[constraint]]
   name = "github.com/dudk/vst2"
-  version = "0.1.1"
+  version = "0.1.2"
 
 [[constraint]]
   name = "github.com/stretchr/testify"
