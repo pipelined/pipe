@@ -1,5 +1,5 @@
 #TODO extract version from Gopkg.toml
-VST2_VERSION="0.1.2"
+VST2_VERSION="0.1.3"
 
 #TODO add goos and goarch params
 #get go params
