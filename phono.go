@@ -13,17 +13,17 @@ import (
 type Vst2 []vst2.Library
 
 var (
-	vst2ext string
+	vst2ext = vst2FileExt()
 )
 
-func init() {
+func vst2FileExt() string {
 	switch os := runtime.GOOS; os {
 	case "darwin":
-		vst2ext = ".vst"
+		return ".vst"
 	case "windows":
-		vst2ext = ".dll"
+		return ".dll"
 	default:
-		vst2ext = ".so"
+		return ".so"
 	}
 }
 
