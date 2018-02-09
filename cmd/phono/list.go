@@ -3,8 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
-	"runtime"
 	"strings"
 
 	"github.com/dudk/phono"
@@ -40,29 +38,8 @@ func (cmd *listCommand) Register(fs *flag.FlagSet) {
 }
 
 func (cmd *listCommand) Run() error {
-	scanPaths := append(getVstScanPaths(), cmd.scan...)
-	vst2 := phono.NewVst2(scanPaths)
-	fmt.Printf("Scan paths:\n %v\n", scanPaths)
-	fmt.Printf("Available plugins:\n %v\n", vst2)
+	vst2 := phono.NewVst2(cmd.scan)
+	fmt.Printf("Scan paths:\n %v\n", vst2.Paths)
+	fmt.Printf("Available plugins:\n %v\n", vst2.Libs)
 	return nil
-}
-
-func getVstScanPaths() (paths []string) {
-	switch goos := runtime.GOOS; goos {
-	case "darwin":
-		paths = []string{
-			"~/Library/Audio/Plug-Ins/VST",
-			"/Library/Audio/Plug-Ins/VST",
-		}
-	case "windows":
-		paths = []string{
-			"C:\\Program Files (x86)\\Steinberg\\VSTPlugins",
-			"C:\\Program Files\\Steinberg\\VSTPlugins ",
-		}
-		envVstPath := os.Getenv("VST_PATH")
-		if len(envVstPath) > 0 {
-			paths = append(paths, envVstPath)
-		}
-	}
-	return
 }
