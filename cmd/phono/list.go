@@ -5,14 +5,28 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/dudk/phono"
 )
 
 type listCommand struct {
-	scan string
+	scan scanPaths
 }
 
+type scanPaths []string
+
+//Implement the flag.Value interface
+func (s *scanPaths) String() string {
+	return fmt.Sprintf("%v", *s)
+}
+
+func (s *scanPaths) Set(value string) error {
+	*s = strings.Split(value, ";")
+	return nil
+}
+
+//Implement phono.command interface
 func (cmd *listCommand) Name() string {
 	return "list"
 }
@@ -22,11 +36,13 @@ func (cmd *listCommand) Help() string {
 }
 
 func (cmd *listCommand) Register(fs *flag.FlagSet) {
-	fs.StringVar(&cmd.scan, "scan", "", "semicolon-separated paths to scan for effects")
+	fs.Var(&cmd.scan, "scan", "semicolon separated paths to scan for effects")
 }
 
 func (cmd *listCommand) Run() error {
-	vst2 := phono.NewVst2(getVstScanPaths())
+	scanPaths := append(getVstScanPaths(), cmd.scan...)
+	vst2 := phono.NewVst2(scanPaths)
+	fmt.Printf("Scan paths:\n %v\n", scanPaths)
 	fmt.Printf("Available plugins:\n %v\n", vst2)
 	return nil
 }

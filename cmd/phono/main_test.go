@@ -7,6 +7,6 @@ import (
 )
 
 func TestInit(t *testing.T) {
-	//check if default scan paths are presented
-	assert.NotEqual(t, len(vstPaths), 0)
+	//check if commands are registered
+	assert.Equal(t, len(commands), 1)
 }
