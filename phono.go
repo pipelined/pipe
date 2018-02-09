@@ -3,6 +3,7 @@ package phono
 import (
 	"io/ioutil"
 	"log"
+	"os"
 	"runtime"
 	"strings"
 
@@ -10,7 +11,12 @@ import (
 )
 
 //Vst2 represents list of vst2 libraries
-type Vst2 []vst2.Library
+type Vst2 struct {
+	Paths []string
+	Libs  vst2Libraries
+}
+
+type vst2Libraries []vst2.Library
 
 var (
 	vst2ext = getVst2Ext()
@@ -28,14 +34,15 @@ func getVst2Ext() string {
 }
 
 //NewVst2 returns a slice of loaded vst2 libraries
-func NewVst2(paths []string) Vst2 {
-	result := Vst2(make([]vst2.Library, 0))
-	result.Load(paths)
-	return result
+func NewVst2(paths []string) (vst Vst2) {
+	vst.Paths = append(vst.getDefaultScanPaths(), paths...)
+	vst.Libs = vst2Libraries(make([]vst2.Library, 0))
+	vst.Libs.Load(vst.Paths)
+	return
 }
 
 //Load vst2 libraries from defined paths
-func (libraries *Vst2) Load(paths []string) {
+func (libraries *vst2Libraries) Load(paths []string) {
 	for _, path := range paths {
 		files, err := ioutil.ReadDir(path)
 		if err != nil {
@@ -56,4 +63,24 @@ func (libraries *Vst2) Load(paths []string) {
 			*libraries = append(*libraries, *library)
 		}
 	}
+}
+
+func (vst2 *Vst2) getDefaultScanPaths() (paths []string) {
+	switch goos := runtime.GOOS; goos {
+	case "darwin":
+		paths = []string{
+			"~/Library/Audio/Plug-Ins/VST",
+			"/Library/Audio/Plug-Ins/VST",
+		}
+	case "windows":
+		paths = []string{
+			"C:\\Program Files (x86)\\Steinberg\\VSTPlugins",
+			"C:\\Program Files\\Steinberg\\VSTPlugins ",
+		}
+		envVstPath := os.Getenv("VST_PATH")
+		if len(envVstPath) > 0 {
+			paths = append(paths, envVstPath)
+		}
+	}
+	return
 }
