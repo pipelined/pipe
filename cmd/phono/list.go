@@ -30,3 +30,7 @@ func (cmd *listCommand) Run() error {
 	fmt.Printf("Available plugins:\n %v\n", vst2.Libs)
 	return nil
 }
+
+func (cmd *listCommand) Validate() error {
+	return nil
+}

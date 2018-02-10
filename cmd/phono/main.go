@@ -15,6 +15,7 @@ type command interface {
 	Name() string
 	Help() string
 	Run() error
+	Validate() error
 	Register(*flag.FlagSet)
 }
 
@@ -48,6 +49,11 @@ func (config *config) run() int {
 				//TODO: add full help for command
 				flags.PrintDefaults()
 				return successExitCode
+			}
+			if err := cmd.Validate(); err != nil {
+				fmt.Printf("Command invalid: %v", err)
+				flags.PrintDefaults()
+				return errorExitCode
 			}
 			if err := cmd.Run(); err != nil {
 				fmt.Printf("Command failed: %v", err)
