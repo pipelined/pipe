@@ -51,6 +51,7 @@ var (
 	errorExitCode   = 1
 	commands        = []command{
 		&listCommand{},
+		&processCommand{},
 	}
 )
 
