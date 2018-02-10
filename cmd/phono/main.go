@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 type config struct {
@@ -15,6 +16,18 @@ type command interface {
 	Help() string
 	Run() error
 	Register(*flag.FlagSet)
+}
+
+type stringList []string
+
+//Implement the flag.Value interface
+func (s *stringList) String() string {
+	return fmt.Sprintf("%v", *s)
+}
+
+func (s *stringList) Set(value string) error {
+	*s = strings.Split(value, ";")
+	return nil
 }
 
 func (config *config) run() int {
@@ -34,7 +47,7 @@ func (config *config) run() int {
 			if help {
 				//TODO: add full help for command
 				flags.PrintDefaults()
-				return errorExitCode
+				return successExitCode
 			}
 			if err := cmd.Run(); err != nil {
 				fmt.Printf("Command failed: %v", err)

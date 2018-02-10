@@ -34,7 +34,7 @@ func getVst2Ext() string {
 }
 
 //NewVst2 returns a slice of loaded vst2 libraries
-func NewVst2(paths []string) (vst Vst2) {
+func NewVst2(paths []string) (vst *Vst2) {
 	vst.Paths = append(vst.getDefaultScanPaths(), paths...)
 	vst.Libs = vst2Libraries(make([]vst2.Library, 0))
 	vst.Libs.Load(vst.Paths)

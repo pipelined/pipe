@@ -3,25 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"strings"
 
 	"github.com/dudk/phono"
 )
 
 type listCommand struct {
-	scan scanPaths
-}
-
-type scanPaths []string
-
-//Implement the flag.Value interface
-func (s *scanPaths) String() string {
-	return fmt.Sprintf("%v", *s)
-}
-
-func (s *scanPaths) Set(value string) error {
-	*s = strings.Split(value, ";")
-	return nil
+	scan stringList
 }
 
 //Implement phono.command interface
