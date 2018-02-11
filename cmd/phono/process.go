@@ -31,10 +31,6 @@ func (cmd *processCommand) Register(fs *flag.FlagSet) {
 }
 
 func (cmd *processCommand) Run() error {
-	err := cmd.Validate()
-	if err != nil {
-		return err
-	}
 	//vst2 := phono.NewVst2(cmd.scan)
 	session := session.New().WithOptions(session.SampleRate(44100.0), session.BufferSize(512))
 	fmt.Printf("New session: %v\n", session)
