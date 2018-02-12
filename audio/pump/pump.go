@@ -29,6 +29,7 @@ func (wr *Wav) Pump(ctx context.Context) (<-chan audio.Buffer, <-chan error, err
 	reader := wav.NewReader(file)
 	format, err := reader.Format()
 	if err != nil {
+		file.Close()
 		return nil, nil, err
 	}
 	numChannels := int(format.NumChannels)
