@@ -16,3 +16,7 @@ required = [
 [[constraint]]
   branch = "master"
   name = "github.com/youpy/go-wav"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/go-audio/wav"

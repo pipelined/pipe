@@ -37,3 +37,33 @@ func TestWavPump(t *testing.T) {
 
 	fmt.Printf("Buffers read: %d \nSamples read: %d\n", bufCount, samplesRead)
 }
+
+func TestWavPump2(t *testing.T) {
+	reader := Wav{
+		Path:       "../../_testdata/test.wav",
+		BufferSize: 512,
+	}
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+	out, errorc, err := reader.PumpNew(ctx)
+	assert.Nil(t, err)
+	var samplesRead, bufCount int
+	for out != nil {
+		select {
+		case buf, ok := <-out:
+			if !ok {
+				out = nil
+			} else {
+				samplesRead = samplesRead + buf.Size()
+				bufCount++
+			}
+		case err = <-errorc:
+			if err != nil {
+				fmt.Printf("Error recieved: %v\n", err)
+			}
+		}
+
+	}
+
+	fmt.Printf("Buffers read: %d \nSamples read: %d\n", bufCount, samplesRead)
+}
