@@ -51,10 +51,10 @@ func (wr *Wav) Pump(ctx context.Context) (<-chan audio.Buffer, <-chan error, err
 				}
 			}
 			if err != nil {
-				if err == io.EOF {
-					return
+				if err != io.EOF {
+					errc <- err
 				}
-				errc <- err
+				return
 			}
 
 		}
