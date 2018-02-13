@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/dudk/phono"
+	"github.com/dudk/phono/vst2"
 )
 
 type listCommand struct {
@@ -25,9 +25,8 @@ func (cmd *listCommand) Register(fs *flag.FlagSet) {
 }
 
 func (cmd *listCommand) Run() error {
-	vst2 := phono.NewVst2(cmd.scan)
-	fmt.Printf("Scan paths:\n %v\n", vst2.Paths)
-	fmt.Printf("Available plugins:\n %v\n", vst2.Libs)
+	cache := vst2.NewCache(cmd.scan)
+	fmt.Print(cache)
 	return nil
 }
 
