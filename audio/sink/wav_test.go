@@ -10,33 +10,7 @@ import (
 )
 
 func TestWavSink(t *testing.T) {
-	t.Skip()
-	pump := pump.Wav{
-		Path:       "../../_testdata/test.wav",
-		BufferSize: 512,
-	}
-	sink := Wav{
-		Path:       "../../_testdata/out.wav",
-		BufferSize: 512,
-		BitDepth:   16,
-		SampleRate: 44100,
-	}
-
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
-	out, _, err := pump.Pump(ctx)
-	assert.Nil(t, err)
-
-	errorc, err := sink.Sink(ctx, out)
-	assert.Nil(t, err)
-	for err = range errorc {
-		fmt.Printf("Error waiting for sink: %v", err)
-	}
-	assert.Nil(t, err)
-}
-
-func TestWavSink2(t *testing.T) {
-	bufferSize := 32768
+	bufferSize := 512
 	pump := pump.Wav{
 		Path:       "../../_testdata/test.wav",
 		BufferSize: bufferSize,
@@ -52,10 +26,10 @@ func TestWavSink2(t *testing.T) {
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	out, _, err := pump.PumpNew(ctx)
+	out, _, err := pump.Pump(ctx)
 	assert.Nil(t, err)
 
-	errorc, err := sink.SinkNew(ctx, out)
+	errorc, err := sink.Sink(ctx, out)
 	assert.Nil(t, err)
 	for err = range errorc {
 		fmt.Printf("Error waiting for sink: %v", err)

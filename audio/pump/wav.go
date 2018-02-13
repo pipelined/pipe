@@ -3,13 +3,11 @@ package pump
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/dudk/phono"
 	"github.com/go-audio/audio"
-	wav2 "github.com/go-audio/wav"
-	wav "github.com/youpy/go-wav"
+	"github.com/go-audio/wav"
 )
 
 //Wav reads from wav file
@@ -26,49 +24,7 @@ func (w *Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, erro
 	if err != nil {
 		return nil, nil, err
 	}
-	reader := wav.NewReader(file)
-	format, err := reader.Format()
-	if err != nil {
-		file.Close()
-		return nil, nil, err
-	}
-	numChannels := int(format.NumChannels)
-	out := make(chan phono.Buffer)
-	errc := make(chan error, 1)
-	go func() {
-		defer file.Close()
-		defer close(out)
-		defer close(errc)
-		for {
-			wavSamples, err := reader.ReadSamples(uint32(w.BufferSize))
-			if wavSamples != nil && len(wavSamples) > 0 {
-				samples := convertWavSamplesToFloat64(wavSamples, numChannels)
-				buffer := phono.Buffer{Samples: samples}
-				select {
-				case out <- buffer:
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				if err != io.EOF {
-					errc <- err
-				}
-				return
-			}
-
-		}
-	}()
-	return out, errc, nil
-}
-
-//PumpNew starts the pump process
-func (w *Wav) PumpNew(ctx context.Context) (<-chan phono.Buffer, <-chan error, error) {
-	file, err := os.Open(w.Path)
-	if err != nil {
-		return nil, nil, err
-	}
-	decoder := wav2.NewDecoder(file)
+	decoder := wav.NewDecoder(file)
 	if !decoder.IsValidFile() {
 		file.Close()
 		return nil, nil, fmt.Errorf("Wav is not valid")
@@ -96,7 +52,7 @@ func (w *Wav) PumpNew(ctx context.Context) (<-chan phono.Buffer, <-chan error, e
 			if readSamples == 0 {
 				return
 			}
-			buffer := convertWavBuffer(&intBuf, readSamples)
+			buffer := convertFromWavBuffer(&intBuf, readSamples)
 			select {
 			case out <- buffer:
 			case <-ctx.Done():
@@ -108,7 +64,7 @@ func (w *Wav) PumpNew(ctx context.Context) (<-chan phono.Buffer, <-chan error, e
 	return out, errc, nil
 }
 
-func convertWavBuffer(intBuffer *audio.IntBuffer, wavLen int) (buf phono.Buffer) {
+func convertFromWavBuffer(intBuffer *audio.IntBuffer, wavLen int) (buf phono.Buffer) {
 	if intBuffer == nil {
 		return
 	}
@@ -123,20 +79,4 @@ func convertWavBuffer(intBuffer *audio.IntBuffer, wavLen int) (buf phono.Buffer)
 		}
 	}
 	return
-}
-
-//convert WAV samples to float64 slice
-func convertWavSamplesToFloat64(wavSamples []wav.Sample, numChannels int) (samples [][]float64) {
-	samples = make([][]float64, numChannels)
-
-	for i := range samples {
-		samples[i] = make([]float64, 0, len(wavSamples))
-	}
-
-	for _, wavSample := range wavSamples {
-		for i := range samples {
-			samples[i] = append(samples[i], float64(wavSample.Values[i])/0x8000)
-		}
-	}
-	return samples
 }
