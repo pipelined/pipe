@@ -89,7 +89,7 @@ func (w *Wav) SinkNew(ctx context.Context, in <-chan phono.Buffer) (errc chan er
 					in = nil
 				} else {
 					buf := convertToWavBuffer(&buffer, w.SampleRate, w.BitDepth)
-					if err := e.Write(buf); err != nil {
+					if err := e.Write(&buf); err != nil {
 						errc <- err
 						return
 					}
@@ -103,23 +103,25 @@ func (w *Wav) SinkNew(ctx context.Context, in <-chan phono.Buffer) (errc chan er
 	return errc, nil
 }
 
-func convertToWavBuffer(buf *phono.Buffer, sampleRate int, bitDepth int) (intBuffer *audio.IntBuffer) {
+func convertToWavBuffer(buf *phono.Buffer, sampleRate int, bitDepth int) audio.IntBuffer {
 	if buf == nil {
-		return
+		return audio.IntBuffer{}
 	}
 	bufLen := len(buf.Samples) * len(buf.Samples[0])
 	numChannels := len(buf.Samples)
-	intBuffer.Format = &audio.Format{
-		NumChannels: numChannels,
-		SampleRate:  sampleRate,
+	intBuffer := audio.IntBuffer{
+		Format: &audio.Format{
+			NumChannels: numChannels,
+			SampleRate:  sampleRate,
+		},
+		SourceBitDepth: bitDepth,
+		Data:           make([]int, bufLen),
 	}
-	intBuffer.SourceBitDepth = bitDepth
-	intBuffer.Data = make([]int, bufLen)
 
 	for i := range buf.Samples[0] {
 		for j := range buf.Samples {
-			intBuffer.Data[i+j] = int(buf.Samples[j][i] * 0x7FFF)
+			intBuffer.Data[i*numChannels+j] = int(buf.Samples[j][i] * 0x7FFF)
 		}
 	}
-	return
+	return intBuffer
 }

@@ -2,6 +2,7 @@ package pump
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 
@@ -14,7 +15,7 @@ import (
 //Wav reads from wav file
 type Wav struct {
 	Path        string
-	BufferSize  int64
+	BufferSize  int
 	NumChannels int
 	BitDepth    int
 }
@@ -68,8 +69,11 @@ func (w *Wav) PumpNew(ctx context.Context) (<-chan phono.Buffer, <-chan error, e
 		return nil, nil, err
 	}
 	decoder := wav2.NewDecoder(file)
+	if !decoder.IsValidFile() {
+		file.Close()
+		return nil, nil, fmt.Errorf("Wav is not valid")
+	}
 	format := decoder.Format()
-
 	w.BitDepth = int(decoder.BitDepth)
 	w.NumChannels = format.NumChannels
 	out := make(chan phono.Buffer)
@@ -78,15 +82,17 @@ func (w *Wav) PumpNew(ctx context.Context) (<-chan phono.Buffer, <-chan error, e
 		defer file.Close()
 		defer close(out)
 		defer close(errc)
-		totalSamples := 0
+		intBuf := audio.IntBuffer{
+			Format:         format,
+			Data:           make([]int, w.BufferSize*w.NumChannels),
+			SourceBitDepth: w.BitDepth,
+		}
 		for {
-			intBuf := audio.IntBuffer{
-				Format:         format,
-				Data:           make([]int, w.BufferSize*2),
-				SourceBitDepth: w.BitDepth,
-			}
 			readSamples, err := decoder.PCMBuffer(&intBuf)
-			totalSamples = totalSamples + readSamples
+			if err != nil {
+				errc <- err
+				return
+			}
 			if readSamples == 0 {
 				return
 			}
@@ -94,22 +100,6 @@ func (w *Wav) PumpNew(ctx context.Context) (<-chan phono.Buffer, <-chan error, e
 			select {
 			case out <- buffer:
 			case <-ctx.Done():
-				return
-			}
-			//fmt.Printf("Read samples: %v\n", readSamples)
-			// if wavSamples != nil && len(wavSamples) > 0 {
-			// 	samples := convertWavSamplesToFloat64(wavSamples, w.NumChannels)
-			// 	buffer := audio.Buffer{Samples: samples}
-			// 	select {
-			// 	case out <- buffer:
-			// 	case <-ctx.Done():
-			// 		return
-			// 	}
-			// }
-			if err != nil {
-				if err != io.EOF {
-					errc <- err
-				}
 				return
 			}
 
