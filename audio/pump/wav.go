@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/dudk/phono/audio"
-	audio2 "github.com/go-audio/audio"
+	"github.com/dudk/phono"
+	"github.com/go-audio/audio"
 	wav2 "github.com/go-audio/wav"
 	wav "github.com/youpy/go-wav"
 )
@@ -20,7 +20,7 @@ type Wav struct {
 }
 
 //Pump starts the pump process
-func (w *Wav) Pump(ctx context.Context) (<-chan audio.Buffer, <-chan error, error) {
+func (w *Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, error) {
 	file, err := os.Open(w.Path)
 	if err != nil {
 		return nil, nil, err
@@ -32,7 +32,7 @@ func (w *Wav) Pump(ctx context.Context) (<-chan audio.Buffer, <-chan error, erro
 		return nil, nil, err
 	}
 	numChannels := int(format.NumChannels)
-	out := make(chan audio.Buffer)
+	out := make(chan phono.Buffer)
 	errc := make(chan error, 1)
 	go func() {
 		defer file.Close()
@@ -42,7 +42,7 @@ func (w *Wav) Pump(ctx context.Context) (<-chan audio.Buffer, <-chan error, erro
 			wavSamples, err := reader.ReadSamples(uint32(w.BufferSize))
 			if wavSamples != nil && len(wavSamples) > 0 {
 				samples := convertWavSamplesToFloat64(wavSamples, numChannels)
-				buffer := audio.Buffer{Samples: samples}
+				buffer := phono.Buffer{Samples: samples}
 				select {
 				case out <- buffer:
 				case <-ctx.Done():
@@ -62,7 +62,7 @@ func (w *Wav) Pump(ctx context.Context) (<-chan audio.Buffer, <-chan error, erro
 }
 
 //PumpNew starts the pump process
-func (w *Wav) PumpNew(ctx context.Context) (<-chan audio.Buffer, <-chan error, error) {
+func (w *Wav) PumpNew(ctx context.Context) (<-chan phono.Buffer, <-chan error, error) {
 	file, err := os.Open(w.Path)
 	if err != nil {
 		return nil, nil, err
@@ -72,7 +72,7 @@ func (w *Wav) PumpNew(ctx context.Context) (<-chan audio.Buffer, <-chan error, e
 
 	w.BitDepth = int(decoder.BitDepth)
 	w.NumChannels = format.NumChannels
-	out := make(chan audio.Buffer)
+	out := make(chan phono.Buffer)
 	errc := make(chan error, 1)
 	go func() {
 		defer file.Close()
@@ -80,7 +80,7 @@ func (w *Wav) PumpNew(ctx context.Context) (<-chan audio.Buffer, <-chan error, e
 		defer close(errc)
 		totalSamples := 0
 		for {
-			intBuf := audio2.IntBuffer{
+			intBuf := audio.IntBuffer{
 				Format:         format,
 				Data:           make([]int, w.BufferSize*2),
 				SourceBitDepth: w.BitDepth,
@@ -118,7 +118,7 @@ func (w *Wav) PumpNew(ctx context.Context) (<-chan audio.Buffer, <-chan error, e
 	return out, errc, nil
 }
 
-func convertWavBuffer(intBuffer *audio2.IntBuffer, wavLen int) (buf audio.Buffer) {
+func convertWavBuffer(intBuffer *audio.IntBuffer, wavLen int) (buf phono.Buffer) {
 	if intBuffer == nil {
 		return
 	}

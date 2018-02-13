@@ -4,8 +4,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/dudk/phono/audio"
-	audio2 "github.com/go-audio/audio"
+	"github.com/dudk/phono"
+	"github.com/go-audio/audio"
 	wav2 "github.com/go-audio/wav"
 	wav "github.com/youpy/go-wav"
 )
@@ -21,7 +21,7 @@ type Wav struct {
 }
 
 //Sink implements Sinker interface
-func (w *Wav) Sink(ctx context.Context, in <-chan audio.Buffer) (errc chan error, err error) {
+func (w *Wav) Sink(ctx context.Context, in <-chan phono.Buffer) (errc chan error, err error) {
 	file, err := os.Create(w.Path)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func convertFloat64ToWavSamples(samples [][]float64) (wavSamples []wav.Sample) {
 }
 
 //SinkNew implements Sinker interface
-func (w *Wav) SinkNew(ctx context.Context, in <-chan audio.Buffer) (errc chan error, err error) {
+func (w *Wav) SinkNew(ctx context.Context, in <-chan phono.Buffer) (errc chan error, err error) {
 	file, err := os.Create(w.Path)
 	if err != nil {
 		return nil, err
@@ -103,13 +103,13 @@ func (w *Wav) SinkNew(ctx context.Context, in <-chan audio.Buffer) (errc chan er
 	return errc, nil
 }
 
-func convertToWavBuffer(buf *audio.Buffer, sampleRate int, bitDepth int) (intBuffer *audio2.IntBuffer) {
+func convertToWavBuffer(buf *phono.Buffer, sampleRate int, bitDepth int) (intBuffer *audio.IntBuffer) {
 	if buf == nil {
 		return
 	}
 	bufLen := len(buf.Samples) * len(buf.Samples[0])
 	numChannels := len(buf.Samples)
-	intBuffer.Format = &audio2.Format{
+	intBuffer.Format = &audio.Format{
 		NumChannels: numChannels,
 		SampleRate:  sampleRate,
 	}
