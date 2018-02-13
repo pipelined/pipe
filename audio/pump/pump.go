@@ -6,7 +6,8 @@ import (
 	"github.com/dudk/phono"
 )
 
-//Pumper provides an interface for sources of samples
-type Pumper interface {
+//Pump provides an interface for sources of samples
+type Pump interface {
 	Pump(ctx context.Context) (out <-chan phono.Buffer, errc <-chan error, err error)
+	isValid() error
 }

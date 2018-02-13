@@ -2,22 +2,21 @@ package pump
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestWavPump(t *testing.T) {
-	reader := Wav{
-		Path:       "../../_testdata/test.wav",
-		BufferSize: 512,
-	}
+	reader := NewWav("../../_testdata/test.wav", 512)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 	out, errorc, err := reader.Pump(ctx)
 	assert.Nil(t, err)
-	var samplesRead, bufCount int
+	assert.Equal(t, 44100, reader.SampleRate)
+	assert.Equal(t, 16, reader.BitDepth)
+	assert.Equal(t, 2, reader.NumChannels)
+	samplesRead, bufCount := 0, 0
 	for out != nil {
 		select {
 		case buf, ok := <-out:
@@ -28,12 +27,10 @@ func TestWavPump(t *testing.T) {
 				bufCount++
 			}
 		case err = <-errorc:
-			if err != nil {
-				fmt.Printf("Error recieved: %v\n", err)
-			}
+			assert.Nil(t, err)
 		}
 
 	}
-
-	fmt.Printf("Buffers read: %d \nSamples read: %d\n", bufCount, samplesRead)
+	assert.Equal(t, 646, bufCount)
+	assert.Equal(t, 330534, samplesRead)
 }

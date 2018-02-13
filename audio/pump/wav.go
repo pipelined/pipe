@@ -16,9 +16,19 @@ type Wav struct {
 	BufferSize  int
 	NumChannels int
 	BitDepth    int
+	SampleRate  int
+}
+
+//NewWav creates a new wav pump
+func NewWav(path string, bufferSize int) *Wav {
+	return &Wav{
+		Path:       path,
+		BufferSize: bufferSize,
+	}
 }
 
 //Pump starts the pump process
+//once executed, wav attributes are accessible
 func (w *Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, error) {
 	file, err := os.Open(w.Path)
 	if err != nil {
@@ -32,6 +42,7 @@ func (w *Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, erro
 	format := decoder.Format()
 	w.BitDepth = int(decoder.BitDepth)
 	w.NumChannels = format.NumChannels
+	w.SampleRate = int(decoder.SampleRate)
 	out := make(chan phono.Buffer)
 	errc := make(chan error, 1)
 	go func() {
