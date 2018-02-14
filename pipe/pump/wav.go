@@ -29,7 +29,7 @@ func NewWav(path string, bufferSize int) *Wav {
 
 //Pump starts the pump process
 //once executed, wav attributes are accessible
-func (w *Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, error) {
+func (w Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, error) {
 	file, err := os.Open(w.Path)
 	if err != nil {
 		return nil, nil, err

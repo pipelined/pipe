@@ -32,14 +32,14 @@ func NewWav(path string, bufferSize int, sampleRate int, bitDepth int, numChanne
 }
 
 //Sink implements Sinker interface
-func (w *Wav) Sink(ctx context.Context, in <-chan phono.Buffer) (errc chan error, err error) {
+func (w Wav) Sink(ctx context.Context, in <-chan phono.Buffer) (<-chan error, error) {
 	file, err := os.Create(w.Path)
 	if err != nil {
 		return nil, err
 	}
 	// setup the encoder and write all the frames
 	e := wav.NewEncoder(file, w.SampleRate, w.BitDepth, w.NumChannels, int(w.WavAudioFormat))
-	errc = make(chan error, 1)
+	errc := make(chan error, 1)
 	go func() {
 		defer file.Close()
 		defer close(errc)
