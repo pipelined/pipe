@@ -6,17 +6,29 @@ import (
 
 	"github.com/dudk/phono"
 	"github.com/go-audio/audio"
-	wav2 "github.com/go-audio/wav"
+	"github.com/go-audio/wav"
 )
 
 //Wav sink saves audio to wav file
 type Wav struct {
 	Path           string
-	SampleRate     int
 	BufferSize     int
+	SampleRate     int
 	BitDepth       int
 	NumChannels    int
 	WavAudioFormat int
+}
+
+//NewWav creates new wav sink
+func NewWav(path string, bufferSize int, sampleRate int, bitDepth int, numChannels int, wavAudioFormat int) *Wav {
+	return &Wav{
+		Path:           path,
+		BufferSize:     bufferSize,
+		SampleRate:     sampleRate,
+		BitDepth:       bitDepth,
+		NumChannels:    numChannels,
+		WavAudioFormat: wavAudioFormat,
+	}
 }
 
 //Sink implements Sinker interface
@@ -26,7 +38,7 @@ func (w *Wav) Sink(ctx context.Context, in <-chan phono.Buffer) (errc chan error
 		return nil, err
 	}
 	// setup the encoder and write all the frames
-	e := wav2.NewEncoder(file, w.SampleRate, w.BitDepth, w.NumChannels, int(w.WavAudioFormat))
+	e := wav.NewEncoder(file, w.SampleRate, w.BitDepth, w.NumChannels, int(w.WavAudioFormat))
 	errc = make(chan error, 1)
 	go func() {
 		defer file.Close()

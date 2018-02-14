@@ -9,20 +9,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var (
+	inFile         = "../../_testdata/test.wav"
+	outFile        = "../../_testdata/out.wav"
+	bufferSize     = 512
+	sampleRate     = 44100
+	bitDepth       = 16
+	numChannels    = 2
+	wavAudioFormat = 1
+)
+
 func TestWavSink(t *testing.T) {
-	bufferSize := 512
-	pump := pump.Wav{
-		Path:       "../../_testdata/test.wav",
-		BufferSize: bufferSize,
-	}
-	sink := Wav{
-		Path:           "../../_testdata/out2.wav",
-		BufferSize:     bufferSize,
-		BitDepth:       16,
-		SampleRate:     44100,
-		NumChannels:    2,
-		WavAudioFormat: 1,
-	}
+
+	pump := pump.NewWav(inFile, bufferSize)
+	sink := NewWav(outFile, bufferSize, sampleRate, bitDepth, numChannels, wavAudioFormat)
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
