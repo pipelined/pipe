@@ -32,7 +32,7 @@ func NewWav(path string, bufferSize int, sampleRate int, bitDepth int, numChanne
 }
 
 //Sink implements Sinker interface
-func (w Wav) Sink(ctx context.Context, in <-chan phono.Buffer) (<-chan error, error) {
+func (w Wav) Sink(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
 	file, err := os.Create(w.Path)
 	if err != nil {
 		return nil, err
@@ -46,12 +46,12 @@ func (w Wav) Sink(ctx context.Context, in <-chan phono.Buffer) (<-chan error, er
 		defer e.Close()
 		for in != nil {
 			select {
-			case buffer, ok := <-in:
+			case message, ok := <-in:
 				if !ok {
 					in = nil
 				} else {
-					buf := convertToWavBuffer(&buffer, w.SampleRate, w.BitDepth)
-					if err := e.Write(&buf); err != nil {
+					buf := convertToWavBuffer(message.Samples(), w.SampleRate, w.BitDepth)
+					if err := e.Write(buf); err != nil {
 						errc <- err
 						return
 					}
@@ -65,9 +65,9 @@ func (w Wav) Sink(ctx context.Context, in <-chan phono.Buffer) (<-chan error, er
 	return errc, nil
 }
 
-func convertToWavBuffer(buf *phono.Buffer, sampleRate int, bitDepth int) audio.IntBuffer {
+func convertToWavBuffer(buf *phono.Buffer, sampleRate int, bitDepth int) *audio.IntBuffer {
 	if buf == nil {
-		return audio.IntBuffer{}
+		return nil
 	}
 	bufLen := len(buf.Samples) * len(buf.Samples[0])
 	numChannels := len(buf.Samples)
@@ -85,5 +85,5 @@ func convertToWavBuffer(buf *phono.Buffer, sampleRate int, bitDepth int) audio.I
 			intBuffer.Data[i*numChannels+j] = int(buf.Samples[j][i] * 0x7FFF)
 		}
 	}
-	return intBuffer
+	return &intBuffer
 }

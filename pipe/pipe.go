@@ -137,13 +137,13 @@ func mergeErrors(errcList ...<-chan error) <-chan error {
 	return out
 }
 
-func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Buffer) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
-	broadcasts := make([]chan phono.Buffer, len(p.sinks))
+	broadcasts := make([]chan phono.Message, len(p.sinks))
 	for i := range broadcasts {
-		broadcasts[i] = make(chan phono.Buffer)
+		broadcasts[i] = make(chan phono.Message)
 	}
 
 	//start broadcast

@@ -8,5 +8,5 @@ import (
 
 //Pump provides an interface for sources of samples
 type Pump interface {
-	Pump(ctx context.Context) (out <-chan phono.Buffer, errc <-chan error, err error)
+	Pump(ctx context.Context) (out <-chan phono.Message, errc <-chan error, err error)
 }

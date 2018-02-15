@@ -45,7 +45,7 @@ func NewWav(path string, bufferSize int) (*Wav, error) {
 
 //Pump starts the pump process
 //once executed, wav attributes are accessible
-func (w Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, error) {
+func (w Wav) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, error) {
 	file, err := os.Open(w.Path)
 	if err != nil {
 		return nil, nil, err
@@ -59,7 +59,7 @@ func (w Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, error
 	//w.BitDepth = int(decoder.BitDepth)
 	//w.NumChannels = format.NumChannels
 	//w.SampleRate = int(decoder.SampleRate)
-	out := make(chan phono.Buffer)
+	out := make(chan phono.Message)
 	errc := make(chan error, 1)
 	go func() {
 		defer file.Close()
@@ -79,9 +79,11 @@ func (w Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, error
 			if readSamples == 0 {
 				return
 			}
-			buffer := convertFromWavBuffer(&intBuf, readSamples)
+			message := phono.Message{}
+			message.PutSamples(convertFromWavBuffer(&intBuf, readSamples))
+			//buffer := convertFromWavBuffer(&intBuf, readSamples)
 			select {
-			case out <- buffer:
+			case out <- message:
 			case <-ctx.Done():
 				return
 			}
@@ -91,10 +93,11 @@ func (w Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, error
 	return out, errc, nil
 }
 
-func convertFromWavBuffer(intBuffer *audio.IntBuffer, wavLen int) (buf phono.Buffer) {
+func convertFromWavBuffer(intBuffer *audio.IntBuffer, wavLen int) *phono.Buffer {
 	if intBuffer == nil {
-		return
+		return nil
 	}
+	buf := phono.Buffer{}
 	numChannels := intBuffer.Format.NumChannels
 	buf.Samples = make([][]float64, numChannels)
 
@@ -105,5 +108,5 @@ func convertFromWavBuffer(intBuffer *audio.IntBuffer, wavLen int) (buf phono.Buf
 			buf.Samples[i] = append(buf.Samples[i], float64(intBuffer.Data[j])/0x8000)
 		}
 	}
-	return
+	return &buf
 }

@@ -8,5 +8,5 @@ import (
 
 //Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Sink(ctx context.Context, in <-chan phono.Buffer) (errc <-chan error, err error)
+	Sink(ctx context.Context, in <-chan phono.Message) (errc <-chan error, err error)
 }
