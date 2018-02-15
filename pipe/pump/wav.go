@@ -12,19 +12,35 @@ import (
 
 //Wav reads from wav file
 type Wav struct {
-	Path        string
-	BufferSize  int
-	NumChannels int
-	BitDepth    int
-	SampleRate  int
+	Path           string
+	BufferSize     int
+	NumChannels    int
+	BitDepth       int
+	SampleRate     int
+	WavAudioFormat int
 }
 
-//NewWav creates a new wav pump
-func NewWav(path string, bufferSize int) *Wav {
-	return &Wav{
-		Path:       path,
-		BufferSize: bufferSize,
+//NewWav creates a new wav pump and sets wav props
+func NewWav(path string, bufferSize int) (*Wav, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
+	defer file.Close()
+
+	decoder := wav.NewDecoder(file)
+	if !decoder.IsValidFile() {
+		return nil, fmt.Errorf("Wav is not valid")
+	}
+
+	return &Wav{
+		Path:           path,
+		BufferSize:     bufferSize,
+		NumChannels:    decoder.Format().NumChannels,
+		BitDepth:       int(decoder.BitDepth),
+		SampleRate:     int(decoder.SampleRate),
+		WavAudioFormat: int(decoder.WavAudioFormat),
+	}, nil
 }
 
 //Pump starts the pump process
@@ -40,9 +56,9 @@ func (w Wav) Pump(ctx context.Context) (<-chan phono.Buffer, <-chan error, error
 		return nil, nil, fmt.Errorf("Wav is not valid")
 	}
 	format := decoder.Format()
-	w.BitDepth = int(decoder.BitDepth)
-	w.NumChannels = format.NumChannels
-	w.SampleRate = int(decoder.SampleRate)
+	//w.BitDepth = int(decoder.BitDepth)
+	//w.NumChannels = format.NumChannels
+	//w.SampleRate = int(decoder.SampleRate)
 	out := make(chan phono.Buffer)
 	errc := make(chan error, 1)
 	go func() {

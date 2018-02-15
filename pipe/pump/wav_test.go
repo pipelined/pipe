@@ -8,7 +8,8 @@ import (
 )
 
 func TestWavPump(t *testing.T) {
-	reader := NewWav("../../_testdata/test.wav", 512)
+	reader, err := NewWav("../../_testdata/test.wav", 512)
+	assert.Nil(t, err)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 	out, errorc, err := reader.Pump(ctx)
