@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/dudk/phono"
+
 	"github.com/dudk/phono/pipe/processor"
 	"github.com/dudk/phono/pipe/pump"
 	"github.com/dudk/phono/pipe/sink"
@@ -90,14 +92,11 @@ func (p *Pipe) Run(ctx context.Context) error {
 		errcList = append(errcList, errc)
 	}
 
-	//start sink
-	for _, sink := range p.sinks {
-		errc, err = sink.Sink(ctx, out)
-		if err != nil {
-			return err
-		}
-		errcList = append(errcList, errc)
+	sinkErrcList, err := p.broadcastToSinks(ctx, out)
+	if err != nil {
+		return err
 	}
+	errcList = append(errcList, sinkErrcList...)
 
 	return waitPipe(errcList...)
 }
@@ -129,10 +128,55 @@ func mergeErrors(errcList ...<-chan error) <-chan error {
 		go output(e)
 	}
 
+	//wait and close out
 	go func() {
 		wg.Wait()
 		close(out)
 	}()
 
 	return out
+}
+
+func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Buffer) ([]<-chan error, error) {
+	//init errcList for sinks error channels
+	errcList := make([]<-chan error, 0, len(p.sinks))
+	//list of channels for broadcast
+	broadcasts := make([]chan phono.Buffer, len(p.sinks))
+	for i := range broadcasts {
+		broadcasts[i] = make(chan phono.Buffer)
+	}
+
+	//start broadcast
+	for i, s := range p.sinks {
+		errc, err := s.Sink(ctx, broadcasts[i])
+		if err != nil {
+			return nil, err
+		}
+		errcList = append(errcList, errc)
+	}
+
+	go func() {
+		//close broadcasts on return
+		defer func() {
+			for i := range broadcasts {
+				close(broadcasts[i])
+			}
+		}()
+		for in != nil {
+			select {
+			case buf, ok := <-in:
+				if !ok {
+					in = nil
+				} else {
+					for i := range broadcasts {
+						broadcasts[i] <- buf
+					}
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return errcList, nil
 }

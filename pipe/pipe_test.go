@@ -12,6 +12,7 @@ import (
 var (
 	inFile         = "../_testdata/test.wav"
 	outFile        = "../_testdata/out.wav"
+	outFile2       = "../_testdata/out2.wav"
 	bufferSize     = 512
 	sampleRate     = 44100
 	bitDepth       = 16
@@ -21,10 +22,11 @@ var (
 
 func TestPipe(t *testing.T) {
 	pump := pump.NewWav(inFile, bufferSize)
-	sink := sink.NewWav(outFile, bufferSize, sampleRate, bitDepth, numChannels, wavAudioFormat)
+	wavSink := sink.NewWav(outFile, bufferSize, sampleRate, bitDepth, numChannels, wavAudioFormat)
+	wavSink1 := sink.NewWav(outFile2, bufferSize, sampleRate, bitDepth, numChannels, wavAudioFormat)
 	pipe := New(
 		Pump(*pump),
-		Sinks(*sink),
+		Sinks(*wavSink, *wavSink1),
 	)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
