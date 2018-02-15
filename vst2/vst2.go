@@ -27,7 +27,7 @@ var (
 )
 
 //NewCache returns a slice of loaded vst2 libraries
-func NewCache(paths []string) *Cache {
+func NewCache(paths ...string) *Cache {
 	cache := Cache{}
 	cache.Paths = uniquePaths(append(defaultScanPaths, paths...))
 	cache.Load()
@@ -42,6 +42,15 @@ func (cache *Cache) Load() {
 		err := filepath.Walk(path, cache.loadLibs())
 		if err != nil {
 			log.Print(err)
+		}
+	}
+}
+
+//Close unloads all loaded libs
+func (cache *Cache) Close() {
+	for _, libs := range cache.Libs {
+		for _, lib := range libs {
+			lib.Close()
 		}
 	}
 }
@@ -130,4 +139,21 @@ func (libraries Libraries) String() string {
 		}
 	}
 	return buf.String()
+}
+
+//LoadPlugin loads new plugin
+func (cache *Cache) LoadPlugin(path string, name string) (*vst2.Plugin, error) {
+	if len(cache.Libs) == 0 {
+		return nil, fmt.Errorf("No plugins are found in folders %v", cache.Paths)
+	}
+	libs, ok := cache.Libs[path]
+	if !ok {
+		return nil, fmt.Errorf("Path %v was not scanned", path)
+	}
+	for _, lib := range libs {
+		if lib.Name == name {
+			return lib.Open()
+		}
+	}
+	return nil, fmt.Errorf("Plugin %v not found at %v", name, path)
 }
