@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	vst2 "github.com/dudk/vst2"
 )
 
 //Cache represents list of vst2 libraries
@@ -19,7 +17,7 @@ type Cache struct {
 }
 
 //Libraries represent vst2 libs grouped by their path
-type Libraries map[string][]vst2.Library
+type Libraries map[string][]Library
 
 var (
 	defaultScanPaths = getDefaultScanPaths()
@@ -35,11 +33,11 @@ func NewCache(paths ...string) *Cache {
 }
 
 //Load vst2 libraries from defined paths
-func (cache *Cache) Load() {
-	cache.Libs = make(map[string][]vst2.Library)
-	for _, path := range cache.Paths {
-		cache.Libs[path] = make([]vst2.Library, 0)
-		err := filepath.Walk(path, cache.loadLibs())
+func (c *Cache) Load() {
+	c.Libs = make(map[string][]Library)
+	for _, path := range c.Paths {
+		c.Libs[path] = make([]Library, 0)
+		err := filepath.Walk(path, c.loadLibs())
 		if err != nil {
 			log.Print(err)
 		}
@@ -47,27 +45,27 @@ func (cache *Cache) Load() {
 }
 
 //Close unloads all loaded libs
-func (cache *Cache) Close() {
-	for _, libs := range cache.Libs {
+func (c *Cache) Close() {
+	for _, libs := range c.Libs {
 		for _, lib := range libs {
 			lib.Close()
 		}
 	}
 }
 
-func (cache *Cache) loadLibs() filepath.WalkFunc {
+func (c *Cache) loadLibs() filepath.WalkFunc {
 	return func(path string, file os.FileInfo, err error) error {
 		if err != nil {
 			log.Print(err)
 			return nil
 		}
 		if strings.HasSuffix(file.Name(), ext) {
-			library, err := vst2.Open(path)
+			library, err := Open(path)
 			if err != nil {
 				return err
 			}
 			dir := filepath.Dir(path)
-			cache.Libs[dir] = append(cache.Libs[dir], *library)
+			c.Libs[dir] = append(c.Libs[dir], *library)
 		}
 		return nil
 	}
@@ -116,14 +114,14 @@ func uniquePaths(stringSlice []string) []string {
 	return u
 }
 
-func (cache Cache) String() string {
+func (c Cache) String() string {
 	var buf bytes.Buffer
 	buf.WriteString(fmt.Sprintf("Scan paths:\n"))
-	for _, path := range cache.Paths {
+	for _, path := range c.Paths {
 		buf.WriteString(fmt.Sprintf("\t%v\n", path))
 	}
 	buf.WriteString(fmt.Sprintf("Available plugins:\n"))
-	buf.WriteString(fmt.Sprintf("%v", cache.Libs))
+	buf.WriteString(fmt.Sprintf("%v", c.Libs))
 	return buf.String()
 }
 
@@ -142,17 +140,22 @@ func (libraries Libraries) String() string {
 }
 
 //LoadPlugin loads new plugin
-func (cache *Cache) LoadPlugin(path string, name string) (*vst2.Plugin, error) {
-	if len(cache.Libs) == 0 {
-		return nil, fmt.Errorf("No plugins are found in folders %v", cache.Paths)
+func (c *Cache) LoadPlugin(path string, name string) (*Plugin, error) {
+	if len(c.Libs) == 0 {
+		return nil, fmt.Errorf("No plugins are found in folders %v", c.Paths)
 	}
-	libs, ok := cache.Libs[path]
+	libs, ok := c.Libs[path]
 	if !ok {
 		return nil, fmt.Errorf("Path %v was not scanned", path)
 	}
 	for _, lib := range libs {
 		if lib.Name == name {
-			return lib.Open()
+			plugin, err := lib.Open()
+
+			if err != nil {
+				return nil, err
+			}
+			return plugin, nil
 		}
 	}
 	return nil, fmt.Errorf("Plugin %v not found at %v", name, path)

@@ -4,16 +4,16 @@ import (
 	"context"
 
 	"github.com/dudk/phono"
-	vst2 "github.com/dudk/vst2"
+	"github.com/dudk/phono/vst2"
 )
 
 //Vst2 represents vst2 sound processor
 type Vst2 struct {
-	plugin *vst2.Plugin
+	plugin vst2.Plugin
 }
 
 //NewVst2 creates new vst2 processor
-func NewVst2(plugin *vst2.Plugin) *Vst2 {
+func NewVst2(plugin vst2.Plugin) *Vst2 {
 	return &Vst2{plugin: plugin}
 }
 
