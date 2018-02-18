@@ -8,5 +8,5 @@ import (
 
 func TestInit(t *testing.T) {
 	//check if commands are registered
-	assert.Equal(t, len(commands), 1)
+	assert.Equal(t, 2, len(commands))
 }

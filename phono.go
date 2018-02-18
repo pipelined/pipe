@@ -12,3 +12,23 @@ func (b *Buffer) Size() int {
 	}
 	return len(b.Samples[0])
 }
+
+//Message is a DTO for pipe
+type Message struct {
+	samples *Buffer
+}
+
+//PutSamples assignes samples to message
+func (m *Message) PutSamples(buf *Buffer) {
+	m.samples = buf
+}
+
+//Samples returns messages samples
+func (m *Message) Samples() *Buffer {
+	return m.samples
+}
+
+//Size returns length of samples per channel
+func (m *Message) Size() int {
+	return m.samples.Size()
+}

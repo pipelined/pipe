@@ -25,7 +25,7 @@ func (cmd *listCommand) Register(fs *flag.FlagSet) {
 }
 
 func (cmd *listCommand) Run() error {
-	cache := vst2.NewCache(cmd.scan)
+	cache := vst2.NewCache(cmd.scan...)
 	fmt.Print(cache)
 	return nil
 }
