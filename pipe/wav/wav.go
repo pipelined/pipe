@@ -1,4 +1,4 @@
-package pump
+package wav
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/go-audio/wav"
 )
 
-//Wav reads from wav file
-type Wav struct {
+//Pump reads from wav file
+type Pump struct {
 	Path           string
 	BufferSize     int
 	NumChannels    int
@@ -20,8 +20,8 @@ type Wav struct {
 	WavAudioFormat int
 }
 
-//NewWav creates a new wav pump and sets wav props
-func NewWav(path string, bufferSize int) (*Wav, error) {
+//NewPump creates a new wav pump and sets wav props
+func NewPump(path string, bufferSize int) (*Pump, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func NewWav(path string, bufferSize int) (*Wav, error) {
 		return nil, fmt.Errorf("Wav is not valid")
 	}
 
-	return &Wav{
+	return &Pump{
 		Path:           path,
 		BufferSize:     bufferSize,
 		NumChannels:    decoder.Format().NumChannels,
@@ -45,7 +45,7 @@ func NewWav(path string, bufferSize int) (*Wav, error) {
 
 //Pump starts the pump process
 //once executed, wav attributes are accessible
-func (w Wav) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, error) {
+func (w Pump) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, error) {
 	file, err := os.Open(w.Path)
 	if err != nil {
 		return nil, nil, err
@@ -109,4 +109,83 @@ func convertFromWavBuffer(intBuffer *audio.IntBuffer, wavLen int) *phono.Buffer 
 		}
 	}
 	return &buf
+}
+
+//Sink sink saves audio to wav file
+type Sink struct {
+	Path           string
+	BufferSize     int
+	SampleRate     int
+	BitDepth       int
+	NumChannels    int
+	WavAudioFormat int
+}
+
+//NewSink creates new wav sink
+func NewSink(path string, bufferSize int, sampleRate int, bitDepth int, numChannels int, wavAudioFormat int) *Sink {
+	return &Sink{
+		Path:           path,
+		BufferSize:     bufferSize,
+		SampleRate:     sampleRate,
+		BitDepth:       bitDepth,
+		NumChannels:    numChannels,
+		WavAudioFormat: wavAudioFormat,
+	}
+}
+
+//Sink implements Sinker interface
+func (w Sink) Sink(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
+	file, err := os.Create(w.Path)
+	if err != nil {
+		return nil, err
+	}
+	// setup the encoder and write all the frames
+	e := wav.NewEncoder(file, w.SampleRate, w.BitDepth, w.NumChannels, int(w.WavAudioFormat))
+	errc := make(chan error, 1)
+	go func() {
+		defer file.Close()
+		defer close(errc)
+		defer e.Close()
+		for in != nil {
+			select {
+			case message, ok := <-in:
+				if !ok {
+					in = nil
+				} else {
+					buf := convertToWavBuffer(message.Samples(), w.SampleRate, w.BitDepth)
+					if err := e.Write(buf); err != nil {
+						errc <- err
+						return
+					}
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return errc, nil
+}
+
+func convertToWavBuffer(buf *phono.Buffer, sampleRate int, bitDepth int) *audio.IntBuffer {
+	if buf == nil {
+		return nil
+	}
+	bufLen := len(buf.Samples) * len(buf.Samples[0])
+	numChannels := len(buf.Samples)
+	intBuffer := audio.IntBuffer{
+		Format: &audio.Format{
+			NumChannels: numChannels,
+			SampleRate:  sampleRate,
+		},
+		SourceBitDepth: bitDepth,
+		Data:           make([]int, bufLen),
+	}
+
+	for i := range buf.Samples[0] {
+		for j := range buf.Samples {
+			intBuffer.Data[i*numChannels+j] = int(buf.Samples[j][i] * 0x7FFF)
+		}
+	}
+	return &intBuffer
 }

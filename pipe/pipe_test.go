@@ -4,11 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dudk/phono/pipe/processor"
+	"github.com/dudk/phono/pipe/vst2"
+	"github.com/dudk/phono/pipe/wav"
 
-	"github.com/dudk/phono/pipe/pump"
-	"github.com/dudk/phono/pipe/sink"
-	"github.com/dudk/phono/vst2"
+	cache "github.com/dudk/phono/vst2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,14 +21,14 @@ var (
 )
 
 func TestPipe(t *testing.T) {
-	cache := vst2.NewCache(vstPath)
+	cache := cache.NewCache(vstPath)
 	defer cache.Close()
 	plugin, err := cache.LoadPlugin(vstPath, vstName)
 	assert.Nil(t, err)
 	defer plugin.Close()
-	wavPump, err := pump.NewWav(inFile, bufferSize)
+	wavPump, err := wav.NewPump(inFile, bufferSize)
 	assert.Nil(t, err)
-	wavSink := sink.NewWav(
+	wavSink := wav.NewSink(
 		outFile,
 		bufferSize,
 		wavPump.SampleRate,
@@ -37,7 +36,7 @@ func TestPipe(t *testing.T) {
 		wavPump.NumChannels,
 		wavPump.WavAudioFormat,
 	)
-	wavSink1 := sink.NewWav(
+	wavSink1 := wav.NewSink(
 		outFile2,
 		bufferSize,
 		wavPump.SampleRate,
@@ -45,11 +44,11 @@ func TestPipe(t *testing.T) {
 		wavPump.NumChannels,
 		wavPump.WavAudioFormat,
 	)
-	vst2Processor := processor.NewVst2(*plugin)
+	vst2Processor := vst2.NewProcessor(*plugin)
 	pipe := New(
-		Pump(wavPump),
-		Processors(vst2Processor),
-		Sinks(wavSink, wavSink1),
+		WithPump(wavPump),
+		WithProcessors(vst2Processor),
+		WithSinks(wavSink, wavSink1),
 	)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()

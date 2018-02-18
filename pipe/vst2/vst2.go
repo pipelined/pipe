@@ -1,4 +1,4 @@
-package processor
+package vst2
 
 import (
 	"context"
@@ -12,8 +12,8 @@ type Vst2 struct {
 	plugin vst2.Plugin
 }
 
-//NewVst2 creates new vst2 processor
-func NewVst2(plugin vst2.Plugin) *Vst2 {
+//NewProcessor creates new vst2 processor
+func NewProcessor(plugin vst2.Plugin) *Vst2 {
 	return &Vst2{plugin: plugin}
 }
 

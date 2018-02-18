@@ -6,32 +6,43 @@ import (
 	"sync"
 
 	"github.com/dudk/phono"
-
-	"github.com/dudk/phono/pipe/processor"
-	"github.com/dudk/phono/pipe/pump"
-	"github.com/dudk/phono/pipe/sink"
 )
 
-//Pipe is a pipeline with fully defined sound processing sequence
-//it has:
-//	1 		pump
-//	0..n 	processors
-//	1..n	sinks
-type Pipe struct {
-	pump       pump.Pump
-	processors []processor.Processor
-	sinks      []sink.Sink
+// Sink is an interface for final stage in audio pipeline
+type Sink interface {
+	Sink(ctx context.Context, in <-chan phono.Message) (errc <-chan error, err error)
 }
 
-//Option provides a way to set options to pipe
-//returns previous option value
+// Pump is a source of samples
+type Pump interface {
+	Pump(ctx context.Context) (out <-chan phono.Message, errc <-chan error, err error)
+}
+
+// Processor defines interface for pipe-prcessors
+type Processor interface {
+	Process(ctx context.Context, in <-chan phono.Message) (out <-chan phono.Message, errc <-chan error, err error)
+}
+
+// Pipe is a pipeline with fully defined sound processing sequence
+// it has:
+//	 1 		pump
+//	 0..n 	processors
+//	 1..n	sinks
+type Pipe struct {
+	pump       Pump
+	processors []Processor
+	sinks      []Sink
+}
+
+// Option provides a way to set options to pipe
+// returns previous option value
 type Option func(p *Pipe) Option
 
-//New creates a new pipe and applies provided options
+// New creates a new pipe and applies provided options
 func New(options ...Option) *Pipe {
 	pipe := &Pipe{
-		processors: make([]processor.Processor, 0),
-		sinks:      make([]sink.Sink, 0),
+		processors: make([]Processor, 0),
+		sinks:      make([]Sink, 0),
 	}
 	for _, option := range options {
 		option(pipe)
@@ -39,34 +50,34 @@ func New(options ...Option) *Pipe {
 	return pipe
 }
 
-//Pump sets pump to Pipe
-func Pump(pump pump.Pump) Option {
+// WithPump sets pump to Pipe
+func WithPump(pump Pump) Option {
 	return func(p *Pipe) Option {
 		previous := p.pump
 		p.pump = pump
-		return Pump(previous)
+		return WithPump(previous)
 	}
 }
 
-//Processors sets processors to Pipe
-func Processors(processors ...processor.Processor) Option {
+// WithProcessors sets processors to Pipe
+func WithProcessors(processors ...Processor) Option {
 	return func(p *Pipe) Option {
 		previous := p.processors
 		p.processors = append(p.processors, processors...)
-		return Processors(previous...)
+		return WithProcessors(previous...)
 	}
 }
 
-//Sinks sets sinks to Pipe
-func Sinks(sinks ...sink.Sink) Option {
+// WithSinks sets sinks to Pipe
+func WithSinks(sinks ...Sink) Option {
 	return func(p *Pipe) Option {
 		previous := p.sinks
 		p.sinks = append(p.sinks, sinks...)
-		return Sinks(previous...)
+		return WithSinks(previous...)
 	}
 }
 
-//Run invokes a pipe
+// Run invokes a pipe
 func (p *Pipe) Run(ctx context.Context) error {
 	if p.pump == nil {
 		return errors.New("Pump is not defined")
@@ -111,7 +122,7 @@ func waitPipe(errcList ...<-chan error) error {
 	return nil
 }
 
-//merge error channels
+// merge error channels
 func mergeErrors(errcList ...<-chan error) <-chan error {
 	var wg sync.WaitGroup
 	out := make(chan error, len(errcList))
