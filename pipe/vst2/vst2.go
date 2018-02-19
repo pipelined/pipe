@@ -7,18 +7,18 @@ import (
 	"github.com/dudk/phono/vst2"
 )
 
-//Vst2 represents vst2 sound processor
-type Vst2 struct {
+// VST2 represents vst2 sound processor
+type VST2 struct {
 	plugin vst2.Plugin
 }
 
 //NewProcessor creates new vst2 processor
-func NewProcessor(plugin vst2.Plugin) *Vst2 {
-	return &Vst2{plugin: plugin}
+func NewProcessor(plugin vst2.Plugin) *VST2 {
+	return &VST2{plugin: plugin}
 }
 
 //Process implements processor.Processor
-func (v Vst2) Process(ctx context.Context, in <-chan phono.Message) (<-chan phono.Message, <-chan error, error) {
+func (v VST2) Process(ctx context.Context, in <-chan phono.Message) (<-chan phono.Message, <-chan error, error) {
 	errc := make(chan error, 1)
 	out := make(chan phono.Message)
 	go func() {

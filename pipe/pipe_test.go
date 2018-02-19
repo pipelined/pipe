@@ -7,7 +7,7 @@ import (
 	"github.com/dudk/phono/pipe/vst2"
 	"github.com/dudk/phono/pipe/wav"
 
-	cache "github.com/dudk/phono/vst2"
+	"github.com/dudk/phono/cache"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,7 +21,7 @@ var (
 )
 
 func TestPipe(t *testing.T) {
-	cache := cache.NewCache(vstPath)
+	cache := cache.NewVST2(vstPath)
 	defer cache.Close()
 	plugin, err := cache.LoadPlugin(vstPath, vstName)
 	assert.Nil(t, err)

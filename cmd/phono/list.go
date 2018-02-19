@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/dudk/phono/vst2"
+	"github.com/dudk/phono/cache"
 )
 
 type listCommand struct {
@@ -25,7 +25,7 @@ func (cmd *listCommand) Register(fs *flag.FlagSet) {
 }
 
 func (cmd *listCommand) Run() error {
-	cache := vst2.NewCache(cmd.scan...)
+	cache := cache.NewVST2(cmd.scan...)
 	fmt.Print(cache)
 	return nil
 }
