@@ -9,11 +9,11 @@ import (
 
 // VST2 represents vst2 sound processor
 type VST2 struct {
-	plugin vst2.Plugin
+	plugin *vst2.Plugin
 }
 
 //NewProcessor creates new vst2 processor
-func NewProcessor(plugin vst2.Plugin) *VST2 {
+func NewProcessor(plugin *vst2.Plugin) *VST2 {
 	return &VST2{plugin: plugin}
 }
 

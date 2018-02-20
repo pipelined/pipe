@@ -44,7 +44,7 @@ func TestPipe(t *testing.T) {
 		wavPump.NumChannels,
 		wavPump.WavAudioFormat,
 	)
-	vst2Processor := vst2.NewProcessor(*plugin)
+	vst2Processor := vst2.NewProcessor(plugin)
 	pipe := New(
 		WithPump(wavPump),
 		WithProcessors(vst2Processor),

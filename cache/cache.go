@@ -121,15 +121,14 @@ func (v *VST2) LoadPlugin(path string, name string) (*vst2.Plugin, error) {
 	if !ok {
 		return nil, fmt.Errorf("Path %v was not scanned", path)
 	}
-	for _, lib := range libs {
-		if lib.Name == name {
-			plugin, err := lib.Open()
-
-			if err != nil {
-				return nil, err
-			}
-			return plugin, nil
-		}
+	lib, ok := libs[name]
+	if !ok {
+		return nil, fmt.Errorf("Library %v was not found at %v", name, path)
 	}
-	return nil, fmt.Errorf("Plugin %v not found at %v", name, path)
+	plugin, err := lib.Open()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to load %v at %v", name, path)
+	}
+
+	return plugin, nil
 }
