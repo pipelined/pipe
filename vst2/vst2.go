@@ -71,3 +71,23 @@ func FileExtension() string {
 		return ".so"
 	}
 }
+
+// Resume starts the plugin
+func (p *Plugin) Resume() {
+	p.Dispatch(vst2.EffMainsChanged, 0, 1, nil, 0.0)
+}
+
+// Suspend stops the plugin
+func (p *Plugin) Suspend() {
+	p.Dispatch(vst2.EffMainsChanged, 0, 0, nil, 0.0)
+}
+
+// BufferSize sets a buffer size
+func (p *Plugin) BufferSize(bufferSize int) {
+	p.Dispatch(vst2.EffSetBlockSize, 0, int64(bufferSize), nil, 0.0)
+}
+
+// SampleRate sets a sample rate for plugin
+func (p *Plugin) SampleRate(sampleRate int) {
+	p.Dispatch(vst2.EffSetSampleRate, 0, 0, nil, float64(sampleRate))
+}
