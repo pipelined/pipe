@@ -1,8 +1,10 @@
 package vst2
 
 import (
+	"fmt"
 	"os"
 	"runtime"
+	"unsafe"
 
 	"github.com/dudk/vst2"
 )
@@ -29,14 +31,16 @@ type Library struct {
 }
 
 //Open loads vst2 plugin
-func (l Library) Open() (*Plugin, error) {
+func (l Library) Open() (p *Plugin, err error) {
 	plugin, err := l.Library.Open()
 	if err != nil {
 		return nil, err
 	}
-	return &Plugin{
+	p = &Plugin{
 		Plugin: plugin,
-	}, nil
+	}
+	plugin.SetCallback(p.callback())
+	return
 }
 
 // DefaultScanPaths returns a slice of default vst2 locations
@@ -90,4 +94,11 @@ func (p *Plugin) BufferSize(bufferSize int) {
 // SampleRate sets a sample rate for plugin
 func (p *Plugin) SampleRate(sampleRate int) {
 	p.Dispatch(vst2.EffSetSampleRate, 0, 0, nil, float64(sampleRate))
+}
+
+func (p *Plugin) callback() vst2.HostCallbackFunc {
+	return func(plugin *vst2.Plugin, opcode vst2.MasterOpcode, index int64, value int64, ptr unsafe.Pointer, opt float64) int {
+		fmt.Printf("Printf from closure callback! Plugin name: %v\n", p.Name)
+		return 0
+	}
 }
