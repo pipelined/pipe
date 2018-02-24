@@ -14,7 +14,7 @@ type VST2 struct {
 	SampleRate int
 }
 
-//NewProcessor creates new vst2 processor
+// NewProcessor creates new vst2 processor
 func NewProcessor(plugin *vst2.Plugin, bufferSize int, sampleRate int) *VST2 {
 	return &VST2{
 		plugin:     plugin,
@@ -23,7 +23,7 @@ func NewProcessor(plugin *vst2.Plugin, bufferSize int, sampleRate int) *VST2 {
 	}
 }
 
-//Process implements processor.Processor
+// Process implements processor.Processor
 func (v VST2) Process(ctx context.Context, in <-chan phono.Message) (<-chan phono.Message, <-chan error, error) {
 	errc := make(chan error, 1)
 	out := make(chan phono.Message)
@@ -40,7 +40,7 @@ func (v VST2) Process(ctx context.Context, in <-chan phono.Message) (<-chan phon
 				if !ok {
 					in = nil
 				} else {
-					v.plugin.Process(message.Samples().Samples)
+					message.PutSamples(v.plugin.Process(message.AsSamples()))
 					out <- message
 				}
 			case <-ctx.Done():

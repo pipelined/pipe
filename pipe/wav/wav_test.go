@@ -32,11 +32,11 @@ func TestWavPump(t *testing.T) {
 	samplesRead, bufCount := 0, 0
 	for out != nil {
 		select {
-		case buf, ok := <-out:
+		case m, ok := <-out:
 			if !ok {
 				out = nil
 			} else {
-				samplesRead = samplesRead + buf.Size()
+				samplesRead = samplesRead + m.BufferLen()
 				bufCount++
 			}
 		case err = <-errorc:
@@ -45,7 +45,7 @@ func TestWavPump(t *testing.T) {
 
 	}
 	assert.Equal(t, 646, bufCount)
-	assert.Equal(t, 330534, samplesRead)
+	assert.Equal(t, 330534, samplesRead/reader.NumChannels)
 }
 
 func TestWavSink(t *testing.T) {
