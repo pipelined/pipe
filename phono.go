@@ -55,8 +55,10 @@ func (m *Message) BufferLen() int {
 func (m *Message) PutSamples(s Samples) {
 	if s != nil {
 		m.samples = s
-		// if buffer was assigned, we need to clear it, so only format is copied
+		// we need to adjust buffer to our samples
 		m.buffer.Data = nil
+		m.buffer.Format.NumChannels = len(s)
+		m.bufferLen = len(s) * len(s[0])
 	}
 }
 
@@ -69,11 +71,6 @@ func (m *Message) PutBuffer(buffer audio.Buffer, bufferLen int) {
 		m.samples = nil
 	}
 }
-
-// Samples returns messages samples
-// func (m *Message) Samples() Samples {
-// 	return m.samples
-// }
 
 // Size returns length of samples per channel
 func (m *Message) Size() int {
@@ -90,14 +87,14 @@ func (m *Message) AsSamples() Samples {
 		return m.samples
 	}
 	numChannels := m.buffer.PCMFormat().NumChannels
-	samples := make([][]float64, numChannels)
-	for i := range samples {
-		samples[i] = make([]float64, 0, m.buffer.NumFrames())
+	m.samples = make([][]float64, numChannels)
+	for i := range m.samples {
+		m.samples[i] = make([]float64, 0, m.buffer.NumFrames())
 		for j := i; j < m.bufferLen; j = j + numChannels {
-			samples[i] = append(samples[i], m.buffer.Data[j])
+			m.samples[i] = append(m.samples[i], m.buffer.Data[j])
 		}
 	}
-	m.PutSamples(samples)
+	m.buffer.Data = nil
 	return m.samples
 }
 
@@ -117,45 +114,6 @@ func (m *Message) AsBuffer() *audio.FloatBuffer {
 			m.buffer.Data[i*numChannels+j] = m.samples[j][i]
 		}
 	}
-	m.PutBuffer(m.buffer, m.bufferLen)
+	m.samples = nil
 	return m.buffer
-}
-
-func convertToWavBuffer(s Samples, sampleRate int, bitDepth int) *audio.IntBuffer {
-
-	bufLen := len(s) * len(s[0])
-	numChannels := len(s)
-	intBuffer := audio.IntBuffer{
-		Format: &audio.Format{
-			NumChannels: numChannels,
-			SampleRate:  sampleRate,
-		},
-		SourceBitDepth: bitDepth,
-		Data:           make([]int, bufLen),
-	}
-
-	for i := range s[0] {
-		for j := range s {
-			intBuffer.Data[i*numChannels+j] = int(s[j][i] * 0x7FFF)
-		}
-	}
-	return &intBuffer
-}
-
-func convertFromWavBuffer(intBuffer *audio.IntBuffer, wavLen int) Samples {
-	if intBuffer == nil {
-		return nil
-	}
-	s := Samples{}
-	numChannels := intBuffer.Format.NumChannels
-	s = make([][]float64, numChannels)
-
-	size := wavLen / numChannels
-	for i := range s {
-		s[i] = make([]float64, 0, size)
-		for j := i; j < wavLen; j = j + numChannels {
-			s[i] = append(s[i], float64(intBuffer.Data[j])/0x8000)
-		}
-	}
-	return s
 }
