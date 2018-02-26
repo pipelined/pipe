@@ -3,7 +3,7 @@ package session_test
 import (
 	"testing"
 
-	"github.com/dudk/phono/internal/session"
+	"github.com/dudk/phono/session"
 	"github.com/go-audio/audio"
 	"github.com/stretchr/testify/assert"
 )

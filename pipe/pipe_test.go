@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dudk/phono/internal/session"
 	"github.com/dudk/phono/pipe/vst2"
 	"github.com/dudk/phono/pipe/wav"
+	"github.com/dudk/phono/session"
 
 	"github.com/dudk/phono/cache"
 	"github.com/stretchr/testify/assert"

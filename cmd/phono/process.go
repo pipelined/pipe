@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/dudk/phono/internal/session"
+	"github.com/dudk/phono/session"
 )
 
 type processCommand struct {

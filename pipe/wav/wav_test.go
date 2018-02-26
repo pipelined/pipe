@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dudk/phono/internal/session"
+	"github.com/dudk/phono/session"
 
 	"github.com/dudk/phono/pipe/wav"
 	"github.com/stretchr/testify/assert"
