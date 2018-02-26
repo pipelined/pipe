@@ -59,6 +59,19 @@ func WithPump(pump Pump) Option {
 	}
 }
 
+// Validate check's if the pipe is valid and ready to be executed
+func (p *Pipe) Validate() error {
+	if p.pump == nil {
+		return errors.New("Pump is not defined")
+	}
+
+	if p.sinks == nil || len(p.sinks) == 0 {
+		return errors.New("Sinks are not defined")
+	}
+
+	return nil
+}
+
 // WithProcessors sets processors to Pipe
 func WithProcessors(processors ...Processor) Option {
 	return func(p *Pipe) Option {
@@ -79,13 +92,10 @@ func WithSinks(sinks ...Sink) Option {
 
 // Run invokes a pipe
 func (p *Pipe) Run(ctx context.Context) error {
-	if p.pump == nil {
-		return errors.New("Pump is not defined")
+	if err := p.Validate(); err != nil {
+		return err
 	}
 
-	if p.sinks == nil || len(p.sinks) == 0 {
-		return errors.New("Sinks are not defined")
-	}
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	//start pump
 	out, errc, err := p.pump.Pump(ctx)
