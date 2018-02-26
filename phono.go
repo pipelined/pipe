@@ -19,27 +19,25 @@ func (s Samples) Size() int {
 // Message is a DTO for pipe
 type Message struct {
 	samples   Samples
-	buffer    *audio.FloatBuffer
+	buffer    audio.Buffer
 	bufferLen int
+	format    *audio.Format
 }
 
 // NewMessage constructs a new message with defined properties
 func NewMessage(bufferSize int, numChannels int, sampleRate int) *Message {
-	bufferLen := numChannels * bufferSize
 	return &Message{
-		buffer: &audio.FloatBuffer{
-			Format: &audio.Format{
-				NumChannels: numChannels,
-				SampleRate:  sampleRate,
-			},
+		format: &audio.Format{
+			NumChannels: numChannels,
+			SampleRate:  sampleRate,
 		},
-		bufferLen: bufferLen,
+		bufferLen: numChannels * bufferSize,
 	}
 }
 
 // IsEmpty returns true if buffer and samples are empty
 func (m *Message) IsEmpty() bool {
-	if m.samples == nil && (m.buffer.Data == nil || len(m.buffer.Data) == 0) {
+	if m.samples == nil && (m.buffer == nil || m.buffer.NumFrames() == 0) {
 		return true
 	}
 	return false
@@ -54,10 +52,10 @@ func (m *Message) BufferLen() int {
 // and also set buffer data to nil
 func (m *Message) PutSamples(s Samples) {
 	if s != nil {
-		m.samples = s
 		// we need to adjust buffer to our samples
-		m.buffer.Data = nil
-		m.buffer.Format.NumChannels = len(s)
+		m.buffer = nil
+		m.samples = s
+		m.format.NumChannels = len(s)
 		m.bufferLen = len(s) * len(s[0])
 	}
 }
@@ -66,9 +64,10 @@ func (m *Message) PutSamples(s Samples) {
 // and also set samples to nil
 func (m *Message) PutBuffer(buffer audio.Buffer, bufferLen int) {
 	if buffer != nil {
-		m.buffer = buffer.AsFloatBuffer()
-		m.bufferLen = bufferLen
 		m.samples = nil
+		m.buffer = buffer
+		m.format = buffer.PCMFormat()
+		m.bufferLen = bufferLen
 	}
 }
 
@@ -86,34 +85,38 @@ func (m *Message) AsSamples() Samples {
 	if m.samples != nil {
 		return m.samples
 	}
-	numChannels := m.buffer.PCMFormat().NumChannels
+	numChannels := m.format.NumChannels
+	// convert buffer to float buffer
+	floatBuf := m.buffer.AsFloatBuffer()
 	m.samples = make([][]float64, numChannels)
 	for i := range m.samples {
-		m.samples[i] = make([]float64, 0, m.buffer.NumFrames())
+		m.samples[i] = make([]float64, 0, floatBuf.NumFrames())
 		for j := i; j < m.bufferLen; j = j + numChannels {
-			m.samples[i] = append(m.samples[i], m.buffer.Data[j])
+			m.samples[i] = append(m.samples[i], floatBuf.Data[j])
 		}
 	}
-	m.buffer.Data = nil
 	return m.samples
 }
 
 // AsBuffer returns message as audio.FloatBuffer
 // if needed, data pulled samples
-func (m *Message) AsBuffer() *audio.FloatBuffer {
+func (m *Message) AsBuffer() audio.Buffer {
 	if m.IsEmpty() {
 		return nil
 	}
-	if m.buffer.Data != nil {
+	if m.buffer != nil {
 		return m.buffer
 	}
-	numChannels := m.buffer.Format.NumChannels
-	m.buffer.Data = make([]float64, m.bufferLen)
+	numChannels := m.format.NumChannels
+	buf := &audio.FloatBuffer{
+		Format: m.format,
+		Data:   make([]float64, m.bufferLen),
+	}
 	for i := range m.samples[0] {
 		for j := range m.samples {
-			m.buffer.Data[i*numChannels+j] = m.samples[j][i]
+			buf.Data[i*numChannels+j] = m.samples[j][i]
 		}
 	}
-	m.samples = nil
-	return m.buffer
+	m.buffer = buf
+	return buf
 }

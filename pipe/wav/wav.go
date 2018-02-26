@@ -62,12 +62,12 @@ func (w Pump) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, err
 		defer file.Close()
 		defer close(out)
 		defer close(errc)
-		intBuf := &audio.IntBuffer{
-			Format:         format,
-			Data:           make([]int, w.BufferSize*w.NumChannels),
-			SourceBitDepth: w.BitDepth,
-		}
 		for {
+			intBuf := &audio.IntBuffer{
+				Format:         format,
+				Data:           make([]int, w.BufferSize*w.NumChannels),
+				SourceBitDepth: w.BitDepth,
+			}
 			readSamples, err := decoder.PCMBuffer(intBuf)
 			if err != nil {
 				errc <- err
