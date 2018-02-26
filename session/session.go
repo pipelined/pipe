@@ -24,14 +24,6 @@ func New(options ...Option) *Session {
 // Option of a session
 type Option func(s *Session) Option
 
-// // WithOptions allows to set multiple options at once
-// func (s *Session) WithOptions(options ...Option) *Session {
-// 	for _, option := range options {
-// 		option(s)
-// 	}
-// 	return s
-// }
-
 // SampleRate defines sample rate
 func SampleRate(sampleRate int) Option {
 	return func(s *Session) Option {
