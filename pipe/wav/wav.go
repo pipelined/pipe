@@ -12,6 +12,7 @@ import (
 
 // Pump reads from wav file
 type Pump struct {
+	session        phono.Session
 	Path           string
 	BufferSize     int
 	NumChannels    int
@@ -43,10 +44,15 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 	}, nil
 }
 
+// SetSession assigns a session to the pump
+func (p *Pump) SetSession(session phono.Session) {
+	p.session = session
+}
+
 // Pump starts the pump process
 // once executed, wav attributes are accessible
-func (w Pump) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, error) {
-	file, err := os.Open(w.Path)
+func (p *Pump) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, error) {
+	file, err := os.Open(p.Path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -65,8 +71,8 @@ func (w Pump) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, err
 		for {
 			intBuf := &audio.IntBuffer{
 				Format:         format,
-				Data:           make([]int, w.BufferSize*w.NumChannels),
-				SourceBitDepth: w.BitDepth,
+				Data:           make([]int, p.BufferSize*p.NumChannels),
+				SourceBitDepth: p.BitDepth,
 			}
 			readSamples, err := decoder.PCMBuffer(intBuf)
 			if err != nil {
@@ -76,10 +82,10 @@ func (w Pump) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, err
 			if readSamples == 0 {
 				return
 			}
-			message := phono.NewMessage(w.BufferSize, w.NumChannels, w.SampleRate)
+			message := p.session.NewMessage()
 			message.PutBuffer(intBuf, readSamples)
 			select {
-			case out <- *message:
+			case out <- message:
 			case <-ctx.Done():
 				return
 			}
@@ -91,6 +97,7 @@ func (w Pump) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, err
 
 //Sink sink saves audio to wav file
 type Sink struct {
+	session        phono.Session
 	Path           string
 	BufferSize     int
 	SampleRate     int
@@ -111,14 +118,19 @@ func NewSink(path string, bufferSize int, sampleRate int, bitDepth int, numChann
 	}
 }
 
-//Sink implements Sinker interface
-func (w Sink) Sink(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
-	file, err := os.Create(w.Path)
+// SetSession assigns a session to the pump
+func (s *Sink) SetSession(session phono.Session) {
+	s.session = session
+}
+
+// Sink implements Sinker interface
+func (s *Sink) Sink(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
+	file, err := os.Create(s.Path)
 	if err != nil {
 		return nil, err
 	}
 	// setup the encoder and write all the frames
-	e := wav.NewEncoder(file, w.SampleRate, w.BitDepth, w.NumChannels, int(w.WavAudioFormat))
+	e := wav.NewEncoder(file, s.SampleRate, s.BitDepth, s.NumChannels, int(s.WavAudioFormat))
 	errc := make(chan error, 1)
 	go func() {
 		defer file.Close()

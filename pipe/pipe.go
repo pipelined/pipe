@@ -10,16 +10,19 @@ import (
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
+	SetSession(s phono.Session)
 	Sink(ctx context.Context, in <-chan phono.Message) (errc <-chan error, err error)
 }
 
 // Pump is a source of samples
 type Pump interface {
+	SetSession(s phono.Session)
 	Pump(ctx context.Context) (out <-chan phono.Message, errc <-chan error, err error)
 }
 
 // Processor defines interface for pipe-prcessors
 type Processor interface {
+	SetSession(s phono.Session)
 	Process(ctx context.Context, in <-chan phono.Message) (out <-chan phono.Message, errc <-chan error, err error)
 }
 
@@ -29,6 +32,7 @@ type Processor interface {
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
+	session    phono.Session
 	pump       Pump
 	processors []Processor
 	sinks      []Sink
@@ -39,8 +43,9 @@ type Pipe struct {
 type Option func(p *Pipe) Option
 
 // New creates a new pipe and applies provided options
-func New(options ...Option) *Pipe {
+func New(session phono.Session, options ...Option) *Pipe {
 	pipe := &Pipe{
+		session:    session,
 		processors: make([]Processor, 0),
 		sinks:      make([]Sink, 0),
 	}
@@ -53,9 +58,34 @@ func New(options ...Option) *Pipe {
 // WithPump sets pump to Pipe
 func WithPump(pump Pump) Option {
 	return func(p *Pipe) Option {
+		pump.SetSession(p.session)
 		previous := p.pump
 		p.pump = pump
 		return WithPump(previous)
+	}
+}
+
+// WithProcessors sets processors to Pipe
+func WithProcessors(processors ...Processor) Option {
+	return func(p *Pipe) Option {
+		for _, proc := range processors {
+			proc.SetSession(p.session)
+		}
+		previous := p.processors
+		p.processors = append(p.processors, processors...)
+		return WithProcessors(previous...)
+	}
+}
+
+// WithSinks sets sinks to Pipe
+func WithSinks(sinks ...Sink) Option {
+	return func(p *Pipe) Option {
+		for _, s := range sinks {
+			s.SetSession(p.session)
+		}
+		previous := p.sinks
+		p.sinks = append(p.sinks, sinks...)
+		return WithSinks(previous...)
 	}
 }
 
@@ -70,24 +100,6 @@ func (p *Pipe) Validate() error {
 	}
 
 	return nil
-}
-
-// WithProcessors sets processors to Pipe
-func WithProcessors(processors ...Processor) Option {
-	return func(p *Pipe) Option {
-		previous := p.processors
-		p.processors = append(p.processors, processors...)
-		return WithProcessors(previous...)
-	}
-}
-
-// WithSinks sets sinks to Pipe
-func WithSinks(sinks ...Sink) Option {
-	return func(p *Pipe) Option {
-		previous := p.sinks
-		p.sinks = append(p.sinks, sinks...)
-		return WithSinks(previous...)
-	}
 }
 
 // Run invokes a pipe

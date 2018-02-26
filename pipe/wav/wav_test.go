@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/dudk/phono/internal/session"
+
 	"github.com/dudk/phono/pipe/wav"
 	"github.com/stretchr/testify/assert"
 )
@@ -20,15 +22,23 @@ var (
 )
 
 func TestWavPump(t *testing.T) {
-	reader, err := wav.NewPump("../../_testdata/test.wav", 512)
+	p, err := wav.NewPump("../../_testdata/test.wav", bufferSize)
 	assert.Nil(t, err)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	out, errorc, err := reader.Pump(ctx)
+	out, errorc, err := p.Pump(ctx)
 	assert.Nil(t, err)
-	assert.Equal(t, 44100, reader.SampleRate)
-	assert.Equal(t, 16, reader.BitDepth)
-	assert.Equal(t, 2, reader.NumChannels)
+	assert.Equal(t, 44100, p.SampleRate)
+	assert.Equal(t, 16, p.BitDepth)
+	assert.Equal(t, 2, p.NumChannels)
+
+	s := session.New(
+		session.SampleRate(p.SampleRate),
+		session.NumChannels(p.NumChannels),
+		session.BufferSize(p.BufferSize),
+	)
+	p.SetSession(s)
+
 	samplesRead, bufCount := 0, 0
 	for out != nil {
 		select {
@@ -45,21 +55,28 @@ func TestWavPump(t *testing.T) {
 
 	}
 	assert.Equal(t, 646, bufCount)
-	assert.Equal(t, 330534, samplesRead/reader.NumChannels)
+	assert.Equal(t, 330534, samplesRead/p.NumChannels)
 }
 
 func TestWavSink(t *testing.T) {
 
-	pump, err := wav.NewPump(inFile, bufferSize)
+	p, err := wav.NewPump(inFile, bufferSize)
 	assert.Nil(t, err)
-	sink := wav.NewSink(outFile, bufferSize, pump.SampleRate, pump.BitDepth, pump.NumChannels, pump.WavAudioFormat)
 
+	session := session.New(
+		session.SampleRate(p.SampleRate),
+		session.NumChannels(p.NumChannels),
+		session.BufferSize(p.BufferSize),
+	)
+	p.SetSession(session)
+	s := wav.NewSink(outFile, bufferSize, p.SampleRate, p.BitDepth, p.NumChannels, p.WavAudioFormat)
+	s.SetSession(session)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	out, _, err := pump.Pump(ctx)
+	out, _, err := p.Pump(ctx)
 	assert.Nil(t, err)
 
-	errorc, err := sink.Sink(ctx, out)
+	errorc, err := s.Sink(ctx, out)
 	assert.Nil(t, err)
 	for err = range errorc {
 		fmt.Printf("Error waiting for sink: %v", err)

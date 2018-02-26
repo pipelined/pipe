@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/dudk/phono/internal/session"
 	"github.com/dudk/phono/pipe/vst2"
 	"github.com/dudk/phono/pipe/wav"
 
@@ -21,6 +22,11 @@ var (
 )
 
 func TestPipe(t *testing.T) {
+	session := session.New(
+		session.BufferSize(bufferSize),
+		session.NumChannels(2),
+		session.SampleRate(44100),
+	)
 	cache := cache.NewVST2(vstPath)
 	defer cache.Close()
 	plugin, err := cache.LoadPlugin(vstPath, vstName)
@@ -46,6 +52,7 @@ func TestPipe(t *testing.T) {
 	)
 	vst2Processor := vst2.NewProcessor(plugin, wavPump.BufferSize, wavPump.SampleRate)
 	pipe := New(
+		session,
 		WithPump(wavPump),
 		WithProcessors(vst2Processor),
 		WithSinks(wavSink, wavSink1),

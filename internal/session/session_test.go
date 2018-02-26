@@ -1,16 +1,20 @@
-package phono_test
+package session_test
 
 import (
 	"testing"
 
+	"github.com/dudk/phono/internal/session"
 	"github.com/go-audio/audio"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/dudk/phono"
 )
 
 func TestBufferFromSampels(t *testing.T) {
-	m := phono.NewMessage(8, 2, 44100)
+	s := session.New(
+		session.BufferSize(8),
+		session.SampleRate(44100),
+		session.NumChannels(2),
+	)
+	m := s.NewMessage()
 	assert.Equal(t, 16, m.BufferLen())
 	samples := [][]float64{
 		[]float64{1, 1, 1, 1, 1, 1, 1, 1},
@@ -22,7 +26,12 @@ func TestBufferFromSampels(t *testing.T) {
 }
 
 func TestSamplesFromBuffer(t *testing.T) {
-	m := phono.NewMessage(8, 2, 44100)
+	s := session.New(
+		session.BufferSize(8),
+		session.SampleRate(44100),
+		session.NumChannels(2),
+	)
+	m := s.NewMessage()
 	assert.Equal(t, 16, m.BufferLen())
 	buf := &audio.FloatBuffer{
 		Format: &audio.Format{
