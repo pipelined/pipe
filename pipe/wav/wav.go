@@ -91,9 +91,8 @@ func (p *Pump) Pump(s phono.Session) phono.PumpFunc {
 	}
 }
 
-//Sink sink saves audio to wav file
+// Sink sink saves audio to wav file
 type Sink struct {
-	session        phono.Session
 	Path           string
 	BufferSize     int
 	SampleRate     int
@@ -102,7 +101,7 @@ type Sink struct {
 	WavAudioFormat int
 }
 
-//NewSink creates new wav sink
+// NewSink creates new wav sink
 func NewSink(path string, bufferSize int, sampleRate int, bitDepth int, numChannels int, wavAudioFormat int) *Sink {
 	return &Sink{
 		Path:           path,
@@ -114,41 +113,38 @@ func NewSink(path string, bufferSize int, sampleRate int, bitDepth int, numChann
 	}
 }
 
-// SetSession assigns a session to the pump
-func (s *Sink) SetSession(session phono.Session) {
-	s.session = session
-}
-
-// Sink implements Sinker interface
-func (s *Sink) Sink(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
-	file, err := os.Create(s.Path)
-	if err != nil {
-		return nil, err
-	}
-	// setup the encoder and write all the frames
-	e := wav.NewEncoder(file, s.SampleRate, s.BitDepth, s.NumChannels, int(s.WavAudioFormat))
-	errc := make(chan error, 1)
-	go func() {
-		defer file.Close()
-		defer close(errc)
-		defer e.Close()
-		for in != nil {
-			select {
-			case message, ok := <-in:
-				if !ok {
-					in = nil
-				} else {
-					buf := message.AsBuffer()
-					if err := e.Write(buf.AsIntBuffer()); err != nil {
-						errc <- err
-						return
-					}
-				}
-			case <-ctx.Done():
-				return
-			}
+// Sink implements Sink interface
+func (s *Sink) Sink(session phono.Session) phono.SinkFunc {
+	return func(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
+		file, err := os.Create(s.Path)
+		if err != nil {
+			return nil, err
 		}
-	}()
+		// setup the encoder and write all the frames
+		e := wav.NewEncoder(file, s.SampleRate, s.BitDepth, s.NumChannels, int(s.WavAudioFormat))
+		errc := make(chan error, 1)
+		go func() {
+			defer file.Close()
+			defer close(errc)
+			defer e.Close()
+			for in != nil {
+				select {
+				case message, ok := <-in:
+					if !ok {
+						in = nil
+					} else {
+						buf := message.AsBuffer()
+						if err := e.Write(buf.AsIntBuffer()); err != nil {
+							errc <- err
+							return
+						}
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
 
-	return errc, nil
+		return errc, nil
+	}
 }

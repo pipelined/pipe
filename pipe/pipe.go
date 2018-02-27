@@ -20,8 +20,7 @@ type Processor interface {
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	SetSession(s phono.Session)
-	Sink(ctx context.Context, in <-chan phono.Message) (errc <-chan error, err error)
+	Sink(phono.Session) phono.SinkFunc
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence
@@ -74,9 +73,6 @@ func WithProcessors(processors ...Processor) Option {
 // WithSinks sets sinks to Pipe
 func WithSinks(sinks ...Sink) Option {
 	return func(p *Pipe) Option {
-		for _, s := range sinks {
-			s.SetSession(p.session)
-		}
 		previous := p.sinks
 		p.sinks = append(p.sinks, sinks...)
 		return WithSinks(previous...)
@@ -175,7 +171,7 @@ func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Sink(ctx, broadcasts[i])
+		errc, err := s.Sink(p.session)(ctx, broadcasts[i])
 		if err != nil {
 			return nil, err
 		}

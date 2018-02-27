@@ -68,15 +68,14 @@ func TestWavSink(t *testing.T) {
 		session.NumChannels(p.NumChannels),
 		session.BufferSize(p.BufferSize),
 	)
-	pump := p.Pump(session)
+
 	s := wav.NewSink(outFile, bufferSize, p.SampleRate, p.BitDepth, p.NumChannels, p.WavAudioFormat)
-	s.SetSession(session)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	out, _, err := pump(ctx)
+	out, _, err := p.Pump(session)(ctx)
 	assert.Nil(t, err)
 
-	errorc, err := s.Sink(ctx, out)
+	errorc, err := s.Sink(session)(ctx, out)
 	assert.Nil(t, err)
 	for err = range errorc {
 		fmt.Printf("Error waiting for sink: %v", err)
