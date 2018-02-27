@@ -8,22 +8,21 @@ import (
 	"github.com/dudk/phono"
 )
 
-// Sink is an interface for final stage in audio pipeline
-type Sink interface {
-	SetSession(s phono.Session)
-	Sink(ctx context.Context, in <-chan phono.Message) (errc <-chan error, err error)
-}
-
 // Pump is a source of samples
 type Pump interface {
-	SetSession(s phono.Session)
-	Pump(ctx context.Context) (out <-chan phono.Message, errc <-chan error, err error)
+	Pump(phono.Session) phono.PumpFunc
 }
 
 // Processor defines interface for pipe-prcessors
 type Processor interface {
 	SetSession(s phono.Session)
 	Process(ctx context.Context, in <-chan phono.Message) (out <-chan phono.Message, errc <-chan error, err error)
+}
+
+// Sink is an interface for final stage in audio pipeline
+type Sink interface {
+	SetSession(s phono.Session)
+	Sink(ctx context.Context, in <-chan phono.Message) (errc <-chan error, err error)
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence
@@ -58,7 +57,7 @@ func New(session phono.Session, options ...Option) *Pipe {
 // WithPump sets pump to Pipe
 func WithPump(pump Pump) Option {
 	return func(p *Pipe) Option {
-		pump.SetSession(p.session)
+		//pump.SetSession(p.session)
 		previous := p.pump
 		p.pump = pump
 		return WithPump(previous)
@@ -110,7 +109,8 @@ func (p *Pipe) Run(ctx context.Context) error {
 
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	//start pump
-	out, errc, err := p.pump.Pump(ctx)
+	pump := p.pump.Pump(p.session)
+	out, errc, err := pump(ctx)
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,6 @@ import (
 
 // Pump reads from wav file
 type Pump struct {
-	session        phono.Session
 	Path           string
 	BufferSize     int
 	NumChannels    int
@@ -44,55 +43,52 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 	}, nil
 }
 
-// SetSession assigns a session to the pump
-func (p *Pump) SetSession(session phono.Session) {
-	p.session = session
-}
-
 // Pump starts the pump process
 // once executed, wav attributes are accessible
-func (p *Pump) Pump(ctx context.Context) (<-chan phono.Message, <-chan error, error) {
-	file, err := os.Open(p.Path)
-	if err != nil {
-		return nil, nil, err
-	}
-	decoder := wav.NewDecoder(file)
-	if !decoder.IsValidFile() {
-		file.Close()
-		return nil, nil, fmt.Errorf("Wav is not valid")
-	}
-	format := decoder.Format()
-	out := make(chan phono.Message)
-	errc := make(chan error, 1)
-	go func() {
-		defer file.Close()
-		defer close(out)
-		defer close(errc)
-		for {
-			intBuf := &audio.IntBuffer{
-				Format:         format,
-				Data:           make([]int, p.BufferSize*p.NumChannels),
-				SourceBitDepth: p.BitDepth,
-			}
-			readSamples, err := decoder.PCMBuffer(intBuf)
-			if err != nil {
-				errc <- err
-				return
-			}
-			if readSamples == 0 {
-				return
-			}
-			message := p.session.NewMessage()
-			message.PutBuffer(intBuf, readSamples)
-			select {
-			case out <- message:
-			case <-ctx.Done():
-				return
-			}
-
+func (p *Pump) Pump(s phono.Session) phono.PumpFunc {
+	return func(ctx context.Context) (<-chan phono.Message, <-chan error, error) {
+		file, err := os.Open(p.Path)
+		if err != nil {
+			return nil, nil, err
 		}
-	}()
-	return out, errc, nil
+		decoder := wav.NewDecoder(file)
+		if !decoder.IsValidFile() {
+			file.Close()
+			return nil, nil, fmt.Errorf("Wav is not valid")
+		}
+		format := decoder.Format()
+		out := make(chan phono.Message)
+		errc := make(chan error, 1)
+		go func() {
+			defer file.Close()
+			defer close(out)
+			defer close(errc)
+			for {
+				intBuf := &audio.IntBuffer{
+					Format:         format,
+					Data:           make([]int, p.BufferSize*p.NumChannels),
+					SourceBitDepth: p.BitDepth,
+				}
+				readSamples, err := decoder.PCMBuffer(intBuf)
+				if err != nil {
+					errc <- err
+					return
+				}
+				if readSamples == 0 {
+					return
+				}
+				message := s.NewMessage()
+				message.PutBuffer(intBuf, readSamples)
+				select {
+				case out <- message:
+				case <-ctx.Done():
+					return
+				}
+
+			}
+		}()
+		return out, errc, nil
+	}
 }
 
 //Sink sink saves audio to wav file

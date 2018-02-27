@@ -1,6 +1,10 @@
 package phono
 
-import "github.com/go-audio/audio"
+import (
+	"context"
+
+	"github.com/go-audio/audio"
+)
 
 // Message is an interface for pipe transport
 type Message interface {
@@ -20,3 +24,6 @@ type Message interface {
 type Session interface {
 	NewMessage() Message
 }
+
+// PumpFunc is a function to pump sound data to pipe
+type PumpFunc func(ctx context.Context) (out <-chan Message, errc <-chan error, err error)

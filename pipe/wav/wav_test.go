@@ -26,18 +26,18 @@ func TestWavPump(t *testing.T) {
 	assert.Nil(t, err)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	out, errorc, err := p.Pump(ctx)
-	assert.Nil(t, err)
-	assert.Equal(t, 44100, p.SampleRate)
-	assert.Equal(t, 16, p.BitDepth)
-	assert.Equal(t, 2, p.NumChannels)
 
 	s := session.New(
 		session.SampleRate(p.SampleRate),
 		session.NumChannels(p.NumChannels),
 		session.BufferSize(p.BufferSize),
 	)
-	p.SetSession(s)
+	pump := p.Pump(s)
+	out, errorc, err := pump(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, 44100, p.SampleRate)
+	assert.Equal(t, 16, p.BitDepth)
+	assert.Equal(t, 2, p.NumChannels)
 
 	samplesRead, bufCount := 0, 0
 	for out != nil {
@@ -68,12 +68,12 @@ func TestWavSink(t *testing.T) {
 		session.NumChannels(p.NumChannels),
 		session.BufferSize(p.BufferSize),
 	)
-	p.SetSession(session)
+	pump := p.Pump(session)
 	s := wav.NewSink(outFile, bufferSize, p.SampleRate, p.BitDepth, p.NumChannels, p.WavAudioFormat)
 	s.SetSession(session)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	out, _, err := p.Pump(ctx)
+	out, _, err := pump(ctx)
 	assert.Nil(t, err)
 
 	errorc, err := s.Sink(ctx, out)
