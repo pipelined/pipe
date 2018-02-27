@@ -15,8 +15,7 @@ type Pump interface {
 
 // Processor defines interface for pipe-prcessors
 type Processor interface {
-	SetSession(s phono.Session)
-	Process(ctx context.Context, in <-chan phono.Message) (out <-chan phono.Message, errc <-chan error, err error)
+	Process(phono.Session) phono.ProcessFunc
 }
 
 // Sink is an interface for final stage in audio pipeline
@@ -57,7 +56,6 @@ func New(session phono.Session, options ...Option) *Pipe {
 // WithPump sets pump to Pipe
 func WithPump(pump Pump) Option {
 	return func(p *Pipe) Option {
-		//pump.SetSession(p.session)
 		previous := p.pump
 		p.pump = pump
 		return WithPump(previous)
@@ -67,9 +65,6 @@ func WithPump(pump Pump) Option {
 // WithProcessors sets processors to Pipe
 func WithProcessors(processors ...Processor) Option {
 	return func(p *Pipe) Option {
-		for _, proc := range processors {
-			proc.SetSession(p.session)
-		}
 		previous := p.processors
 		p.processors = append(p.processors, processors...)
 		return WithProcessors(previous...)
@@ -109,8 +104,7 @@ func (p *Pipe) Run(ctx context.Context) error {
 
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	//start pump
-	pump := p.pump.Pump(p.session)
-	out, errc, err := pump(ctx)
+	out, errc, err := p.pump.Pump(p.session)(ctx)
 	if err != nil {
 		return err
 	}
@@ -118,7 +112,7 @@ func (p *Pipe) Run(ctx context.Context) error {
 
 	//start chained processes
 	for _, proc := range p.processors {
-		out, errc, err = proc.Process(ctx, out)
+		out, errc, err = proc.Process(p.session)(ctx, out)
 		if err != nil {
 			return err
 		}
