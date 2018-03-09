@@ -36,23 +36,19 @@ func TestPipe(t *testing.T) {
 	assert.Nil(t, err)
 	wavSink := wav.NewSink(
 		outFile,
-		bufferSize,
-		wavPump.SampleRate,
 		wavPump.BitDepth,
 		wavPump.NumChannels,
 		wavPump.WavAudioFormat,
 	)
 	wavSink1 := wav.NewSink(
 		outFile2,
-		bufferSize,
-		wavPump.SampleRate,
 		wavPump.BitDepth,
 		wavPump.NumChannels,
 		wavPump.WavAudioFormat,
 	)
-	vst2Processor := vst2.NewProcessor(plugin, wavPump.BufferSize, wavPump.SampleRate)
+	vst2Processor := vst2.NewProcessor(plugin)
 	pipe := New(
-		session,
+		*session,
 		WithPump(wavPump),
 		WithProcessors(vst2Processor),
 		WithSinks(wavSink, wavSink1),

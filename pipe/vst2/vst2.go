@@ -9,17 +9,13 @@ import (
 
 // Processor represents vst2 sound processor
 type Processor struct {
-	plugin     *vst2.Plugin
-	BufferSize int
-	SampleRate int
+	plugin *vst2.Plugin
 }
 
 // NewProcessor creates new vst2 processor
-func NewProcessor(plugin *vst2.Plugin, bufferSize int, sampleRate int) *Processor {
+func NewProcessor(plugin *vst2.Plugin) *Processor {
 	return &Processor{
-		plugin:     plugin,
-		SampleRate: sampleRate,
-		BufferSize: bufferSize,
+		plugin: plugin,
 	}
 }
 
@@ -31,8 +27,8 @@ func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
 		go func() {
 			defer close(out)
 			defer close(errc)
-			p.plugin.BufferSize(p.BufferSize)
-			p.plugin.SampleRate(p.SampleRate)
+			p.plugin.BufferSize(s.BufferSize())
+			p.plugin.SampleRate(s.SampleRate())
 			p.plugin.Resume()
 			defer p.plugin.Suspend()
 			for in != nil {
@@ -41,7 +37,9 @@ func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
 					if !ok {
 						in = nil
 					} else {
-						message.PutSamples(p.plugin.Process(message.AsSamples()))
+						samples := message.AsSamples()
+						processed := p.plugin.ProcessFloat64(samples)
+						message.PutSamples(processed)
 						out <- message
 					}
 				case <-ctx.Done():

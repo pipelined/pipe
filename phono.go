@@ -23,6 +23,8 @@ type Message interface {
 // Session is an interface for main container
 type Session interface {
 	NewMessage() Message
+	BufferSize() int
+	SampleRate() int
 }
 
 // PumpFunc is a function to pump sound data to pipe

@@ -94,7 +94,6 @@ func (p *Pump) Pump(s phono.Session) phono.PumpFunc {
 // Sink sink saves audio to wav file
 type Sink struct {
 	Path           string
-	BufferSize     int
 	SampleRate     int
 	BitDepth       int
 	NumChannels    int
@@ -102,11 +101,9 @@ type Sink struct {
 }
 
 // NewSink creates new wav sink
-func NewSink(path string, bufferSize int, sampleRate int, bitDepth int, numChannels int, wavAudioFormat int) *Sink {
+func NewSink(path string, bitDepth int, numChannels int, wavAudioFormat int) *Sink {
 	return &Sink{
 		Path:           path,
-		BufferSize:     bufferSize,
-		SampleRate:     sampleRate,
 		BitDepth:       bitDepth,
 		NumChannels:    numChannels,
 		WavAudioFormat: wavAudioFormat,
@@ -121,11 +118,11 @@ func (s *Sink) Sink(session phono.Session) phono.SinkFunc {
 			return nil, err
 		}
 		// setup the encoder and write all the frames
-		e := wav.NewEncoder(file, s.SampleRate, s.BitDepth, s.NumChannels, int(s.WavAudioFormat))
+		e := wav.NewEncoder(file, session.SampleRate(), s.BitDepth, s.NumChannels, int(s.WavAudioFormat))
 		errc := make(chan error, 1)
 		go func() {
-			defer file.Close()
 			defer close(errc)
+			defer file.Close()
 			defer e.Close()
 			for in != nil {
 				select {

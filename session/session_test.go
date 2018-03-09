@@ -22,6 +22,7 @@ func TestBufferFromSampels(t *testing.T) {
 	}
 	m.PutSamples(samples)
 	buf := m.AsBuffer()
+	assert.NotNil(t, buf)
 	assert.Equal(t, 8, buf.NumFrames())
 }
 

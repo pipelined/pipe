@@ -69,7 +69,7 @@ func TestWavSink(t *testing.T) {
 		session.BufferSize(p.BufferSize),
 	)
 
-	s := wav.NewSink(outFile, bufferSize, p.SampleRate, p.BitDepth, p.NumChannels, p.WavAudioFormat)
+	s := wav.NewSink(outFile, p.BitDepth, p.NumChannels, p.WavAudioFormat)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 	out, _, err := p.Pump(session)(ctx)

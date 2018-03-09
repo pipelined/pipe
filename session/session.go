@@ -7,9 +7,9 @@ import (
 
 // Session is a top level abstraction
 type Session struct {
-	SampleRate  int
-	BufferSize  int
-	NumChannels int
+	sampleRate  int
+	bufferSize  int
+	numChannels int
 }
 
 // New creates a new session
@@ -21,14 +21,30 @@ func New(options ...Option) *Session {
 	return s
 }
 
+// SampleRate returns session's sample rate
+func (s Session) SampleRate() int {
+	return s.sampleRate
+}
+
+// BufferSize returns session's buffer size
+func (s Session) BufferSize() int {
+	return s.bufferSize
+}
+
+// NumChannels returns session's number of channels
+// this is a temporary option, for session channels different model is required
+func (s Session) NumChannels() int {
+	return s.numChannels
+}
+
 // Option of a session
 type Option func(s *Session) Option
 
 // SampleRate defines sample rate
 func SampleRate(sampleRate int) Option {
 	return func(s *Session) Option {
-		previous := s.SampleRate
-		s.SampleRate = sampleRate
+		previous := s.sampleRate
+		s.sampleRate = sampleRate
 		return SampleRate(previous)
 	}
 }
@@ -36,8 +52,8 @@ func SampleRate(sampleRate int) Option {
 // BufferSize defines sample rate
 func BufferSize(bufferSize int) Option {
 	return func(s *Session) Option {
-		previous := s.BufferSize
-		s.BufferSize = bufferSize
+		previous := s.bufferSize
+		s.bufferSize = bufferSize
 		return BufferSize(previous)
 	}
 }
@@ -45,20 +61,20 @@ func BufferSize(bufferSize int) Option {
 // NumChannels defines num channels for session
 func NumChannels(numChannels int) Option {
 	return func(s *Session) Option {
-		previous := s.NumChannels
-		s.NumChannels = numChannels
+		previous := s.numChannels
+		s.numChannels = numChannels
 		return BufferSize(previous)
 	}
 }
 
 // NewMessage implements pipe.Session interface
-func (s *Session) NewMessage() phono.Message {
+func (s Session) NewMessage() phono.Message {
 	return &Message{
 		format: &audio.Format{
-			NumChannels: s.NumChannels,
-			SampleRate:  s.SampleRate,
+			NumChannels: s.numChannels,
+			SampleRate:  s.sampleRate,
 		},
-		bufferLen: s.NumChannels * s.BufferSize,
+		bufferLen: s.numChannels * s.bufferSize,
 	}
 }
 
@@ -68,17 +84,6 @@ type Message struct {
 	buffer    audio.Buffer
 	bufferLen int
 	format    *audio.Format
-}
-
-// NewMessage constructs a new message with defined properties
-func NewMessage(bufferSize int, numChannels int, sampleRate int) *Message {
-	return &Message{
-		format: &audio.Format{
-			NumChannels: numChannels,
-			SampleRate:  sampleRate,
-		},
-		bufferLen: numChannels * bufferSize,
-	}
 }
 
 // IsEmpty returns true if buffer and samples are empty
@@ -131,7 +136,8 @@ func (m *Message) Size() int {
 
 // AsSamples returns message as samples
 // if needed, data pulled from buffer
-func (m *Message) AsSamples() [][]float64 {
+// receiver is not pointer because we need a copy
+func (m Message) AsSamples() (out [][]float64) {
 	if m.IsEmpty() {
 		return nil
 	}
@@ -153,7 +159,8 @@ func (m *Message) AsSamples() [][]float64 {
 
 // AsBuffer returns message as audio.FloatBuffer
 // if needed, data pulled samples
-func (m *Message) AsBuffer() audio.Buffer {
+// receiver is not pointer because we need a copy
+func (m Message) AsBuffer() audio.Buffer {
 	if m.IsEmpty() {
 		return nil
 	}
