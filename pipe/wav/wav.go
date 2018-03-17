@@ -64,21 +64,28 @@ func (p *Pump) Pump(s phono.Session) phono.PumpFunc {
 			defer close(out)
 			defer close(errc)
 			for {
-				intBuf := &audio.IntBuffer{
+				//TODO refactor
+				ib := &audio.IntBuffer{
 					Format:         format,
 					Data:           make([]int, p.BufferSize*p.NumChannels),
 					SourceBitDepth: p.BitDepth,
 				}
-				readSamples, err := decoder.PCMBuffer(intBuf)
+				readSamples, err := decoder.PCMBuffer(ib)
 				if err != nil {
 					errc <- err
 					return
 				}
+				ib.Data = ib.Data[:readSamples]
 				if readSamples == 0 {
 					return
 				}
 				message := s.NewMessage()
-				message.PutBuffer(intBuf, readSamples)
+				samples, err := phono.AsSamples(ib)
+				if err != nil {
+					errc <- err
+					return
+				}
+				message.PutSamples(samples)
 				select {
 				case out <- message:
 				case <-ctx.Done():
@@ -130,8 +137,18 @@ func (s *Sink) Sink(session phono.Session) phono.SinkFunc {
 					if !ok {
 						in = nil
 					} else {
-						buf := message.AsBuffer()
-						if err := e.Write(buf.AsIntBuffer()); err != nil {
+						//TODO refactor
+						samples := message.Samples()
+						ib := &audio.IntBuffer{
+							Format: &audio.Format{
+								NumChannels: s.NumChannels,
+								SampleRate:  s.SampleRate,
+							},
+							Data:           make([]int, session.BufferSize()*s.NumChannels),
+							SourceBitDepth: s.BitDepth,
+						}
+						err := phono.AsBuffer(ib, samples)
+						if err = e.Write(ib); err != nil {
 							errc <- err
 							return
 						}

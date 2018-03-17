@@ -29,6 +29,7 @@ func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
 			defer close(errc)
 			p.plugin.BufferSize(s.BufferSize())
 			p.plugin.SampleRate(s.SampleRate())
+			p.plugin.SetSpeakerArrangement(2)
 			p.plugin.Resume()
 			defer p.plugin.Suspend()
 			for in != nil {
@@ -37,8 +38,8 @@ func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
 					if !ok {
 						in = nil
 					} else {
-						samples := message.AsSamples()
-						processed := p.plugin.ProcessFloat64(samples)
+						samples := message.Samples()
+						processed := p.plugin.Process(samples)
 						message.PutSamples(processed)
 						out <- message
 					}

@@ -2,6 +2,7 @@ package phono
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-audio/audio"
 )
@@ -11,11 +12,11 @@ type Message interface {
 	// PutSamples assign samples to message
 	PutSamples(samples [][]float64)
 	// AsSamples represent message data as samples
-	AsSamples() [][]float64
+	Samples() [][]float64
 	// PutBuffer assign an audio.Buffer to message
-	PutBuffer(buffer audio.Buffer, bufferLen int)
+	//PutBuffer(buffer audio.PCMBuffer, bufferLen int)
 	// AsBuffer represent message data as audio.Buffer
-	AsBuffer() audio.Buffer
+	// AsBuffer() *audio.PCMBuffer
 	// BufferLen returns numChannels * bufferSize
 	BufferLen() int
 }
@@ -35,3 +36,48 @@ type ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Messag
 
 // SinkFunc is a function to sink data from pipe
 type SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, err error)
+
+// AsSamples converts from audio.Buffer to [][]float64 samples
+func AsSamples(b audio.Buffer) ([][]float64, error) {
+	if b == nil {
+		return nil, nil
+	}
+
+	numChannels := b.PCMFormat().NumChannels
+	s := make([][]float64, numChannels)
+	bufferLen := numChannels * b.NumFrames()
+
+	switch b.(type) {
+	case *audio.IntBuffer:
+		ib := b.(*audio.IntBuffer)
+		for i := range s {
+			s[i] = make([]float64, 0, b.NumFrames())
+			for j := i; j < bufferLen; j = j + numChannels {
+				s[i] = append(s[i], float64(ib.Data[j])/0x8000)
+			}
+		}
+		return s, nil
+	default:
+		return nil, fmt.Errorf("Conversion to [][]float64 from %T is not defined", b)
+	}
+}
+
+// AsBuffer converts from [][]float64 to audio.Buffer
+func AsBuffer(b audio.Buffer, s [][]float64) error {
+	numChannels := len(s)
+	bufferLen := numChannels * len(s[0])
+
+	switch b.(type) {
+	case *audio.IntBuffer:
+		ib := b.(*audio.IntBuffer)
+		ib.Data = make([]int, bufferLen)
+		for i := range s[0] {
+			for j := range s {
+				ib.Data[i*numChannels+j] = int(s[j][i] * 0x7fff)
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("Conversion to %T from [][]float64 is not defined", b)
+	}
+}

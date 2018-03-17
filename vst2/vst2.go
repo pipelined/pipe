@@ -102,3 +102,30 @@ func (p *Plugin) callback() vst2.HostCallbackFunc {
 		return 0
 	}
 }
+
+// Process is a wrapper over ProcessFloat64 and ProcessFloat32
+// in case if plugin supports only ProcessFloat32, coversion is done
+func (p *Plugin) Process(in [][]float64) [][]float64 {
+	if p.Plugin.CanProcessFloat32() {
+
+		in32 := make([][]float32, len(in))
+		for i := range in {
+			in32[i] = make([]float32, len(in[i]))
+			for j, v := range in[i] {
+				in32[i][j] = float32(v)
+			}
+		}
+
+		out32 := p.ProcessFloat32(in32)
+
+		out := make([][]float64, len(out32))
+		for i := range out32 {
+			out[i] = make([]float64, len(out32[i]))
+			for j, v := range out32[i] {
+				out[i][j] = float64(v)
+			}
+		}
+		return out
+	}
+	return p.ProcessFloat64(in)
+}
