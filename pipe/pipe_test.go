@@ -22,11 +22,6 @@ var (
 )
 
 func TestPipe(t *testing.T) {
-	session := session.New(
-		session.BufferSize(bufferSize),
-		session.NumChannels(2),
-		session.SampleRate(44100),
-	)
 	cache := cache.NewVST2(vstPath)
 	defer cache.Close()
 	plugin, err := cache.LoadPlugin(vstPath, vstName)
@@ -34,6 +29,11 @@ func TestPipe(t *testing.T) {
 	defer plugin.Close()
 	wavPump, err := wav.NewPump(inFile, bufferSize)
 	assert.Nil(t, err)
+	session := session.New(
+		session.BufferSize(bufferSize),
+		session.NumChannels(wavPump.NumChannels),
+		session.SampleRate(wavPump.SampleRate),
+	)
 	wavSink := wav.NewSink(
 		outFile,
 		wavPump.BitDepth,

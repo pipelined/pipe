@@ -30,7 +30,7 @@ func TestWavPump(t *testing.T) {
 	s := session.New(
 		session.SampleRate(p.SampleRate),
 		session.NumChannels(p.NumChannels),
-		session.BufferSize(p.BufferSize),
+		session.BufferSize(bufferSize),
 	)
 	pump := p.Pump(s)
 	out, errorc, err := pump(ctx)
@@ -66,7 +66,6 @@ func TestWavSink(t *testing.T) {
 	session := session.New(
 		session.SampleRate(p.SampleRate),
 		session.NumChannels(p.NumChannels),
-		session.BufferSize(p.BufferSize),
 	)
 
 	s := wav.NewSink(outFile, p.BitDepth, p.NumChannels, p.WavAudioFormat)
