@@ -1,6 +1,7 @@
 package phono_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/dudk/phono"
@@ -23,6 +24,15 @@ func TestIntBufferToSamples(t *testing.T) {
 	for _, v := range samples[0] {
 		assert.Equal(t, float64(1)/0x8000, v)
 	}
+
+	_, err = phono.AsSamples(nil)
+	assert.Nil(t, err)
+	buf.Format = nil
+	_, err = phono.AsSamples(buf)
+	assert.EqualError(t, err, "Format for Buffer is not defined")
+	pcmbuf := &audio.PCMBuffer{Format: &audio.Format{}}
+	_, err = phono.AsSamples(pcmbuf)
+	assert.EqualError(t, err, fmt.Sprintf("Conversion to [][]float64 from %T is not defined", pcmbuf))
 }
 
 func TestSampelsToIntBuffer(t *testing.T) {
@@ -43,4 +53,6 @@ func TestSampelsToIntBuffer(t *testing.T) {
 	for i := 0; i < len(ib.Data); i = i + 2 {
 		assert.Equal(t, 0x7fff, ib.Data[i])
 	}
+	err = phono.AsBuffer(nil, nil)
+	assert.Nil(t, err)
 }

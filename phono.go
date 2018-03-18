@@ -43,6 +43,10 @@ func AsSamples(b audio.Buffer) ([][]float64, error) {
 		return nil, nil
 	}
 
+	if b.PCMFormat() == nil {
+		return nil, fmt.Errorf("Format for Buffer is not defined")
+	}
+
 	numChannels := b.PCMFormat().NumChannels
 	s := make([][]float64, numChannels)
 	bufferLen := numChannels * b.NumFrames()
@@ -64,6 +68,10 @@ func AsSamples(b audio.Buffer) ([][]float64, error) {
 
 // AsBuffer converts from [][]float64 to audio.Buffer
 func AsBuffer(b audio.Buffer, s [][]float64) error {
+	if b == nil || s == nil {
+		return nil
+	}
+
 	numChannels := len(s)
 	bufferLen := numChannels * len(s[0])
 
