@@ -9,6 +9,10 @@ import (
 	"github.com/dudk/vst2"
 )
 
+type PluginAlias = vst2.Plugin
+type MasterOpcodeAlias = vst2.MasterOpcode
+type HostCallbackFuncAlias = vst2.HostCallbackFunc
+
 //Open loads a library
 func Open(path string) (*Library, error) {
 	lib, err := vst2.Open(path)

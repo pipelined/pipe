@@ -2,6 +2,8 @@ package vst2
 
 import (
 	"context"
+	"fmt"
+	"unsafe"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/vst2"
@@ -21,6 +23,7 @@ func NewProcessor(plugin *vst2.Plugin) *Processor {
 
 // Process implements processor.Processor
 func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
+	p.plugin.SetCallback(callback(s))
 	return func(ctx context.Context, in <-chan phono.Message) (<-chan phono.Message, <-chan error, error) {
 		errc := make(chan error, 1)
 		out := make(chan phono.Message)
@@ -49,5 +52,12 @@ func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
 			}
 		}()
 		return out, errc, nil
+	}
+}
+
+func callback(s phono.Session) vst2.HostCallbackFuncAlias {
+	return func(p *vst2.PluginAlias, opcode vst2.MasterOpcodeAlias, index int64, value int64, ptr unsafe.Pointer, opt float64) int {
+		fmt.Printf("Printf from pipe closure callback! Plugin name: %v\n", p.Name)
+		return 0
 	}
 }
