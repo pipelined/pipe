@@ -1,17 +1,66 @@
 package vst2
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"unsafe"
 
+	"github.com/dudk/phono"
 	"github.com/dudk/vst2"
 )
 
-type PluginAlias = vst2.Plugin
-type MasterOpcodeAlias = vst2.MasterOpcode
-type HostCallbackFuncAlias = vst2.HostCallbackFunc
+// Processor represents vst2 sound processor
+type Processor struct {
+	plugin *Plugin
+
+	samplePos uint64
+}
+
+// NewProcessor creates new vst2 processor
+func NewProcessor(plugin *Plugin) *Processor {
+	return &Processor{
+		plugin:    plugin,
+		samplePos: 0,
+	}
+}
+
+// Process implements processor.Processor
+func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
+	p.plugin.SetCallback(callbackWithSession(s))
+	return func(ctx context.Context, in <-chan phono.Message) (<-chan phono.Message, <-chan error, error) {
+		errc := make(chan error, 1)
+		out := make(chan phono.Message)
+		go func() {
+			defer close(out)
+			defer close(errc)
+			p.plugin.BufferSize(s.BufferSize())
+			p.plugin.SampleRate(s.SampleRate())
+			p.plugin.SetSpeakerArrangement(2)
+			p.plugin.Resume()
+			defer p.plugin.Suspend()
+			for in != nil {
+				select {
+				case message, ok := <-in:
+					if !ok {
+						in = nil
+					} else {
+						samples := message.Samples()
+						processed := p.plugin.Process(samples)
+						message.PutSamples(processed)
+						out <- message
+						atomic.AddUint64(&p.samplePos, uint64(len(samples[0])))
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		return out, errc, nil
+	}
+}
 
 //Open loads a library
 func Open(path string) (*Library, error) {
@@ -132,4 +181,13 @@ func (p *Plugin) Process(in [][]float64) [][]float64 {
 		return out
 	}
 	return p.ProcessFloat64(in)
+}
+
+func callbackWithSession(s phono.Session) vst2.HostCallbackFunc {
+	return func(p *vst2.Plugin, opcode vst2.MasterOpcode, index int64, value int64, ptr unsafe.Pointer, opt float64) int {
+		switch opcode {
+
+		}
+		return 0
+	}
 }

@@ -7,13 +7,13 @@ import (
 
 	"github.com/dudk/phono/session"
 
-	"github.com/dudk/phono/pipe/wav"
+	"github.com/dudk/phono/wav"
 	"github.com/stretchr/testify/assert"
 )
 
 var (
-	inFile     = "../../_testdata/test.wav"
-	outFile    = "../../_testdata/out.wav"
+	inFile     = "../_testdata/test.wav"
+	outFile    = "../_testdata/out.wav"
 	bufferSize = 512
 	// sampleRate     = 44100
 	// bitDepth       = 16
@@ -22,7 +22,7 @@ var (
 )
 
 func TestWavPump(t *testing.T) {
-	p, err := wav.NewPump("../../_testdata/test.wav", bufferSize)
+	p, err := wav.NewPump(inFile, bufferSize)
 	assert.Nil(t, err)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
