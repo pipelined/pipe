@@ -2,7 +2,6 @@ package session
 
 import (
 	"github.com/dudk/phono"
-	"github.com/go-audio/audio"
 )
 
 // Session is a top level abstraction
@@ -70,10 +69,6 @@ func NumChannels(numChannels int) Option {
 // NewMessage implements pipe.Session interface
 func (s Session) NewMessage() phono.Message {
 	return &Message{
-		format: &audio.Format{
-			NumChannels: s.numChannels,
-			SampleRate:  s.sampleRate,
-		},
 		bufferLen: s.numChannels * s.bufferSize,
 	}
 }
@@ -82,7 +77,6 @@ func (s Session) NewMessage() phono.Message {
 type Message struct {
 	samples   [][]float64
 	bufferLen int
-	format    *audio.Format
 }
 
 // IsEmpty returns true if buffer and samples are empty
@@ -104,7 +98,6 @@ func (m *Message) PutSamples(s [][]float64) {
 	if s != nil {
 		// we need to adjust buffer to our samples
 		m.samples = s
-		m.format.NumChannels = len(s)
 		m.bufferLen = len(s) * len(s[0])
 	}
 }

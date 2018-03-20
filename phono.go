@@ -13,10 +13,6 @@ type Message interface {
 	PutSamples(samples [][]float64)
 	// AsSamples represent message data as samples
 	Samples() [][]float64
-	// PutBuffer assign an audio.Buffer to message
-	//PutBuffer(buffer audio.PCMBuffer, bufferLen int)
-	// AsBuffer represent message data as audio.Buffer
-	// AsBuffer() *audio.PCMBuffer
 	// BufferLen returns numChannels * bufferSize
 	BufferLen() int
 }

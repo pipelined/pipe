@@ -3,6 +3,7 @@ package vst2
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"sync/atomic"
@@ -29,15 +30,15 @@ func NewProcessor(plugin *Plugin) *Processor {
 
 // Process implements processor.Processor
 func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
-	p.plugin.SetCallback(callbackWithSession(s))
+	p.plugin.SetCallback(p.callbackWithSession(s))
 	return func(ctx context.Context, in <-chan phono.Message) (<-chan phono.Message, <-chan error, error) {
 		errc := make(chan error, 1)
 		out := make(chan phono.Message)
 		go func() {
 			defer close(out)
 			defer close(errc)
-			p.plugin.BufferSize(s.BufferSize())
-			p.plugin.SampleRate(s.SampleRate())
+			p.plugin.SetBufferSize(s.BufferSize())
+			p.plugin.SetSampleRate(s.SampleRate())
 			p.plugin.SetSpeakerArrangement(2)
 			p.plugin.Resume()
 			defer p.plugin.Suspend()
@@ -92,7 +93,7 @@ func (l Library) Open() (p *Plugin, err error) {
 	p = &Plugin{
 		Plugin: plugin,
 	}
-	plugin.SetCallback(p.callback())
+	plugin.SetCallback(p.defaultCallback())
 	return
 }
 
@@ -139,19 +140,19 @@ func (p *Plugin) Suspend() {
 	p.Dispatch(vst2.EffMainsChanged, 0, 0, nil, 0.0)
 }
 
-// BufferSize sets a buffer size
-func (p *Plugin) BufferSize(bufferSize int) {
+// SetBufferSize sets a buffer size
+func (p *Plugin) SetBufferSize(bufferSize int) {
 	p.Dispatch(vst2.EffSetBlockSize, 0, int64(bufferSize), nil, 0.0)
 }
 
-// SampleRate sets a sample rate for plugin
-func (p *Plugin) SampleRate(sampleRate int) {
+// SetSampleRate sets a sample rate for plugin
+func (p *Plugin) SetSampleRate(sampleRate int) {
 	p.Dispatch(vst2.EffSetSampleRate, 0, 0, nil, float64(sampleRate))
 }
 
-func (p *Plugin) callback() vst2.HostCallbackFunc {
+func (p *Plugin) defaultCallback() vst2.HostCallbackFunc {
 	return func(plugin *vst2.Plugin, opcode vst2.MasterOpcode, index int64, value int64, ptr unsafe.Pointer, opt float64) int {
-		fmt.Printf("Printf from closure callback! Plugin name: %v\n", p.Name)
+		fmt.Printf("Call from default callback! Plugin name: %v\n", p.Name)
 		return 0
 	}
 }
@@ -183,10 +184,27 @@ func (p *Plugin) Process(in [][]float64) [][]float64 {
 	return p.ProcessFloat64(in)
 }
 
-func callbackWithSession(s phono.Session) vst2.HostCallbackFunc {
-	return func(p *vst2.Plugin, opcode vst2.MasterOpcode, index int64, value int64, ptr unsafe.Pointer, opt float64) int {
-		switch opcode {
+// wraped callback with session
+func (p *Processor) callbackWithSession(s phono.Session) vst2.HostCallbackFunc {
+	return func(plugin *vst2.Plugin, opcode vst2.MasterOpcode, index int64, value int64, ptr unsafe.Pointer, opt float64) int {
 
+		switch opcode {
+		case vst2.AudioMasterIdle:
+			log.Printf("AudioMasterIdle")
+			plugin.Dispatch(vst2.EffEditIdle, 0, 0, nil, 0)
+
+		case vst2.AudioMasterGetCurrentProcessLevel:
+			//TODO: return C.kVstProcessLevel
+		case vst2.AudioMasterGetSampleRate:
+			return s.SampleRate()
+		case vst2.AudioMasterGetBlockSize:
+			return s.BufferSize()
+		case vst2.AudioMasterGetTime:
+			samplePos := atomic.LoadUint64(&p.samplePos)
+			return int(plugin.SetTimeInfo(s.SampleRate(), samplePos))
+		default:
+			// log.Printf("Plugin requested value of opcode %v\n", opcode)
+			break
 		}
 		return 0
 	}
