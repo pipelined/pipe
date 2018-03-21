@@ -11,6 +11,13 @@ type Session struct {
 	numChannels int
 }
 
+// Message is a DTO for pipe
+type Message struct {
+	samples   [][]float64
+	bufferLen int
+	position  phono.SamplePosition
+}
+
 // New creates a new session
 func New(options ...Option) *Session {
 	s := &Session{}
@@ -66,17 +73,18 @@ func NumChannels(numChannels int) Option {
 	}
 }
 
-// NewMessage implements pipe.Session interface
-func (s Session) NewMessage() phono.Message {
-	return &Message{
-		bufferLen: s.numChannels * s.bufferSize,
-	}
+// PulseAt returns audio characteristics at current sample position
+func (s Session) PulseAt(phono.SamplePosition) phono.Pulse {
+	// TODO: implement
+	return phono.Pulse{}
 }
 
-// Message is a DTO for pipe
-type Message struct {
-	samples   [][]float64
-	bufferLen int
+// NewMessage produces new message for pipe, with attributes defined for passed SamplePosition
+func (s Session) NewMessage(sp phono.SamplePosition) phono.Message {
+	return &Message{
+		bufferLen: s.numChannels * s.bufferSize,
+		position:  sp,
+	}
 }
 
 // IsEmpty returns true if buffer and samples are empty
@@ -118,4 +126,12 @@ func (m *Message) Samples() (out [][]float64) {
 		return nil
 	}
 	return m.samples
+}
+
+func (m *Message) Position() phono.SamplePosition {
+	return m.position
+}
+
+func (m *Message) SetPosition(sp phono.SamplePosition) {
+	m.position = sp
 }

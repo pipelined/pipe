@@ -15,13 +15,17 @@ type Message interface {
 	Samples() [][]float64
 	// BufferLen returns numChannels * bufferSize
 	BufferLen() int
+	// Position returns current samples position
+	Position() SamplePosition
 }
 
 // Session is an interface for main container
 type Session interface {
-	NewMessage() Message
+	NewMessage(SamplePosition) Message
 	BufferSize() int
 	SampleRate() int
+	// myabe this method will go to "track" level
+	PulseAt(SamplePosition) Pulse
 }
 
 // PumpFunc is a function to pump sound data to pipe
@@ -32,6 +36,17 @@ type ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Messag
 
 // SinkFunc is a function to sink data from pipe
 type SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, err error)
+
+// SamplePosition represents current sample position
+type SamplePosition uint64
+
+// Pulse represents current track attributes: time signature, bpm e.t.c.
+type Pulse struct {
+	nanoSeconds              uint64
+	tempo                    float64
+	timeSignatureNumerator   int
+	timeSignatureDenominator int
+}
 
 // AsSamples converts from audio.Buffer to [][]float64 samples
 func AsSamples(b audio.Buffer) ([][]float64, error) {

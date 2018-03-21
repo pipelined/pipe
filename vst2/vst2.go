@@ -17,14 +17,14 @@ import (
 type Processor struct {
 	plugin *Plugin
 
-	samplePos uint64
+	position phono.SamplePosition
 }
 
 // NewProcessor creates new vst2 processor
 func NewProcessor(plugin *Plugin) *Processor {
 	return &Processor{
-		plugin:    plugin,
-		samplePos: 0,
+		plugin:   plugin,
+		position: 0,
 	}
 }
 
@@ -44,15 +44,15 @@ func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
 			defer p.plugin.Suspend()
 			for in != nil {
 				select {
-				case message, ok := <-in:
+				case m, ok := <-in:
 					if !ok {
 						in = nil
 					} else {
-						samples := message.Samples()
+						samples := m.Samples()
 						processed := p.plugin.Process(samples)
-						message.PutSamples(processed)
-						out <- message
-						atomic.AddUint64(&p.samplePos, uint64(len(samples[0])))
+						m.PutSamples(processed)
+						out <- m
+						atomic.StoreUint64((*uint64)(&p.position), uint64(m.Position()))
 					}
 				case <-ctx.Done():
 					return
@@ -200,8 +200,8 @@ func (p *Processor) callbackWithSession(s phono.Session) vst2.HostCallbackFunc {
 		case vst2.AudioMasterGetBlockSize:
 			return s.BufferSize()
 		case vst2.AudioMasterGetTime:
-			samplePos := atomic.LoadUint64(&p.samplePos)
-			return int(plugin.SetTimeInfo(s.SampleRate(), samplePos))
+			sp := atomic.LoadUint64((*uint64)(&p.position))
+			return int(plugin.SetTimeInfo(s.SampleRate(), sp))
 		default:
 			// log.Printf("Plugin requested value of opcode %v\n", opcode)
 			break

@@ -11,9 +11,10 @@ import (
 // Pump is a source of samples
 type Pump interface {
 	Pump(phono.Session) phono.PumpFunc
+	Position() phono.SamplePosition
 }
 
-// Processor defines interface for pipe-prcessors
+// Processor defines interface for pipe-processors
 type Processor interface {
 	Process(phono.Session) phono.ProcessFunc
 }
