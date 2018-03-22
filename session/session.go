@@ -11,6 +11,11 @@ type Session struct {
 	numChannels int
 }
 
+// Track is a sequence of pipes which are executed one after another
+type Track struct {
+	pipes map[phono.SamplePosition]phono.Pipe
+}
+
 // Message is a DTO for pipe
 type Message struct {
 	samples   [][]float64
@@ -128,10 +133,12 @@ func (m *Message) Samples() (out [][]float64) {
 	return m.samples
 }
 
+// Position returns sample position of message
 func (m *Message) Position() phono.SamplePosition {
 	return m.position
 }
 
+// SetPosition sets sample position of message
 func (m *Message) SetPosition(sp phono.SamplePosition) {
 	m.position = sp
 }

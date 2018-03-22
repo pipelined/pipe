@@ -7,6 +7,12 @@ import (
 	"github.com/go-audio/audio"
 )
 
+// Pipe is a sound processing pipeline
+type Pipe interface {
+	Validate() error
+	Run(ctx context.Context) error
+}
+
 // Message is an interface for pipe transport
 type Message interface {
 	// PutSamples assign samples to message
@@ -24,8 +30,13 @@ type Session interface {
 	NewMessage(SamplePosition) Message
 	BufferSize() int
 	SampleRate() int
-	// myabe this method will go to "track" level
+}
+
+// Track represents a sequence of pipes
+type Track interface {
 	PulseAt(SamplePosition) Pulse
+	TempoAt(SamplePosition)
+	TimeSignatureAt(SamplePosition)
 }
 
 // PumpFunc is a function to pump sound data to pipe
