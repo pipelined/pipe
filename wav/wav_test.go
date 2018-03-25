@@ -52,7 +52,7 @@ func TestWavPump(t *testing.T) {
 			if !ok {
 				out = nil
 			} else {
-				samplesRead = samplesRead + m.BufferSize()*p.NumChannels
+				samplesRead = samplesRead + m.BufferSize()*pulse.NumChannels()
 				bufCount++
 			}
 		case err = <-errorc:

@@ -19,12 +19,12 @@ type Message interface {
 	SetSamples(samples [][]float64)
 	// AsSamples represent message data as samples
 	Samples() [][]float64
-	// BufferSize returns bufferSize
-	BufferSize() int
 	// SetPulse to message
 	SetPulse(Pulse)
 	// Pulse returns current state
 	Pulse() Pulse
+	// BufferSize returns bufferSize
+	BufferSize() int
 }
 
 // Session is an interface for main container
@@ -41,9 +41,9 @@ type Track interface {
 
 // Pulse represents current track attributes: time signature, bpm e.t.c.
 type Pulse interface {
+	NewMessage() Message
 	Tempo() float64
 	TimeSignature() (int, int)
-	NewMessage() Message
 	BufferSize() int
 	SampleRate() int
 	NumChannels() int

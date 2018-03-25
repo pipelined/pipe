@@ -130,14 +130,6 @@ func NumChannels(numChannels int) Option {
 	}
 }
 
-// IsEmpty returns true if buffer and samples are empty
-func (m *Message) IsEmpty() bool {
-	if m.samples == nil || m.samples[0] == nil {
-		return true
-	}
-	return false
-}
-
 // BufferSize returns underlying buffer len
 func (m *Message) BufferSize() int {
 	return m.bufferSize
@@ -147,18 +139,13 @@ func (m *Message) BufferSize() int {
 // and also set buffer data to nil
 func (m *Message) SetSamples(s [][]float64) {
 	if s != nil {
-		// we need to adjust buffer to our samples
 		m.samples = s
-		m.bufferSize = len(s[0])
+		if s[0] != nil {
+			m.bufferSize = len(s[0])
+		} else {
+			m.bufferSize = 0
+		}
 	}
-}
-
-// Size returns length of samples per channel
-func (m *Message) Size() int {
-	if m.IsEmpty() {
-		return 0
-	}
-	return len(m.samples[0])
 }
 
 // Samples returns message samples
