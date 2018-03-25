@@ -18,9 +18,52 @@ type Track struct {
 
 // Message is a DTO for pipe
 type Message struct {
-	samples   [][]float64
-	bufferLen int
-	position  phono.SamplePosition
+	samples    [][]float64
+	bufferSize int
+	pulse      phono.Pulse
+}
+
+// Pulse represents audio properties of the message
+// it's getting sent once properties changed
+type Pulse struct {
+	tempo                    float64
+	timeSignatureNumerator   int
+	timeSignatureDenominator int
+	bufferSize               int
+	numChannels              int
+	sampleRate               int
+}
+
+// Tempo returns tempo value
+func (p Pulse) Tempo() float64 {
+	return p.tempo
+}
+
+// TimeSignature returns musical time signature i.e: 4/4 or 3/4
+func (p Pulse) TimeSignature() (int, int) {
+	return p.timeSignatureNumerator, p.timeSignatureDenominator
+}
+
+// NewMessage produces new message for pipe, with attributes defined for passed SamplePosition
+func (p Pulse) NewMessage() phono.Message {
+	return &Message{
+		bufferSize: p.bufferSize,
+	}
+}
+
+// BufferSize returns buffer size
+func (p Pulse) BufferSize() int {
+	return p.bufferSize
+}
+
+// SampleRate returns sample rate
+func (p Pulse) SampleRate() int {
+	return p.sampleRate
+}
+
+// NumChannels returns number of channels
+func (p Pulse) NumChannels() int {
+	return p.numChannels
 }
 
 // New creates a new session
@@ -30,6 +73,15 @@ func New(options ...Option) *Session {
 		option(s)
 	}
 	return s
+}
+
+// Pulse returns current pulse
+func (s Session) Pulse() phono.Pulse {
+	return Pulse{
+		sampleRate:  s.sampleRate,
+		numChannels: s.numChannels,
+		bufferSize:  s.bufferSize,
+	}
 }
 
 // SampleRate returns session's sample rate
@@ -78,20 +130,6 @@ func NumChannels(numChannels int) Option {
 	}
 }
 
-// PulseAt returns audio characteristics at current sample position
-func (s Session) PulseAt(phono.SamplePosition) phono.Pulse {
-	// TODO: implement
-	return phono.Pulse{}
-}
-
-// NewMessage produces new message for pipe, with attributes defined for passed SamplePosition
-func (s Session) NewMessage(sp phono.SamplePosition) phono.Message {
-	return &Message{
-		bufferLen: s.numChannels * s.bufferSize,
-		position:  sp,
-	}
-}
-
 // IsEmpty returns true if buffer and samples are empty
 func (m *Message) IsEmpty() bool {
 	if m.samples == nil || m.samples[0] == nil {
@@ -100,18 +138,18 @@ func (m *Message) IsEmpty() bool {
 	return false
 }
 
-// BufferLen returns underlying buffer len
-func (m *Message) BufferLen() int {
-	return m.bufferLen
+// BufferSize returns underlying buffer len
+func (m *Message) BufferSize() int {
+	return m.bufferSize
 }
 
-// PutSamples assignes samples to message
+// SetSamples assignes samples to message
 // and also set buffer data to nil
-func (m *Message) PutSamples(s [][]float64) {
+func (m *Message) SetSamples(s [][]float64) {
 	if s != nil {
 		// we need to adjust buffer to our samples
 		m.samples = s
-		m.bufferLen = len(s) * len(s[0])
+		m.bufferSize = len(s[0])
 	}
 }
 
@@ -133,12 +171,12 @@ func (m *Message) Samples() (out [][]float64) {
 	return m.samples
 }
 
-// Position returns sample position of message
-func (m *Message) Position() phono.SamplePosition {
-	return m.position
+// SetPulse assigns pulse to message
+func (m *Message) SetPulse(p phono.Pulse) {
+	m.pulse = p
 }
 
-// SetPosition sets sample position of message
-func (m *Message) SetPosition(sp phono.SamplePosition) {
-	m.position = sp
+// Pulse returns pulse of message
+func (m *Message) Pulse() phono.Pulse {
+	return m.pulse
 }

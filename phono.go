@@ -15,32 +15,42 @@ type Pipe interface {
 
 // Message is an interface for pipe transport
 type Message interface {
-	// PutSamples assign samples to message
-	PutSamples(samples [][]float64)
+	// SetSamples assign samples to message
+	SetSamples(samples [][]float64)
 	// AsSamples represent message data as samples
 	Samples() [][]float64
-	// BufferLen returns numChannels * bufferSize
-	BufferLen() int
-	// Position returns current samples position
-	Position() SamplePosition
+	// BufferSize returns bufferSize
+	BufferSize() int
+	// SetPulse to message
+	SetPulse(Pulse)
+	// Pulse returns current state
+	Pulse() Pulse
 }
 
 // Session is an interface for main container
 type Session interface {
-	NewMessage(SamplePosition) Message
 	BufferSize() int
 	SampleRate() int
+	Pulse() Pulse
 }
 
 // Track represents a sequence of pipes
 type Track interface {
-	PulseAt(SamplePosition) Pulse
-	TempoAt(SamplePosition)
-	TimeSignatureAt(SamplePosition)
+	Pulse() Pulse
+}
+
+// Pulse represents current track attributes: time signature, bpm e.t.c.
+type Pulse interface {
+	Tempo() float64
+	TimeSignature() (int, int)
+	NewMessage() Message
+	BufferSize() int
+	SampleRate() int
+	NumChannels() int
 }
 
 // PumpFunc is a function to pump sound data to pipe
-type PumpFunc func(ctx context.Context) (out <-chan Message, errc <-chan error, err error)
+type PumpFunc func(context.Context, <-chan Pulse) (out <-chan Message, errc <-chan error, err error)
 
 // ProcessFunc is a function to process sound data in pipe
 type ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Message, errc <-chan error, err error)
@@ -50,14 +60,6 @@ type SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, e
 
 // SamplePosition represents current sample position
 type SamplePosition uint64
-
-// Pulse represents current track attributes: time signature, bpm e.t.c.
-type Pulse struct {
-	nanoSeconds              uint64
-	tempo                    float64
-	timeSignatureNumerator   int
-	timeSignatureDenominator int
-}
 
 // AsSamples converts from audio.Buffer to [][]float64 samples
 func AsSamples(b audio.Buffer) ([][]float64, error) {

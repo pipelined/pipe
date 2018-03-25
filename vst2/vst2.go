@@ -18,6 +18,8 @@ type Processor struct {
 	plugin *Plugin
 
 	position phono.SamplePosition
+	// TODO: need to lock it
+	pulse phono.Pulse
 }
 
 // NewProcessor creates new vst2 processor
@@ -29,16 +31,17 @@ func NewProcessor(plugin *Plugin) *Processor {
 }
 
 // Process implements processor.Processor
-func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
-	p.plugin.SetCallback(p.callbackWithSession(s))
+func (p *Processor) Process(pulse phono.Pulse) phono.ProcessFunc {
+	p.pulse = pulse
+	p.plugin.SetCallback(p.callback())
 	return func(ctx context.Context, in <-chan phono.Message) (<-chan phono.Message, <-chan error, error) {
 		errc := make(chan error, 1)
 		out := make(chan phono.Message)
 		go func() {
 			defer close(out)
 			defer close(errc)
-			p.plugin.SetBufferSize(s.BufferSize())
-			p.plugin.SetSampleRate(s.SampleRate())
+			p.plugin.SetBufferSize(p.pulse.BufferSize())
+			p.plugin.SetSampleRate(p.pulse.SampleRate())
 			p.plugin.SetSpeakerArrangement(2)
 			p.plugin.Resume()
 			defer p.plugin.Suspend()
@@ -50,9 +53,10 @@ func (p *Processor) Process(s phono.Session) phono.ProcessFunc {
 					} else {
 						samples := m.Samples()
 						processed := p.plugin.Process(samples)
-						m.PutSamples(processed)
+						m.SetSamples(processed)
 						out <- m
-						atomic.StoreUint64((*uint64)(&p.position), uint64(m.Position()))
+						// TODO handle pulse
+						// atomic.StoreUint64((*uint64)(&p.position), uint64(m.Position()))
 					}
 				case <-ctx.Done():
 					return
@@ -185,7 +189,7 @@ func (p *Plugin) Process(in [][]float64) [][]float64 {
 }
 
 // wraped callback with session
-func (p *Processor) callbackWithSession(s phono.Session) vst2.HostCallbackFunc {
+func (p *Processor) callback() vst2.HostCallbackFunc {
 	return func(plugin *vst2.Plugin, opcode vst2.MasterOpcode, index int64, value int64, ptr unsafe.Pointer, opt float64) int {
 
 		switch opcode {
@@ -196,12 +200,12 @@ func (p *Processor) callbackWithSession(s phono.Session) vst2.HostCallbackFunc {
 		case vst2.AudioMasterGetCurrentProcessLevel:
 			//TODO: return C.kVstProcessLevel
 		case vst2.AudioMasterGetSampleRate:
-			return s.SampleRate()
+			return p.pulse.SampleRate()
 		case vst2.AudioMasterGetBlockSize:
-			return s.BufferSize()
+			return p.pulse.BufferSize()
 		case vst2.AudioMasterGetTime:
 			sp := atomic.LoadUint64((*uint64)(&p.position))
-			return int(plugin.SetTimeInfo(s.SampleRate(), sp))
+			return int(plugin.SetTimeInfo(p.pulse.SampleRate(), sp))
 		default:
 			// log.Printf("Plugin requested value of opcode %v\n", opcode)
 			break

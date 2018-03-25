@@ -10,18 +10,17 @@ import (
 
 // Pump is a source of samples
 type Pump interface {
-	Pump(phono.Session) phono.PumpFunc
-	Position() phono.SamplePosition
+	Pump(phono.Pulse) phono.PumpFunc
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	Process(phono.Session) phono.ProcessFunc
+	Process(phono.Pulse) phono.ProcessFunc
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Sink(phono.Session) phono.SinkFunc
+	Sink(phono.Pulse) phono.SinkFunc
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence
@@ -94,14 +93,14 @@ func (p *Pipe) Validate() error {
 }
 
 // Run invokes a pipe
-func (p *Pipe) Run(ctx context.Context) error {
+func (p *Pipe) Run(ctx context.Context, pulse phono.Pulse, pc chan phono.Pulse) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
 
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	//start pump
-	out, errc, err := p.pump.Pump(p.session)(ctx)
+	out, errc, err := p.pump.Pump(pulse)(ctx, pc)
 	if err != nil {
 		return err
 	}
@@ -109,14 +108,14 @@ func (p *Pipe) Run(ctx context.Context) error {
 
 	//start chained processes
 	for _, proc := range p.processors {
-		out, errc, err = proc.Process(p.session)(ctx, out)
+		out, errc, err = proc.Process(pulse)(ctx, out)
 		if err != nil {
 			return err
 		}
 		errcList = append(errcList, errc)
 	}
 
-	sinkErrcList, err := p.broadcastToSinks(ctx, out)
+	sinkErrcList, err := p.broadcastToSinks(ctx, pulse, out)
 	if err != nil {
 		return err
 	}
@@ -161,7 +160,7 @@ func mergeErrors(errcList ...<-chan error) <-chan error {
 	return out
 }
 
-func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(ctx context.Context, pulse phono.Pulse, in <-chan phono.Message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
@@ -172,7 +171,7 @@ func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Sink(p.session)(ctx, broadcasts[i])
+		errc, err := s.Sink(pulse)(ctx, broadcasts[i])
 		if err != nil {
 			return nil, err
 		}

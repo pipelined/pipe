@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/dudk/phono"
 	"github.com/dudk/phono/session"
 
 	"github.com/dudk/phono/wav"
@@ -32,8 +33,13 @@ func TestWavPump(t *testing.T) {
 		session.NumChannels(p.NumChannels),
 		session.BufferSize(bufferSize),
 	)
-	pump := p.Pump(s)
-	out, errorc, err := pump(ctx)
+
+	pulse := s.Pulse()
+	pc := make(chan phono.Pulse)
+	defer close(pc)
+
+	pump := p.Pump(pulse)
+	out, errorc, err := pump(ctx, pc)
 	assert.Nil(t, err)
 	assert.Equal(t, 44100, p.SampleRate)
 	assert.Equal(t, 16, p.BitDepth)
@@ -46,7 +52,7 @@ func TestWavPump(t *testing.T) {
 			if !ok {
 				out = nil
 			} else {
-				samplesRead = samplesRead + m.BufferLen()
+				samplesRead = samplesRead + m.BufferSize()*p.NumChannels
 				bufCount++
 			}
 		case err = <-errorc:
@@ -67,14 +73,17 @@ func TestWavSink(t *testing.T) {
 		session.SampleRate(p.SampleRate),
 		session.NumChannels(p.NumChannels),
 	)
+	pulse := session.Pulse()
+	pc := make(chan phono.Pulse)
+	defer close(pc)
 
-	s := wav.NewSink(outFile, p.BitDepth, p.NumChannels, p.WavAudioFormat)
+	s := wav.NewSink(outFile, p.BitDepth, p.WavAudioFormat)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	out, _, err := p.Pump(session)(ctx)
+	out, _, err := p.Pump(pulse)(ctx, pc)
 	assert.Nil(t, err)
 
-	errorc, err := s.Sink(session)(ctx, out)
+	errorc, err := s.Sink(pulse)(ctx, out)
 	assert.Nil(t, err)
 	for err = range errorc {
 		fmt.Printf("Error waiting for sink: %v", err)

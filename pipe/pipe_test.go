@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/dudk/phono"
 	"github.com/dudk/phono/session"
 	"github.com/dudk/phono/vst2"
 	"github.com/dudk/phono/wav"
@@ -37,13 +38,11 @@ func TestPipe(t *testing.T) {
 	wavSink := wav.NewSink(
 		outFile,
 		wavPump.BitDepth,
-		wavPump.NumChannels,
 		wavPump.WavAudioFormat,
 	)
 	wavSink1 := wav.NewSink(
 		outFile2,
 		wavPump.BitDepth,
-		wavPump.NumChannels,
 		wavPump.WavAudioFormat,
 	)
 	vst2Processor := vst2.NewProcessor(plugin)
@@ -55,6 +54,9 @@ func TestPipe(t *testing.T) {
 	)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	err = pipe.Run(ctx)
+	pc := make(chan phono.Pulse)
+	defer close(pc)
+
+	err = pipe.Run(ctx, session.Pulse(), pc)
 	assert.Nil(t, err)
 }
