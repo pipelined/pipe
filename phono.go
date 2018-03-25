@@ -23,8 +23,10 @@ type Message interface {
 	SetPulse(Pulse)
 	// Pulse returns current state
 	Pulse() Pulse
-	// BufferSize returns bufferSize
+	// BufferSize returns buffer size
 	BufferSize() int
+	// NumChannels number of channels
+	NumChannels() int
 }
 
 // Session is an interface for main container

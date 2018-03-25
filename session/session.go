@@ -18,9 +18,10 @@ type Track struct {
 
 // Message is a DTO for pipe
 type Message struct {
-	samples    [][]float64
-	bufferSize int
-	pulse      phono.Pulse
+	bufferSize  int
+	numChannels int
+	samples     [][]float64
+	pulse       phono.Pulse
 }
 
 // Pulse represents audio properties of the message
@@ -135,15 +136,21 @@ func (m *Message) BufferSize() int {
 	return m.bufferSize
 }
 
+// NumChannels returns underlying buffer len
+func (m *Message) NumChannels() int {
+	return m.numChannels
+}
+
 // SetSamples assignes samples to message
 // and also set buffer data to nil
 func (m *Message) SetSamples(s [][]float64) {
+	m.bufferSize = 0
+	m.numChannels = 0
 	if s != nil {
 		m.samples = s
+		m.numChannels = len(s)
 		if s[0] != nil {
 			m.bufferSize = len(s[0])
-		} else {
-			m.bufferSize = 0
 		}
 	}
 }
