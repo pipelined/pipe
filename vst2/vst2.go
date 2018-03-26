@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -18,7 +19,9 @@ type Processor struct {
 	plugin *Plugin
 
 	position phono.SamplePosition
-	// TODO: need to lock it
+
+	// pulse should be accessed through mutex
+	pm    sync.RWMutex
 	pulse phono.Pulse
 }
 
@@ -32,7 +35,7 @@ func NewProcessor(plugin *Plugin) *Processor {
 
 // Process implements processor.Processor
 func (p *Processor) Process(pulse phono.Pulse) phono.ProcessFunc {
-	p.pulse = pulse
+	p.setPulse(pulse)
 	p.plugin.SetCallback(p.callback())
 	return func(ctx context.Context, in <-chan phono.Message) (<-chan phono.Message, <-chan error, error) {
 		errc := make(chan error, 1)
@@ -40,8 +43,9 @@ func (p *Processor) Process(pulse phono.Pulse) phono.ProcessFunc {
 		go func() {
 			defer close(out)
 			defer close(errc)
-			p.plugin.SetBufferSize(p.pulse.BufferSize())
-			p.plugin.SetSampleRate(p.pulse.SampleRate())
+			pulse := p.readPulse()
+			p.plugin.SetBufferSize(pulse.BufferSize())
+			p.plugin.SetSampleRate(pulse.SampleRate())
 			p.plugin.SetSpeakerArrangement(2)
 			p.plugin.Resume()
 			defer p.plugin.Suspend()
@@ -65,6 +69,20 @@ func (p *Processor) Process(pulse phono.Pulse) phono.ProcessFunc {
 		}()
 		return out, errc, nil
 	}
+}
+
+// readPulse reads a pulse with read lock
+func (p *Processor) readPulse() phono.Pulse {
+	p.pm.RLock()
+	defer p.pm.RUnlock()
+	return p.pulse
+}
+
+// setPulse sets the pulse through mutex
+func (p *Processor) setPulse(pulse phono.Pulse) {
+	p.pm.Lock()
+	defer p.pm.Unlock()
+	p.pulse = pulse
 }
 
 //Open loads a library
@@ -191,7 +209,7 @@ func (p *Plugin) Process(in [][]float64) [][]float64 {
 // wraped callback with session
 func (p *Processor) callback() vst2.HostCallbackFunc {
 	return func(plugin *vst2.Plugin, opcode vst2.MasterOpcode, index int64, value int64, ptr unsafe.Pointer, opt float64) int {
-
+		pulse := p.readPulse()
 		switch opcode {
 		case vst2.AudioMasterIdle:
 			log.Printf("AudioMasterIdle")
@@ -200,12 +218,12 @@ func (p *Processor) callback() vst2.HostCallbackFunc {
 		case vst2.AudioMasterGetCurrentProcessLevel:
 			//TODO: return C.kVstProcessLevel
 		case vst2.AudioMasterGetSampleRate:
-			return p.pulse.SampleRate()
+			return pulse.SampleRate()
 		case vst2.AudioMasterGetBlockSize:
-			return p.pulse.BufferSize()
+			return pulse.BufferSize()
 		case vst2.AudioMasterGetTime:
 			sp := atomic.LoadUint64((*uint64)(&p.position))
-			return int(plugin.SetTimeInfo(p.pulse.SampleRate(), sp))
+			return int(plugin.SetTimeInfo(pulse.SampleRate(), sp))
 		default:
 			// log.Printf("Plugin requested value of opcode %v\n", opcode)
 			break
