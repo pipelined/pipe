@@ -55,12 +55,15 @@ func (p *Processor) Process(pulse phono.Pulse) phono.ProcessFunc {
 					if !ok {
 						in = nil
 					} else {
+						// handle new pulse
+						pulse = m.Pulse()
+						if pulse != nil {
+							p.setPulse(pulse)
+						}
 						samples := m.Samples()
 						processed := p.plugin.Process(samples)
 						m.SetSamples(processed)
 						out <- m
-						// TODO handle pulse
-						// atomic.StoreUint64((*uint64)(&p.position), uint64(m.Position()))
 					}
 				case <-ctx.Done():
 					return
