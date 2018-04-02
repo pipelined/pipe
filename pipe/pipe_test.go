@@ -2,20 +2,18 @@ package pipe
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var (
-	inFile     = "../_testdata/test.wav"
-	outFile    = "../_testdata/out.wav"
-	outFile2   = "../_testdata/out2.wav"
-	vstPath    = "../_testdata/vst2"
-	vstName    = "Krush"
 	bufferSize = 512
 )
 
 // TODO: build tests with mock package
 
 func TestPipe(t *testing.T) {
+	assert.Equal(t, bufferSize, 512)
 	// cache := cache.NewVST2(vstPath)
 	// defer cache.Close()
 	// plugin, err := cache.LoadPlugin(vstPath, vstName)
