@@ -27,22 +27,22 @@ type Message struct {
 // Pulse represents audio properties of the message
 // it's getting sent once properties changed
 type Pulse struct {
-	tempo                    float64
-	timeSignatureNumerator   int
-	timeSignatureDenominator int
-	bufferSize               int
-	numChannels              int
-	sampleRate               int
+	tempo           int
+	notesPerMeasure int
+	notesValue      int
+	bufferSize      int
+	numChannels     int
+	sampleRate      int
 }
 
 // Tempo returns tempo value
-func (p Pulse) Tempo() float64 {
+func (p Pulse) Tempo() int {
 	return p.tempo
 }
 
 // TimeSignature returns musical time signature i.e: 4/4 or 3/4
 func (p Pulse) TimeSignature() (int, int) {
-	return p.timeSignatureNumerator, p.timeSignatureDenominator
+	return p.notesPerMeasure, p.notesValue
 }
 
 // NewMessage produces new message for pipe, with attributes defined for passed SamplePosition
@@ -79,9 +79,12 @@ func New(options ...Option) *Session {
 // Pulse returns current pulse
 func (s Session) Pulse() phono.Pulse {
 	return Pulse{
-		sampleRate:  s.sampleRate,
-		numChannels: s.numChannels,
-		bufferSize:  s.bufferSize,
+		tempo:           120,
+		notesPerMeasure: 4,
+		notesValue:      4,
+		sampleRate:      s.sampleRate,
+		numChannels:     s.numChannels,
+		bufferSize:      s.bufferSize,
 	}
 }
 

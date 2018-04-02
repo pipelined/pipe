@@ -41,7 +41,7 @@ type Track interface {
 // Pulse represents current track attributes: time signature, bpm e.t.c.
 type Pulse interface {
 	NewMessage() Message
-	Tempo() float64
+	Tempo() int
 	TimeSignature() (int, int)
 	BufferSize() int
 	SampleRate() int
@@ -58,4 +58,4 @@ type ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Messag
 type SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, err error)
 
 // SamplePosition represents current sample position
-type SamplePosition uint64
+type SamplePosition int64
