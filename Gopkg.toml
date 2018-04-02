@@ -13,6 +13,3 @@ required = [
   name = "github.com/stretchr/testify"
   version = "1.2.0"
 
-[[constraint]]
-  branch = "master"
-  name = "github.com/go-audio/wav"

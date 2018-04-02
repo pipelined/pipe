@@ -1,16 +1,7 @@
 package pipe
 
 import (
-	"context"
 	"testing"
-
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/session"
-	"github.com/dudk/phono/vst2"
-	"github.com/dudk/phono/wav"
-
-	"github.com/dudk/phono/cache"
-	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -22,41 +13,43 @@ var (
 	bufferSize = 512
 )
 
-func TestPipe(t *testing.T) {
-	cache := cache.NewVST2(vstPath)
-	defer cache.Close()
-	plugin, err := cache.LoadPlugin(vstPath, vstName)
-	assert.Nil(t, err)
-	defer plugin.Close()
-	wavPump, err := wav.NewPump(inFile, bufferSize)
-	assert.Nil(t, err)
-	session := session.New(
-		session.BufferSize(bufferSize),
-		session.NumChannels(wavPump.NumChannels),
-		session.SampleRate(wavPump.SampleRate),
-	)
-	wavSink := wav.NewSink(
-		outFile,
-		wavPump.BitDepth,
-		wavPump.WavAudioFormat,
-	)
-	wavSink1 := wav.NewSink(
-		outFile2,
-		wavPump.BitDepth,
-		wavPump.WavAudioFormat,
-	)
-	vst2Processor := vst2.NewProcessor(plugin)
-	pipe := New(
-		*session,
-		WithPump(wavPump),
-		WithProcessors(vst2Processor),
-		WithSinks(wavSink, wavSink1),
-	)
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
-	pc := make(chan phono.Pulse)
-	defer close(pc)
+// TODO: build tests with mock package
 
-	err = pipe.Run(ctx, session.Pulse(), pc)
-	assert.Nil(t, err)
+func TestPipe(t *testing.T) {
+	// cache := cache.NewVST2(vstPath)
+	// defer cache.Close()
+	// plugin, err := cache.LoadPlugin(vstPath, vstName)
+	// assert.Nil(t, err)
+	// defer plugin.Close()
+	// wavPump, err := wav.NewPump(inFile, bufferSize)
+	// assert.Nil(t, err)
+	// session := session.New(
+	// 	session.BufferSize(bufferSize),
+	// 	session.NumChannels(wavPump.NumChannels),
+	// 	session.SampleRate(wavPump.SampleRate),
+	// )
+	// wavSink := wav.NewSink(
+	// 	outFile,
+	// 	wavPump.BitDepth,
+	// 	wavPump.WavAudioFormat,
+	// )
+	// wavSink1 := wav.NewSink(
+	// 	outFile2,
+	// 	wavPump.BitDepth,
+	// 	wavPump.WavAudioFormat,
+	// )
+	// vst2Processor := vst2.NewProcessor(plugin)
+	// pipe := New(
+	// 	*session,
+	// 	WithPump(wavPump),
+	// 	WithProcessors(vst2Processor),
+	// 	WithSinks(wavSink, wavSink1),
+	// )
+	// ctx, cancelFunc := context.WithCancel(context.Background())
+	// defer cancelFunc()
+	// pc := make(chan phono.Pulse)
+	// defer close(pc)
+
+	// err = pipe.Run(ctx, session.Pulse(), pc)
+	// assert.Nil(t, err)
 }
