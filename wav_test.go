@@ -16,7 +16,7 @@ var (
 	bufferSize = 512
 )
 
-// TODO: build with mock package
+// TODO: build with local mock package
 
 func TestWavPump(t *testing.T) {
 	// p, err := wav.NewPump(inFile, bufferSize)
