@@ -1,0 +1,21 @@
+### Go ###
+# Binaries for programs and plugins
+*.exe
+*.so
+*.dylib
+
+# Test binary, build with `go test -c`
+*.test
+
+# Project-local glide cache, RE: https://github.com/Masterminds/glide/issues/736
+.glide/
+
+# Golang project vendor packages which should be ignored
+vendor/
+
+# Golang dep tool
+Gopkg.lock
+
+# Output files
+*.wav
+!test.wav
