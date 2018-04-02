@@ -1,2 +1,2 @@
 # Phono
-Phono is a CLI VST host
+Golang audio pipe line
