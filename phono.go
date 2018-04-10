@@ -2,54 +2,87 @@ package phono
 
 import (
 	"context"
+	"fmt"
 )
 
-// Pipe is a sound processing pipeline
-type Pipe interface {
-	Validate() error
-	Run(ctx context.Context) error
-}
-
 // Message is an interface for pipe transport
-type Message interface {
-	// SetSamples assign samples to message
-	SetSamples(samples [][]float64)
-	// AsSamples represent message data as samples
-	Samples() [][]float64
-	// SetPulse to message
-	SetPulse(Pulse)
-	// Pulse returns current state
-	Pulse() Pulse
-	// BufferSize returns buffer size
-	BufferSize() int
-	// NumChannels number of channels
-	NumChannels() int
+type Message struct {
+	// Samples of message
+	Samples
+	// Pulse
+	Options
 }
 
-// Session is an interface for main container
-type Session interface {
-	BufferSize() int
-	SampleRate() int
-	Pulse() Pulse
+// Samples represent a sample data sliced per channel
+type Samples [][]float64
+
+// Types for Options support
+type (
+	// PublicOptionFunc represents an option which can be recieved by multiple objects
+	publicOptionFunc func(OptionUser)
+	// PrivateOptionFunc represents an option which can be recieved by one object
+	privateOptionFunc func()
+	// OptionValue is a type to wrap any option value
+	OptionValue interface{}
+
+	// OptionUser is an interface wich allows to Use options
+	OptionUser interface {
+		// Use consumes provided value
+		Use(OptionValue)
+		Validate() error
+	}
+
+	// Options represents current track attributes: time signature, bpm e.t.c.
+	Options struct {
+		public  map[string]publicOptionFunc
+		private map[OptionUser]map[string]privateOptionFunc
+	}
+)
+
+func NewOptions() *Options {
+	return &Options{}
 }
 
-// Track represents a sequence of pipes
-type Track interface {
-	Pulse() Pulse
+func (p *Options) Public(values ...OptionValue) *Options {
+	if p.public == nil {
+		p.public = make(map[string]publicOptionFunc)
+	}
+
+	newPublic := PublicOptions(values...)
+	for t, v := range newPublic {
+		p.public[t] = v
+	}
+	return p
 }
 
-// Pulse represents current track attributes: time signature, bpm e.t.c.
-type Pulse interface {
-	NewMessage() Message
-	Tempo() int
-	TimeSignature() (int, int)
-	BufferSize() int
-	SampleRate() int
-	NumChannels() int
+func (p *Options) Private(ou OptionUser, values ...OptionValue) *Options {
+	private, ok := p.private[ou]
+	if !ok {
+		private = make(map[string]privateOptionFunc)
+	}
+	newPrivate := PrivateOptions(ou, values...)
+	for t, v := range newPrivate {
+		private[t] = v
+	}
+
+	p.private[ou] = private
+	return p
+}
+
+// ApplyTo consumes options defined for option user in this pulse
+func (p Options) ApplyTo(ou OptionUser) {
+	for _, option := range p.public {
+		option(ou)
+	}
+	if options, ok := p.private[ou]; ok {
+		for _, option := range options {
+			option()
+		}
+	}
 }
 
 // PumpFunc is a function to pump sound data to pipe
-type PumpFunc func(context.Context, <-chan Pulse) (out <-chan Message, errc <-chan error, err error)
+type PumpFunc func(context.Context, <-chan Options) (out <-chan Message, errc <-chan error, err error)
 
 // ProcessFunc is a function to process sound data in pipe
 type ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Message, errc <-chan error, err error)
@@ -57,5 +90,34 @@ type ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Messag
 // SinkFunc is a function to sink data from pipe
 type SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, err error)
 
-// SamplePosition represents current sample position
-type SamplePosition int64
+// PublicOption creates a closure which can be used by any Configurable to apply it
+func PublicOption(value OptionValue) publicOptionFunc {
+	return func(ou OptionUser) {
+		ou.Use(value)
+	}
+}
+
+func PublicOptions(values ...OptionValue) map[string]publicOptionFunc {
+	result := make(map[string]publicOptionFunc)
+	for _, value := range values {
+		t := fmt.Sprintf("%T", value)
+		result[t] = PublicOption(value)
+	}
+	return result
+}
+
+// PrivateOption creates a closure which can be used by passed Configurable to apply it
+func PrivateOption(ou OptionUser, value OptionValue) privateOptionFunc {
+	return func() {
+		ou.Use(value)
+	}
+}
+
+func PrivateOptions(ou OptionUser, values ...OptionValue) map[string]privateOptionFunc {
+	result := make(map[string]privateOptionFunc)
+	for _, value := range values {
+		t := fmt.Sprintf("%T", value)
+		result[t] = PrivateOption(ou, value)
+	}
+	return result
+}

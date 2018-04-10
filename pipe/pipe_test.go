@@ -1,9 +1,13 @@
-package pipe
+package pipe_test
 
 import (
+	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/dudk/phono/pipe"
+
+	"github.com/dudk/phono"
+	"github.com/dudk/phono/mock"
 )
 
 var (
@@ -13,7 +17,13 @@ var (
 // TODO: build tests with mock package
 
 func TestPipe(t *testing.T) {
-	assert.Equal(t, bufferSize, 512)
+
+	so := mock.SimpleOption(120)
+	o := phono.NewOptions().Public(so)
+	p := pipe.New(*o)
+	fmt.Println(p)
+
+	// assert.Equal(t, bufferSize, 512)
 	// cache := cache.NewVST2(vstPath)
 	// defer cache.Close()
 	// plugin, err := cache.LoadPlugin(vstPath, vstName)

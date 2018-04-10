@@ -10,17 +10,18 @@ import (
 
 // Pump is a source of samples
 type Pump interface {
-	Pump(phono.Pulse) phono.PumpFunc
+	Pump(phono.Options) phono.PumpFunc
+	NewMessage() (phono.Message, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	Process(phono.Pulse) phono.ProcessFunc
+	Process(phono.Options) phono.ProcessFunc
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Sink(phono.Pulse) phono.SinkFunc
+	Sink(phono.Options) phono.SinkFunc
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence
@@ -29,55 +30,58 @@ type Sink interface {
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
-	session    phono.Session
 	pump       Pump
 	processors []Processor
 	sinks      []Sink
 }
 
+// Use implements phono.Configurable interface
+// TODO: think of conditions when options are possible to be changed
+func (p *Pipe) Use(value phono.OptionValue) {
+	switch v := value.(type) {
+	case Pump:
+		p.pump = v
+	case []Processor:
+		p.processors = v
+	case []Sink:
+		p.sinks = v
+	}
+}
+
 // Option provides a way to set options to pipe
 // returns previous option value
-type Option func(p *Pipe) Option
+// type Option func(p *Pipe) Option
 
 // New creates a new pipe and applies provided options
-func New(session phono.Session, options ...Option) *Pipe {
+func New(options phono.Options) *Pipe {
 	pipe := &Pipe{
-		session:    session,
 		processors: make([]Processor, 0),
 		sinks:      make([]Sink, 0),
 	}
-	for _, option := range options {
-		option(pipe)
-	}
+	options.ApplyTo(pipe)
 	return pipe
 }
 
 // WithPump sets pump to Pipe
-func WithPump(pump Pump) Option {
-	return func(p *Pipe) Option {
-		previous := p.pump
-		p.pump = pump
-		return WithPump(previous)
-	}
-}
+// func WithPump(pump Pump) phono.PublicOptionFunc {
+// 	return func(ou phono.OptionUser) {
+// 		ou.Use(pump)
+// 	}
+// }
 
 // WithProcessors sets processors to Pipe
-func WithProcessors(processors ...Processor) Option {
-	return func(p *Pipe) Option {
-		previous := p.processors
-		p.processors = append(p.processors, processors...)
-		return WithProcessors(previous...)
-	}
-}
+// func WithProcessors(processors ...Processor) phono.PublicOptionFunc {
+// 	return func(ou phono.OptionUser) {
+// 		ou.Use(processors)
+// 	}
+// }
 
 // WithSinks sets sinks to Pipe
-func WithSinks(sinks ...Sink) Option {
-	return func(p *Pipe) Option {
-		previous := p.sinks
-		p.sinks = append(p.sinks, sinks...)
-		return WithSinks(previous...)
-	}
-}
+// func WithSinks(sinks ...Sink) phono.PublicOptionFunc {
+// 	return func(ou phono.OptionUser) {
+// 		ou.Use(sinks)
+// 	}
+// }
 
 // Validate check's if the pipe is valid and ready to be executed
 func (p *Pipe) Validate() error {
@@ -92,40 +96,40 @@ func (p *Pipe) Validate() error {
 	return nil
 }
 
-// Run invokes a pipe
-func (p *Pipe) Run(ctx context.Context, pulse phono.Pulse, pc chan phono.Pulse) error {
+// Run invokes a pipe and returns channel for outgoing errors handling
+func (p *Pipe) Run(ctx context.Context, options phono.Options, pc chan phono.Options) (<-chan error, error) {
 	if err := p.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	//start pump
-	out, errc, err := p.pump.Pump(pulse)(ctx, pc)
+	out, errc, err := p.pump.Pump(options)(ctx, pc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	errcList = append(errcList, errc)
 
 	//start chained processes
 	for _, proc := range p.processors {
-		out, errc, err = proc.Process(pulse)(ctx, out)
+		out, errc, err = proc.Process(options)(ctx, out)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		errcList = append(errcList, errc)
 	}
 
-	sinkErrcList, err := p.broadcastToSinks(ctx, pulse, out)
+	sinkErrcList, err := p.broadcastToSinks(ctx, options, out)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	errcList = append(errcList, sinkErrcList...)
 
-	return waitPipe(errcList...)
+	return mergeErrors(errcList...), nil
 }
 
-func waitPipe(errcList ...<-chan error) error {
-	errc := mergeErrors(errcList...)
+// WaitPipe waits till the Pump is finished
+func WaitPipe(errc <-chan error) error {
 	for err := range errc {
 		if err != nil {
 			return err
@@ -160,7 +164,7 @@ func mergeErrors(errcList ...<-chan error) <-chan error {
 	return out
 }
 
-func (p *Pipe) broadcastToSinks(ctx context.Context, pulse phono.Pulse, in <-chan phono.Message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(ctx context.Context, options phono.Options, in <-chan phono.Message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
@@ -171,7 +175,7 @@ func (p *Pipe) broadcastToSinks(ctx context.Context, pulse phono.Pulse, in <-cha
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Sink(pulse)(ctx, broadcasts[i])
+		errc, err := s.Sink(options)(ctx, broadcasts[i])
 		if err != nil {
 			return nil, err
 		}
