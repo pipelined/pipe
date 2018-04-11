@@ -31,20 +31,21 @@ type (
 	}
 )
 
-// Use implements option user interface
-func (ou *OptionUser) Use(v phono.OptionValue) {
-	switch t := v.(type) {
-	case SimpleOption:
-		ou.Simple = t
-	case ComplexOption:
-		ou.Complex = t
+// Validate implements a phono.OptionUser interface
+func (ou *OptionUser) Validate() error {
+	return nil
+}
+
+// WithSimple assignes a SimpleOption to an OptionUser
+func (ou *OptionUser) WithSimple(v SimpleOption) phono.OptionFunc {
+	return func() {
+		ou.Simple = v
 	}
 }
 
-func (ou *OptionUser) UseSimple(v SimpleOption) {
-	ou.Simple = v
-}
-
-func (ou *OptionUser) Validate() error {
-	return nil
+// WithComplex assignes a ComplexOption to an OptionUser
+func (ou *OptionUser) WithComplex(v ComplexOption) phono.OptionFunc {
+	return func() {
+		ou.Complex = v
+	}
 }

@@ -1,13 +1,11 @@
 package pipe_test
 
 import (
-	"fmt"
 	"testing"
 
-	"github.com/dudk/phono/pipe"
+	"github.com/stretchr/testify/assert"
 
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/mock"
+	"github.com/dudk/phono/pipe"
 )
 
 var (
@@ -18,10 +16,12 @@ var (
 
 func TestPipe(t *testing.T) {
 
-	so := mock.SimpleOption(120)
-	o := phono.NewOptions().Public(so)
-	p := pipe.New(*o)
-	fmt.Println(p)
+	p := pipe.New(
+		pipe.WithPump(nil),
+		pipe.WithProcessors(nil),
+	)
+	err := p.Validate()
+	assert.Nil(t, err)
 
 	// assert.Equal(t, bufferSize, 512)
 	// cache := cache.NewVST2(vstPath)

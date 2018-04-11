@@ -35,53 +35,48 @@ type Pipe struct {
 	sinks      []Sink
 }
 
-// Use implements phono.Configurable interface
-// TODO: think of conditions when options are possible to be changed
-func (p *Pipe) Use(value phono.OptionValue) {
-	switch v := value.(type) {
-	case Pump:
-		p.pump = v
-	case []Processor:
-		p.processors = v
-	case []Sink:
-		p.sinks = v
-	}
-}
-
 // Option provides a way to set options to pipe
-// returns previous option value
-// type Option func(p *Pipe) Option
+// returns phono.Option function, which can be executed later
+type Option func(p *Pipe) phono.OptionFunc
 
 // New creates a new pipe and applies provided options
-func New(options phono.Options) *Pipe {
+func New(options ...Option) *Pipe {
 	pipe := &Pipe{
 		processors: make([]Processor, 0),
 		sinks:      make([]Sink, 0),
 	}
-	options.ApplyTo(pipe)
+	for _, option := range options {
+		option(pipe)
+	}
 	return pipe
 }
 
 // WithPump sets pump to Pipe
-// func WithPump(pump Pump) phono.PublicOptionFunc {
-// 	return func(ou phono.OptionUser) {
-// 		ou.Use(pump)
-// 	}
-// }
+func WithPump(pump Pump) Option {
+	return func(p *Pipe) phono.OptionFunc {
+		return func() {
+			p.pump = pump
+		}
+	}
+}
 
 // WithProcessors sets processors to Pipe
-// func WithProcessors(processors ...Processor) phono.PublicOptionFunc {
-// 	return func(ou phono.OptionUser) {
-// 		ou.Use(processors)
-// 	}
-// }
+func WithProcessors(processors ...Processor) Option {
+	return func(p *Pipe) phono.OptionFunc {
+		return func() {
+			p.processors = processors
+		}
+	}
+}
 
 // WithSinks sets sinks to Pipe
-// func WithSinks(sinks ...Sink) phono.PublicOptionFunc {
-// 	return func(ou phono.OptionUser) {
-// 		ou.Use(sinks)
-// 	}
-// }
+func WithSinks(sinks ...Sink) Option {
+	return func(p *Pipe) phono.OptionFunc {
+		return func() {
+			p.sinks = sinks
+		}
+	}
+}
 
 // Validate check's if the pipe is valid and ready to be executed
 func (p *Pipe) Validate() error {
