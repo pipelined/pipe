@@ -21,7 +21,7 @@ func TestPipe(t *testing.T) {
 		pipe.WithProcessors(nil),
 	)
 	err := p.Validate()
-	assert.Nil(t, err)
+	assert.NotNil(t, err)
 
 	// assert.Equal(t, bufferSize, 512)
 	// cache := cache.NewVST2(vstPath)
