@@ -4,18 +4,36 @@ import (
 	"context"
 )
 
-// Message is an interface for pipe transport
-type Message struct {
-	// Samples of message
-	Samples
-	// Pulse
-	*Options
-}
+// Pipe transport types
+type (
+	// Samples represent a sample data sliced per channel
+	Samples [][]float64
 
-// Samples represent a sample data sliced per channel
-type Samples [][]float64
+	// Message is a main structure for pipe transport
+	Message struct {
+		// Samples of message
+		Samples
+		// Pulse
+		*Options
+	}
 
-// Types for Options support
+	// NewMessageFunc is a message-producer function
+	NewMessageFunc func(*Options) Message
+)
+
+// Pipe function types
+type (
+	// PumpFunc is a function to pump sound data to pipe
+	PumpFunc func(context.Context, <-chan Options) (out <-chan Message, errc <-chan error, err error)
+
+	// ProcessFunc is a function to process sound data in pipe
+	ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Message, errc <-chan error, err error)
+
+	// SinkFunc is a function to sink data from pipe
+	SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, err error)
+)
+
+// Options support types
 type (
 	// OptionFunc represents a function which applies the option
 	OptionFunc func()
@@ -28,6 +46,23 @@ type (
 	// Options represents current track attributes: time signature, bpm e.t.c.
 	Options struct {
 		private map[OptionUser][]OptionFunc
+	}
+)
+
+// Small types for common options
+type (
+	// BufferSize represents a buffer size value
+	BufferSize int
+	// NumChannels represents a number of channels
+	NumChannels int
+	// SampleRate represents a sample rate value
+	SampleRate int
+	// Tempo represents a tempo value
+	Tempo float32
+	// TimeSignature represents a time signature
+	TimeSignature struct {
+		NotesPerBar int // 3 in 3/4
+		NoteValue   int // 4 in 3/4
 	}
 )
 
@@ -58,18 +93,6 @@ func (p Options) ApplyTo(ou OptionUser) {
 		}
 	}
 }
-
-// PumpFunc is a function to pump sound data to pipe
-type PumpFunc func(context.Context, <-chan Options) (out <-chan Message, errc <-chan error, err error)
-
-// ProcessFunc is a function to process sound data in pipe
-type ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Message, errc <-chan error, err error)
-
-// SinkFunc is a function to sink data from pipe
-type SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, err error)
-
-// NewMessageFunc is a message-producer function
-type NewMessageFunc func(*Options) Message
 
 // NewMessage returns a default message producer which caches options
 // if new options are passed - next message will contain them
