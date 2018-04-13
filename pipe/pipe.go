@@ -48,7 +48,7 @@ func New(options ...Option) *Pipe {
 		sinks:      make([]Sink, 0),
 	}
 	for _, option := range options {
-		option(pipe)
+		option(pipe)()
 	}
 	return pipe
 }
