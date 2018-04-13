@@ -64,6 +64,8 @@ type (
 		NotesPerBar int // 3 in 3/4
 		NoteValue   int // 4 in 3/4
 	}
+	// SamplePosition represents a position in samples measure
+	SamplePosition int64
 )
 
 // NewOptions returns a new Options instance with initialised map inside
