@@ -13,12 +13,23 @@ import (
 // Pump reads from wav file
 type Pump struct {
 	Path           string
+	BufferSize     int
 	NumChannels    int
 	BitDepth       int
 	SampleRate     int
 	WavAudioFormat int
 	Format         *audio.Format
-	pulse          phono.Pulse
+	options        *phono.Options
+	newMessage     phono.NewMessageFunc
+}
+
+// Sink sink saves audio to wav file
+type Sink struct {
+	Path           string
+	BitDepth       int
+	WavAudioFormat int
+	SampleRate     int
+	NumChannels    int
 }
 
 // NewPump creates a new wav pump and sets wav props
@@ -41,15 +52,14 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 		SampleRate:     int(decoder.SampleRate),
 		WavAudioFormat: int(decoder.WavAudioFormat),
 		Format:         decoder.Format(),
-		// position:       0,
+		BufferSize:     bufferSize,
 	}, nil
 }
 
 // Pump starts the pump process
 // once executed, wav attributes are accessible
-func (p *Pump) Pump(pulse phono.Pulse) phono.PumpFunc {
-	p.pulse = pulse
-	return func(ctx context.Context, pc <-chan phono.Pulse) (<-chan phono.Message, <-chan error, error) {
+func (p *Pump) Pump() (pumpFunc phono.PumpFunc) {
+	pumpFunc = func(ctx context.Context, oc <-chan phono.Options) (<-chan phono.Message, <-chan error, error) {
 		file, err := os.Open(p.Path)
 		if err != nil {
 			return nil, nil, err
@@ -73,6 +83,7 @@ func (p *Pump) Pump(pulse phono.Pulse) phono.PumpFunc {
 					errc <- err
 					return
 				}
+
 				if readSamples == 0 {
 					return
 				}
@@ -86,35 +97,37 @@ func (p *Pump) Pump(pulse phono.Pulse) phono.PumpFunc {
 					return
 				}
 				// create and send message
-				message := p.pulse.NewMessage()
-				message.SetSamples(samples)
+				message := p.newMessage(p.options)
+				message.Samples = samples
+
 				select {
 				case out <- message:
 				case <-ctx.Done():
 					return
-				case pulse := <-pc:
-					p.pulse = pulse
+				case options := <-oc:
+					options.ApplyTo(p)
+					p.options = &options
 				}
 			}
 		}()
 		return out, errc, nil
 	}
+	p.newMessage = pumpFunc.NewMessage()
+	return pumpFunc
+}
+
+// Validate implements phono.OptionUser
+func (p *Pump) Validate() error {
+	// todo: validation
+	return nil
 }
 
 func (p *Pump) newIntBuffer() *audio.IntBuffer {
 	return &audio.IntBuffer{
 		Format:         p.Format,
-		Data:           make([]int, p.pulse.BufferSize()*p.pulse.NumChannels()),
+		Data:           make([]int, p.BufferSize*p.NumChannels),
 		SourceBitDepth: p.BitDepth,
 	}
-}
-
-// Sink sink saves audio to wav file
-type Sink struct {
-	Path           string
-	BitDepth       int
-	WavAudioFormat int
-	pulse          phono.Pulse
 }
 
 // NewSink creates new wav sink
@@ -127,15 +140,14 @@ func NewSink(path string, bitDepth int, wavAudioFormat int) *Sink {
 }
 
 // Sink implements Sink interface
-func (s *Sink) Sink(pulse phono.Pulse) phono.SinkFunc {
-	s.pulse = pulse
+func (s *Sink) Sink() phono.SinkFunc {
 	return func(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
 		file, err := os.Create(s.Path)
 		if err != nil {
 			return nil, err
 		}
 		// setup the encoder and write all the frames
-		e := wav.NewEncoder(file, s.pulse.SampleRate(), s.BitDepth, s.pulse.NumChannels(), int(s.WavAudioFormat))
+		e := wav.NewEncoder(file, s.SampleRate, s.BitDepth, s.NumChannels, int(s.WavAudioFormat))
 		errc := make(chan error, 1)
 		go func() {
 			defer close(errc)
@@ -149,7 +161,7 @@ func (s *Sink) Sink(pulse phono.Pulse) phono.SinkFunc {
 						in = nil
 					} else {
 						//TODO refactor
-						samples := message.Samples()
+						samples := message.Samples
 						err := AsBuffer(ib, samples)
 						if err = e.Write(ib); err != nil {
 							errc <- err
@@ -166,11 +178,17 @@ func (s *Sink) Sink(pulse phono.Pulse) phono.SinkFunc {
 	}
 }
 
+// Validate implements phono.OptionUser
+func (s *Sink) Validate() error {
+	// todo: validation
+	return nil
+}
+
 func (s *Sink) newIntBuffer() *audio.IntBuffer {
 	return &audio.IntBuffer{
 		Format: &audio.Format{
-			NumChannels: s.pulse.NumChannels(),
-			SampleRate:  s.pulse.SampleRate(),
+			NumChannels: s.NumChannels,
+			SampleRate:  s.SampleRate,
 		},
 		SourceBitDepth: s.BitDepth,
 	}
