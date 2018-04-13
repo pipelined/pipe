@@ -10,30 +10,36 @@ import (
 	"github.com/go-audio/wav"
 )
 
-// Pump reads from wav file
-type Pump struct {
-	Path           string
-	BufferSize     int
-	NumChannels    int
-	BitDepth       int
-	SampleRate     int
-	WavAudioFormat int
-	Format         *audio.Format
-	options        *phono.Options
-	newMessage     phono.NewMessageFunc
-}
+type (
+	// Pump reads from wav file
+	// todo: implement conversion if needed
+	Pump struct {
+		filePath   string
+		bufferSize phono.BufferSize
+		options    *phono.Options
+		newMessage phono.NewMessageFunc
 
-// Sink sink saves audio to wav file
-type Sink struct {
-	Path           string
-	BitDepth       int
-	WavAudioFormat int
-	SampleRate     int
-	NumChannels    int
-}
+		// properties of decoded wav
+		wavNumChannels phono.NumChannels
+		wavSampleRate  phono.SampleRate
+		wavBitDepth    int
+		wavAudioFormat int
+		wavFormat      *audio.Format
+	}
+
+	// Sink sink saves audio to wav file
+	Sink struct {
+		filePath string
+
+		wavBitDepth    int
+		wavAudioFormat int
+		wavSampleRate  int
+		wavNumChannels int
+	}
+)
 
 // NewPump creates a new wav pump and sets wav props
-func NewPump(path string, bufferSize int) (*Pump, error) {
+func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -46,13 +52,13 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 	}
 
 	return &Pump{
-		Path:           path,
-		NumChannels:    decoder.Format().NumChannels,
-		BitDepth:       int(decoder.BitDepth),
-		SampleRate:     int(decoder.SampleRate),
-		WavAudioFormat: int(decoder.WavAudioFormat),
-		Format:         decoder.Format(),
-		BufferSize:     bufferSize,
+		bufferSize:     bufferSize,
+		filePath:       path,
+		wavNumChannels: phono.NumChannels(decoder.Format().NumChannels),
+		wavSampleRate:  phono.SampleRate(decoder.SampleRate),
+		wavBitDepth:    int(decoder.BitDepth),
+		wavAudioFormat: int(decoder.WavAudioFormat),
+		wavFormat:      decoder.Format(),
 	}, nil
 }
 
@@ -60,7 +66,7 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 // once executed, wav attributes are accessible
 func (p *Pump) Pump() (pumpFunc phono.PumpFunc) {
 	pumpFunc = func(ctx context.Context, oc <-chan phono.Options) (<-chan phono.Message, <-chan error, error) {
-		file, err := os.Open(p.Path)
+		file, err := os.Open(p.filePath)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -122,32 +128,52 @@ func (p *Pump) Validate() error {
 	return nil
 }
 
+// WavSampleRate returns wav's sample rate
+func (p *Pump) WavSampleRate() phono.SampleRate {
+	return p.wavSampleRate
+}
+
+// WavNumChannels returns wav's number of channels
+func (p *Pump) WavNumChannels() phono.NumChannels {
+	return p.wavNumChannels
+}
+
+// WavBitDepth returns wav's bit depth
+func (p *Pump) WavBitDepth() int {
+	return p.wavBitDepth
+}
+
+// WavAudioFormat returns wav's audio format
+func (p *Pump) WavAudioFormat() int {
+	return p.wavAudioFormat
+}
+
 func (p *Pump) newIntBuffer() *audio.IntBuffer {
 	return &audio.IntBuffer{
-		Format:         p.Format,
-		Data:           make([]int, p.BufferSize*p.NumChannels),
-		SourceBitDepth: p.BitDepth,
+		Format:         p.wavFormat,
+		Data:           make([]int, int(p.bufferSize)*int(p.wavNumChannels)),
+		SourceBitDepth: p.wavBitDepth,
 	}
 }
 
 // NewSink creates new wav sink
 func NewSink(path string, bitDepth int, wavAudioFormat int) *Sink {
 	return &Sink{
-		Path:           path,
-		BitDepth:       bitDepth,
-		WavAudioFormat: wavAudioFormat,
+		filePath:       path,
+		wavBitDepth:    bitDepth,
+		wavAudioFormat: wavAudioFormat,
 	}
 }
 
 // Sink implements Sink interface
 func (s *Sink) Sink() phono.SinkFunc {
 	return func(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
-		file, err := os.Create(s.Path)
+		file, err := os.Create(s.filePath)
 		if err != nil {
 			return nil, err
 		}
 		// setup the encoder and write all the frames
-		e := wav.NewEncoder(file, s.SampleRate, s.BitDepth, s.NumChannels, int(s.WavAudioFormat))
+		e := wav.NewEncoder(file, s.wavSampleRate, s.wavBitDepth, s.wavNumChannels, s.wavAudioFormat)
 		errc := make(chan error, 1)
 		go func() {
 			defer close(errc)
@@ -187,10 +213,10 @@ func (s *Sink) Validate() error {
 func (s *Sink) newIntBuffer() *audio.IntBuffer {
 	return &audio.IntBuffer{
 		Format: &audio.Format{
-			NumChannels: s.NumChannels,
-			SampleRate:  s.SampleRate,
+			NumChannels: s.wavNumChannels,
+			SampleRate:  s.wavSampleRate,
 		},
-		SourceBitDepth: s.BitDepth,
+		SourceBitDepth: s.wavBitDepth,
 	}
 }
 

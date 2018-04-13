@@ -16,7 +16,7 @@ import (
 var (
 	inFile     = "_testdata/test.wav"
 	outFile    = "_testdata/out.wav"
-	bufferSize = 512
+	bufferSize = phono.BufferSize(512)
 )
 
 // TODO: build with local mock package
@@ -26,6 +26,7 @@ func TestWavPump(t *testing.T) {
 	assert.Nil(t, err)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
+
 	// verify if we still satisfy the interface
 	pipe := pipe.New(
 		pipe.WithPump(p),
@@ -37,10 +38,9 @@ func TestWavPump(t *testing.T) {
 	pump := p.Pump()
 	out, errorc, err := pump(ctx, pc)
 	assert.Nil(t, err)
-	assert.Equal(t, 44100, p.SampleRate)
-	assert.Equal(t, 16, p.BitDepth)
-	assert.Equal(t, 2, p.NumChannels)
-	assert.Equal(t, bufferSize, p.BufferSize)
+	assert.Equal(t, phono.SampleRate(44100), p.WavSampleRate())
+	assert.Equal(t, 16, p.WavBitDepth())
+	assert.Equal(t, phono.NumChannels(2), p.WavNumChannels())
 
 	samplesRead, bufCount := 0, 0
 	for out != nil {
@@ -58,7 +58,7 @@ func TestWavPump(t *testing.T) {
 
 	}
 	assert.Equal(t, 646, bufCount)
-	assert.Equal(t, 330534, samplesRead/p.NumChannels)
+	assert.Equal(t, 330534, samplesRead/int(p.WavNumChannels()))
 }
 
 func TestWavSink(t *testing.T) {
@@ -68,7 +68,7 @@ func TestWavSink(t *testing.T) {
 	pc := make(chan phono.Options)
 	defer close(pc)
 
-	s := wav.NewSink(outFile, p.BitDepth, p.WavAudioFormat)
+	s := wav.NewSink(outFile, p.WavBitDepth(), p.WavAudioFormat())
 	// verify if we still satisfy the interface
 	newPipe := pipe.New(
 		pipe.WithPump(p),
