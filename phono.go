@@ -9,7 +9,7 @@ type Message struct {
 	// Samples of message
 	Samples
 	// Pulse
-	Options
+	*Options
 }
 
 // Samples represent a sample data sliced per channel
@@ -67,3 +67,19 @@ type ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Messag
 
 // SinkFunc is a function to sink data from pipe
 type SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, err error)
+
+// NewMessageFunc is a message-producer function
+type NewMessageFunc func(*Options) Message
+
+// NewMessage returns a default message producer which caches options
+// if new options are passed - next message will contain them
+func (p PumpFunc) NewMessage() NewMessageFunc {
+	var options *Options
+	return func(newOptions *Options) Message {
+		if newOptions != options {
+			options = newOptions
+			return Message{Options: newOptions}
+		}
+		return Message{}
+	}
+}

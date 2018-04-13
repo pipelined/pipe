@@ -23,3 +23,14 @@ func TestSimpleOptions(t *testing.T) {
 	assert.Equal(t, "test", ou.Complex.Key)
 	assert.Equal(t, 20, ou.Complex.Value)
 }
+
+// func TestNewMessage(t *testing.T) {
+// 	// ou := &mock.OptionUser{}
+// 	// options := phono.NewOptions()
+// 	// options.Add(ou, ou.WithSimple(mock.SimpleOption(10)))
+// 	// factory := phono.NewMessage()
+// 	// message := factory(options)
+// 	// assert.NotNil(t, message.Options)
+// 	// message = factory(options)
+// 	// assert.Nil(t, message.Options)
+// }

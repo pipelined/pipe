@@ -12,7 +12,6 @@ import (
 type Pump interface {
 	phono.OptionUser
 	Pump() phono.PumpFunc
-	NewMessage() (phono.Message, error)
 }
 
 // Processor defines interface for pipe-processors
