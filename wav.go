@@ -2,6 +2,7 @@ package wav
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -31,11 +32,20 @@ type (
 	Sink struct {
 		filePath string
 
+		wavSampleRate  phono.SampleRate
+		wavNumChannels phono.NumChannels
 		wavBitDepth    int
 		wavAudioFormat int
-		wavSampleRate  int
-		wavNumChannels int
 	}
+)
+
+var (
+	// ErrBufferSizeNotDefined is used when buffer size is not defined
+	ErrBufferSizeNotDefined = errors.New("Buffer size is not defined")
+	// ErrSampleRateNotDefined is used when buffer size is not defined
+	ErrSampleRateNotDefined = errors.New("Sample rate is not defined")
+	// ErrNumChannelsNotDefined is used when number of channels is not defined
+	ErrNumChannelsNotDefined = errors.New("Number of channels is not defined")
 )
 
 // NewPump creates a new wav pump and sets wav props
@@ -48,7 +58,7 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 
 	decoder := wav.NewDecoder(file)
 	if !decoder.IsValidFile() {
-		return nil, fmt.Errorf("Wav is not valid")
+		return nil, errors.New("Wav is not valid")
 	}
 
 	return &Pump{
@@ -124,6 +134,17 @@ func (p *Pump) Pump() (pumpFunc phono.PumpFunc) {
 
 // Validate implements phono.OptionUser
 func (p *Pump) Validate() error {
+	if p.bufferSize == 0 {
+		return ErrBufferSizeNotDefined
+	}
+
+	if p.wavSampleRate == 0 {
+		return ErrSampleRateNotDefined
+	}
+
+	if p.wavNumChannels == 0 {
+		return ErrNumChannelsNotDefined
+	}
 	// todo: validation
 	return nil
 }
@@ -157,9 +178,11 @@ func (p *Pump) newIntBuffer() *audio.IntBuffer {
 }
 
 // NewSink creates new wav sink
-func NewSink(path string, bitDepth int, wavAudioFormat int) *Sink {
+func NewSink(path string, wavSampleRate phono.SampleRate, wavNumChannels phono.NumChannels, bitDepth int, wavAudioFormat int) *Sink {
 	return &Sink{
 		filePath:       path,
+		wavSampleRate:  wavSampleRate,
+		wavNumChannels: wavNumChannels,
 		wavBitDepth:    bitDepth,
 		wavAudioFormat: wavAudioFormat,
 	}
@@ -173,7 +196,7 @@ func (s *Sink) Sink() phono.SinkFunc {
 			return nil, err
 		}
 		// setup the encoder and write all the frames
-		e := wav.NewEncoder(file, s.wavSampleRate, s.wavBitDepth, s.wavNumChannels, s.wavAudioFormat)
+		e := wav.NewEncoder(file, int(s.wavSampleRate), s.wavBitDepth, int(s.wavNumChannels), s.wavAudioFormat)
 		errc := make(chan error, 1)
 		go func() {
 			defer close(errc)
@@ -186,7 +209,6 @@ func (s *Sink) Sink() phono.SinkFunc {
 					if !ok {
 						in = nil
 					} else {
-						//TODO refactor
 						samples := message.Samples
 						err := AsBuffer(ib, samples)
 						if err = e.Write(ib); err != nil {
@@ -206,6 +228,13 @@ func (s *Sink) Sink() phono.SinkFunc {
 
 // Validate implements phono.OptionUser
 func (s *Sink) Validate() error {
+	if s.wavSampleRate == 0 {
+		return ErrSampleRateNotDefined
+	}
+
+	if s.wavNumChannels == 0 {
+		return ErrNumChannelsNotDefined
+	}
 	// todo: validation
 	return nil
 }
@@ -213,8 +242,8 @@ func (s *Sink) Validate() error {
 func (s *Sink) newIntBuffer() *audio.IntBuffer {
 	return &audio.IntBuffer{
 		Format: &audio.Format{
-			NumChannels: s.wavNumChannels,
-			SampleRate:  s.wavSampleRate,
+			NumChannels: int(s.wavNumChannels),
+			SampleRate:  int(s.wavSampleRate),
 		},
 		SourceBitDepth: s.wavBitDepth,
 	}
@@ -227,7 +256,7 @@ func AsSamples(b audio.Buffer) ([][]float64, error) {
 	}
 
 	if b.PCMFormat() == nil {
-		return nil, fmt.Errorf("Format for Buffer is not defined")
+		return nil, errors.New("Format for Buffer is not defined")
 	}
 
 	numChannels := b.PCMFormat().NumChannels
@@ -257,7 +286,6 @@ func AsBuffer(b audio.Buffer, s [][]float64) error {
 
 	numChannels := len(s)
 	bufferLen := numChannels * len(s[0])
-
 	switch b.(type) {
 	case *audio.IntBuffer:
 		ib := b.(*audio.IntBuffer)
