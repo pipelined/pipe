@@ -1,10 +1,13 @@
 package pipe_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/dudk/phono"
+	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
 )
 
@@ -16,48 +19,29 @@ var (
 
 func TestPipe(t *testing.T) {
 
+	pump := &mock.Pump{}
+
+	proc := &mock.Processor{}
+	sink := &mock.Sink{}
+
 	p := pipe.New(
-		pipe.WithPump(nil),
-		pipe.WithProcessors(nil),
+		pipe.WithPump(pump),
+		pipe.WithProcessors(proc),
+		pipe.WithSinks(sink),
 	)
 	err := p.Validate()
 	assert.NotNil(t, err)
 
-	// assert.Equal(t, bufferSize, 512)
-	// cache := cache.NewVST2(vstPath)
-	// defer cache.Close()
-	// plugin, err := cache.LoadPlugin(vstPath, vstName)
-	// assert.Nil(t, err)
-	// defer plugin.Close()
-	// wavPump, err := wav.NewPump(inFile, bufferSize)
-	// assert.Nil(t, err)
-	// session := session.New(
-	// 	session.BufferSize(bufferSize),
-	// 	session.NumChannels(wavPump.NumChannels),
-	// 	session.SampleRate(wavPump.SampleRate),
-	// )
-	// wavSink := wav.NewSink(
-	// 	outFile,
-	// 	wavPump.BitDepth,
-	// 	wavPump.WavAudioFormat,
-	// )
-	// wavSink1 := wav.NewSink(
-	// 	outFile2,
-	// 	wavPump.BitDepth,
-	// 	wavPump.WavAudioFormat,
-	// )
-	// vst2Processor := vst2.NewProcessor(plugin)
-	// pipe := New(
-	// 	*session,
-	// 	WithPump(wavPump),
-	// 	WithProcessors(vst2Processor),
-	// 	WithSinks(wavSink, wavSink1),
-	// )
-	// ctx, cancelFunc := context.WithCancel(context.Background())
-	// defer cancelFunc()
-	// pc := make(chan phono.Pulse)
-	// defer close(pc)
+	proc.Simple = 100
+	err = p.Validate()
+	assert.Nil(t, err)
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+	pc := make(chan phono.Options)
+	defer close(pc)
 
-	// err = pipe.Run(ctx, session.Pulse(), pc)
-	// assert.Nil(t, err)
+	errc, err := p.Run(ctx, pc)
+	assert.Nil(t, err)
+	err = pipe.WaitPipe(errc)
+	assert.Nil(t, err)
 }
