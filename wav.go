@@ -74,8 +74,8 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 
 // Pump starts the pump process
 // once executed, wav attributes are accessible
-func (p *Pump) Pump() (pumpFunc phono.PumpFunc) {
-	pumpFunc = func(ctx context.Context, oc <-chan phono.Options) (<-chan phono.Message, <-chan error, error) {
+func (p *Pump) Pump() phono.PumpFunc {
+	return func(ctx context.Context, newMessage phono.NewMessageFunc, oc <-chan phono.Options) (<-chan phono.Message, <-chan error, error) {
 		file, err := os.Open(p.filePath)
 		if err != nil {
 			return nil, nil, err
@@ -113,7 +113,7 @@ func (p *Pump) Pump() (pumpFunc phono.PumpFunc) {
 					return
 				}
 				// create and send message
-				message := p.newMessage(p.options)
+				message := newMessage(p.options, false)
 				message.Samples = samples
 
 				select {
@@ -128,8 +128,6 @@ func (p *Pump) Pump() (pumpFunc phono.PumpFunc) {
 		}()
 		return out, errc, nil
 	}
-	p.newMessage = pumpFunc.NewMessage()
-	return pumpFunc
 }
 
 // Validate implements phono.OptionUser

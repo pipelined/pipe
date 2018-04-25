@@ -20,6 +20,9 @@ var (
 )
 
 // TODO: build with local mock package
+func newMessage(*phono.Options, bool) phono.Message {
+	return phono.Message{}
+}
 
 func TestWavPump(t *testing.T) {
 	p, err := wav.NewPump(inFile, bufferSize)
@@ -38,7 +41,7 @@ func TestWavPump(t *testing.T) {
 	defer close(pc)
 
 	pump := p.Pump()
-	out, errorc, err := pump(ctx, pc)
+	out, errorc, err := pump(ctx, newMessage, pc)
 	assert.Nil(t, err)
 	assert.Equal(t, phono.SampleRate(44100), p.WavSampleRate())
 	assert.Equal(t, 16, p.WavBitDepth())
@@ -81,7 +84,7 @@ func TestWavSink(t *testing.T) {
 	assert.NotNil(t, newPipe)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	out, _, err := p.Pump()(ctx, pc)
+	out, _, err := p.Pump()(ctx, newMessage, pc)
 	assert.Nil(t, err)
 
 	errorc, err := s.Sink()(ctx, out)
