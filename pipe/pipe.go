@@ -10,7 +10,7 @@ import (
 
 // Pump is a source of samples
 type Pump interface {
-	phono.OptionUser
+	Validate() error
 	Pump() phono.PumpFunc
 }
 
@@ -122,7 +122,7 @@ func (p *Pipe) Run(ctx context.Context, pc chan phono.Options) (<-chan error, er
 
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	// start pump
-	out, errc, err := p.pump.Pump()(ctx, pc)
+	out, errc, err := p.pump.Pump()(ctx, p.NewMessage(), pc)
 	if err != nil {
 		return nil, err
 	}
@@ -224,4 +224,25 @@ func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([
 	}()
 
 	return errcList, nil
+}
+
+// NewMessage returns a default message producer which caches options
+// if new options are passed - next message will contain them
+func (p *Pipe) NewMessage() phono.NewMessageFunc {
+	var options *phono.Options
+	// this closure can be called when new message is needed
+	// @newOptions will override current options if new
+	// @notify if true will add all sinks to waitgroup
+	return func(newOptions *phono.Options, notify bool) (message phono.Message) {
+		if newOptions != options {
+			options = newOptions
+			message = phono.Message{Options: newOptions}
+		}
+		message = phono.Message{}
+		if notify {
+			message.WaitGroup = &sync.WaitGroup{}
+			message.Add(len(p.sinks))
+		}
+		return
+	}
 }

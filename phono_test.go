@@ -16,7 +16,7 @@ func TestSimpleOptions(t *testing.T) {
 			Key:   "test",
 			Value: 20,
 		})
-	op := phono.NewOptions().Add(ou, s).Add(ou, c)
+	op := phono.NewOptions().AddOptionsFor(ou, s).AddOptionsFor(ou, c)
 	op.ApplyTo(ou)
 
 	assert.Equal(t, mock.SimpleOption(10), ou.Simple)

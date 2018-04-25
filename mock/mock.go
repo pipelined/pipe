@@ -65,8 +65,7 @@ type Pump struct {
 
 // Pump implements pipe.Pump interface
 func (p *Pump) Pump() phono.PumpFunc {
-	var pumpFn phono.PumpFunc
-	pumpFn = func(ctx context.Context, options <-chan phono.Options) (<-chan phono.Message, <-chan error, error) {
+	return func(ctx context.Context, newMessage phono.NewMessageFunc, options <-chan phono.Options) (<-chan phono.Message, <-chan error, error) {
 		out := make(chan phono.Message)
 		errc := make(chan error, 1)
 		go func() {
@@ -82,15 +81,13 @@ func (p *Pump) Pump() phono.PumpFunc {
 					}
 					op.ApplyTo(p)
 				default:
-					message := p.newMessage(nil)
+					message := newMessage(nil, false)
 					out <- message
 				}
 			}
 		}()
 		return out, errc, nil
 	}
-	p.newMessage = pumpFn.NewMessage()
-	return pumpFn
 }
 
 // Validate implements phono.OptionUser

@@ -2,6 +2,7 @@ package phono
 
 import (
 	"context"
+	"sync"
 )
 
 // Pipe transport types
@@ -15,16 +16,17 @@ type (
 		Samples
 		// Pulse
 		*Options
+		*sync.WaitGroup
 	}
 
 	// NewMessageFunc is a message-producer function
-	NewMessageFunc func(*Options) Message
+	NewMessageFunc func(*Options, bool) Message
 )
 
 // Pipe function types
 type (
 	// PumpFunc is a function to pump sound data to pipe
-	PumpFunc func(context.Context, <-chan Options) (out <-chan Message, errc <-chan error, err error)
+	PumpFunc func(context.Context, NewMessageFunc, <-chan Options) (out <-chan Message, errc <-chan error, err error)
 
 	// ProcessFunc is a function to process sound data in pipe
 	ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Message, errc <-chan error, err error)
@@ -75,8 +77,8 @@ func NewOptions() *Options {
 	}
 }
 
-// Add accepts an option-user and
-func (p *Options) Add(reciever OptionUser, options ...OptionFunc) *Options {
+// AddOptionsFor accepts an option-user and options
+func (p *Options) AddOptionsFor(reciever OptionUser, options ...OptionFunc) *Options {
 	private, ok := p.private[reciever]
 	if !ok {
 		private = make([]OptionFunc, 0, len(options))
@@ -96,15 +98,9 @@ func (p Options) ApplyTo(ou OptionUser) {
 	}
 }
 
-// NewMessage returns a default message producer which caches options
-// if new options are passed - next message will contain them
-func (p PumpFunc) NewMessage() NewMessageFunc {
-	var options *Options
-	return func(newOptions *Options) Message {
-		if newOptions != options {
-			options = newOptions
-			return Message{Options: newOptions}
-		}
-		return Message{}
+// Delivered should be called by sink once message is recieved
+func (m *Message) Delivered() {
+	if m.WaitGroup != nil {
+		m.Done()
 	}
 }
