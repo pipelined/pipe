@@ -75,7 +75,7 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 // Pump starts the pump process
 // once executed, wav attributes are accessible
 func (p *Pump) Pump() phono.PumpFunc {
-	return func(ctx context.Context, newMessage phono.NewMessageFunc, oc <-chan phono.Options) (<-chan phono.Message, <-chan error, error) {
+	return func(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan phono.Message, <-chan error, error) {
 		file, err := os.Open(p.filePath)
 		if err != nil {
 			return nil, nil, err
@@ -94,35 +94,33 @@ func (p *Pump) Pump() phono.PumpFunc {
 			// create new int buffer
 			ib := p.newIntBuffer()
 			for {
-				readSamples, err := decoder.PCMBuffer(ib)
-				if err != nil {
-					errc <- err
-					return
-				}
-
-				if readSamples == 0 {
-					return
-				}
-				// p.position += phono.SamplePosition(readSamples)
-				// prune buffer to actual size
-				ib.Data = ib.Data[:readSamples]
-				// convert buffer to samples
-				samples, err := AsSamples(ib)
-				if err != nil {
-					errc <- err
-					return
-				}
-				// create and send message
-				message := newMessage(p.options, false)
-				message.Samples = samples
-
 				select {
-				case out <- message:
 				case <-ctx.Done():
 					return
-				case options := <-oc:
-					options.ApplyTo(p)
-					p.options = &options
+				default:
+					readSamples, err := decoder.PCMBuffer(ib)
+					if err != nil {
+						errc <- err
+						return
+					}
+
+					if readSamples == 0 {
+						return
+					}
+					// p.position += phono.SamplePosition(readSamples)
+					// prune buffer to actual size
+					ib.Data = ib.Data[:readSamples]
+					// convert buffer to samples
+					samples, err := AsSamples(ib)
+					if err != nil {
+						errc <- err
+						return
+					}
+					// create and send message
+					message := newMessage()
+					message.ApplyTo(p)
+					message.Samples = samples
+					out <- message
 				}
 			}
 		}()
