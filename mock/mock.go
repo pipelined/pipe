@@ -65,7 +65,7 @@ type Pump struct {
 
 // Pump implements pipe.Pump interface
 func (p *Pump) Pump() phono.PumpFunc {
-	return func(ctx context.Context, newMessage phono.NewMessageFunc, options <-chan phono.Options) (<-chan phono.Message, <-chan error, error) {
+	return func(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan phono.Message, <-chan error, error) {
 		out := make(chan phono.Message)
 		errc := make(chan error, 1)
 		go func() {
@@ -75,13 +75,13 @@ func (p *Pump) Pump() phono.PumpFunc {
 				select {
 				case <-ctx.Done():
 					return
-				case op, ok := <-options:
-					if !ok {
-						options = nil
-					}
-					op.ApplyTo(p)
+				// case op, ok := <-options:
+				// 	if !ok {
+				// 		options = nil
+				// 	}
+				// 	op.ApplyTo(p)
 				default:
-					message := newMessage(nil, false)
+					message := newMessage()
 					out <- message
 				}
 			}

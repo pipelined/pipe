@@ -37,11 +37,11 @@ func TestPipe(t *testing.T) {
 	assert.Nil(t, err)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	pc := make(chan phono.Options)
+	pc := make(chan *phono.Options)
 	defer close(pc)
 
 	errc, err := p.Run(ctx, pc)
 	assert.Nil(t, err)
-	err = pipe.WaitPipe(errc)
+	err = pipe.Wait(errc)
 	assert.Nil(t, err)
 }

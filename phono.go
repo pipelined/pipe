@@ -20,13 +20,13 @@ type (
 	}
 
 	// NewMessageFunc is a message-producer function
-	NewMessageFunc func(*Options, bool) Message
+	NewMessageFunc func() Message
 )
 
 // Pipe function types
 type (
 	// PumpFunc is a function to pump sound data to pipe
-	PumpFunc func(context.Context, NewMessageFunc, <-chan Options) (out <-chan Message, errc <-chan error, err error)
+	PumpFunc func(context.Context, NewMessageFunc) (out <-chan Message, errc <-chan error, err error)
 
 	// ProcessFunc is a function to process sound data in pipe
 	ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Message, errc <-chan error, err error)
@@ -78,28 +78,32 @@ func NewOptions() *Options {
 }
 
 // AddOptionsFor accepts an option-user and options
-func (p *Options) AddOptionsFor(reciever OptionUser, options ...OptionFunc) *Options {
-	private, ok := p.private[reciever]
+func (op *Options) AddOptionsFor(reciever OptionUser, options ...OptionFunc) *Options {
+	private, ok := op.private[reciever]
 	if !ok {
 		private = make([]OptionFunc, 0, len(options))
 	}
 	private = append(private, options...)
 
-	p.private[reciever] = private
-	return p
+	op.private[reciever] = private
+	return op
 }
 
 // ApplyTo consumes options defined for option user in this pulse
-func (p Options) ApplyTo(ou OptionUser) {
-	if options, ok := p.private[ou]; ok {
+func (op *Options) ApplyTo(ou OptionUser) {
+	if op == nil {
+		return
+	}
+	if options, ok := op.private[ou]; ok {
 		for _, option := range options {
 			option()
 		}
 	}
 }
 
-// Delivered should be called by sink once message is recieved
-func (m *Message) Delivered() {
+// RecievedBy should be called by sink once message is recieved
+func (m *Message) RecievedBy(reciever interface{}) {
+	// TODO check in map of receivers
 	if m.WaitGroup != nil {
 		m.Done()
 	}

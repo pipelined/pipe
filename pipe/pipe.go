@@ -35,6 +35,9 @@ type Pipe struct {
 	pump       Pump
 	processors []Processor
 	sinks      []Sink
+
+	// todo: handle new options
+	// options *phono.Options
 }
 
 // Option provides a way to set options to pipe
@@ -114,7 +117,7 @@ func (p *Pipe) Validate() error {
 }
 
 // Run invokes a pipe and returns channel for outgoing errors handling
-func (p *Pipe) Run(ctx context.Context, pc chan phono.Options) (<-chan error, error) {
+func (p *Pipe) Run(ctx context.Context, opc chan *phono.Options) (<-chan error, error) {
 	// validate the whole pipe
 	if err := p.Validate(); err != nil {
 		return nil, err
@@ -122,7 +125,7 @@ func (p *Pipe) Run(ctx context.Context, pc chan phono.Options) (<-chan error, er
 
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	// start pump
-	out, errc, err := p.pump.Pump()(ctx, p.NewMessage(), pc)
+	out, errc, err := p.pump.Pump()(ctx, p.start(ctx, opc))
 	if err != nil {
 		return nil, err
 	}
@@ -146,8 +149,8 @@ func (p *Pipe) Run(ctx context.Context, pc chan phono.Options) (<-chan error, er
 	return mergeErrors(errcList...), nil
 }
 
-// WaitPipe waits till the Pump is finished
-func WaitPipe(errc <-chan error) error {
+// Wait waits till the Pump is finished
+func Wait(errc <-chan error) error {
 	for err := range errc {
 		if err != nil {
 			return err
@@ -226,23 +229,50 @@ func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([
 	return errcList, nil
 }
 
-// NewMessage returns a default message producer which caches options
+// start returns a default message producer which caches options
 // if new options are passed - next message will contain them
-func (p *Pipe) NewMessage() phono.NewMessageFunc {
-	var options *phono.Options
+func (p *Pipe) start(ctx context.Context, opc chan *phono.Options) phono.NewMessageFunc {
+	var cached, options *phono.Options
+	giveMe := make(chan struct{})
+	takeIt := make(chan phono.Message)
+
+	// this goroutine is a message factory
+	go func() {
+		defer close(giveMe)
+		defer close(takeIt)
+		var message phono.Message
+		var ok bool
+		for {
+			select {
+			case <-giveMe:
+				if options != cached {
+					cached = options
+					message = phono.Message{Options: options}
+				}
+				message = phono.Message{}
+				takeIt <- message
+			case options, ok = <-opc:
+				if !ok {
+					return
+				}
+				options.ApplyTo(p)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	var newMessage struct{}
 	// this closure can be called when new message is needed
-	// @newOptions will override current options if new
-	// @notify if true will add all sinks to waitgroup
-	return func(newOptions *phono.Options, notify bool) (message phono.Message) {
-		if newOptions != options {
-			options = newOptions
-			message = phono.Message{Options: newOptions}
-		}
-		message = phono.Message{}
-		if notify {
-			message.WaitGroup = &sync.WaitGroup{}
-			message.Add(len(p.sinks))
-		}
-		return
+	return func() phono.Message {
+		giveMe <- newMessage
+		return <-takeIt
 	}
 }
+
+// Pause pauses the pipe
+// two options for implementation:
+// 1. override NewMessage function in pump which will wait until pipe.Resume is called
+// 2. create a separate channel to send pause and resume signals
+// func (p *Pipe) Pause() {
+// }
