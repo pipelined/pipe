@@ -24,13 +24,14 @@ func TestSimpleOptions(t *testing.T) {
 	assert.Equal(t, 20, ou.Complex.Value)
 }
 
-// func TestNewMessage(t *testing.T) {
-// 	// ou := &mock.OptionUser{}
-// 	// options := phono.NewOptions()
-// 	// options.Add(ou, ou.WithSimple(mock.SimpleOption(10)))
-// 	// factory := phono.NewMessage()
-// 	// message := factory(options)
-// 	// assert.NotNil(t, message.Options)
-// 	// message = factory(options)
-// 	// assert.Nil(t, message.Options)
-// }
+func TestMergeOptions(t *testing.T) {
+	ou := &mock.OptionUser{}
+	simple1 := ou.WithSimple(mock.SimpleOption(10))
+	simple2 := ou.WithSimple(mock.SimpleOption(20))
+	options1 := phono.NewOptions().AddOptionsFor(ou, simple1)
+	options2 := phono.NewOptions().AddOptionsFor(ou, simple2)
+	options1.Merge(options2)
+	options1.ApplyTo(ou)
+
+	assert.Equal(t, mock.SimpleOption(20), ou.Simple)
+}
