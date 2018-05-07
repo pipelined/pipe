@@ -101,8 +101,11 @@ func (op *Options) ApplyTo(ou OptionUser) {
 	}
 }
 
-// Merge merges two option sets into one
-func (op *Options) Merge(source *Options) {
+// Join two option sets into one
+func (op *Options) Join(source *Options) *Options {
+	if op == nil || op.Empty() {
+		return source
+	}
 	for newKey, newValues := range source.private {
 		if _, ok := op.private[newKey]; ok {
 			op.private[newKey] = append(op.private[newKey], newValues...)
@@ -110,6 +113,15 @@ func (op *Options) Merge(source *Options) {
 			op.private[newKey] = newValues
 		}
 	}
+	return op
+}
+
+// Empty returns true if options are empty
+func (op Options) Empty() bool {
+	if op.private == nil || len(op.private) == 0 {
+		return true
+	}
+	return false
 }
 
 // RecievedBy should be called by sink once message is recieved

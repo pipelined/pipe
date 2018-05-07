@@ -25,13 +25,18 @@ func TestSimpleOptions(t *testing.T) {
 }
 
 func TestMergeOptions(t *testing.T) {
+	var options *phono.Options
 	ou := &mock.OptionUser{}
-	simple1 := ou.WithSimple(mock.SimpleOption(10))
-	simple2 := ou.WithSimple(mock.SimpleOption(20))
-	options1 := phono.NewOptions().AddOptionsFor(ou, simple1)
-	options2 := phono.NewOptions().AddOptionsFor(ou, simple2)
-	options1.Merge(options2)
-	options1.ApplyTo(ou)
 
+	simple1 := ou.WithSimple(mock.SimpleOption(10))
+	newOptions1 := phono.NewOptions().AddOptionsFor(ou, simple1)
+	options = options.Join(newOptions1)
+	options.ApplyTo(ou)
+	assert.Equal(t, mock.SimpleOption(10), ou.Simple)
+
+	simple2 := ou.WithSimple(mock.SimpleOption(20))
+	newOptions2 := phono.NewOptions().AddOptionsFor(ou, simple2)
+	options = options.Join(newOptions2)
+	options.ApplyTo(ou)
 	assert.Equal(t, mock.SimpleOption(20), ou.Simple)
 }

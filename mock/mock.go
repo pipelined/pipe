@@ -3,6 +3,7 @@ package mock
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/dudk/phono"
 )
@@ -59,30 +60,31 @@ func (ou *OptionUser) WithComplex(v ComplexOption) phono.OptionFunc {
 
 // Pump mocks a pipe.Pump interface
 type Pump struct {
-	simple     SimpleOption
+	*OptionUser
 	newMessage phono.NewMessageFunc
 }
 
 // Pump implements pipe.Pump interface
 func (p *Pump) Pump() phono.PumpFunc {
+	fmt.Println("mock.Pump called")
 	return func(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan phono.Message, <-chan error, error) {
+		fmt.Println("mock.Pump started")
 		out := make(chan phono.Message)
 		errc := make(chan error, 1)
 		go func() {
 			defer close(out)
 			defer close(errc)
-			for i := 0; i < 100; i++ {
+			for i := 0; i < 10; i++ {
 				select {
 				case <-ctx.Done():
+					fmt.Println("mock.Pump finished")
 					return
-				// case op, ok := <-options:
-				// 	if !ok {
-				// 		options = nil
-				// 	}
-				// 	op.ApplyTo(p)
 				default:
+					fmt.Println("mock.Pump request new message")
 					message := newMessage()
+					fmt.Println("mock.Pump got new message")
 					out <- message
+					time.Sleep(time.Millisecond * 500)
 				}
 			}
 		}()
@@ -92,7 +94,7 @@ func (p *Pump) Pump() phono.PumpFunc {
 
 // Validate implements phono.OptionUser
 func (p *Pump) Validate() error {
-	if p.simple > pumpSimpleConstraint {
+	if p.OptionUser.Simple > pumpSimpleConstraint {
 		return fmt.Errorf("Simple bigger than %v", pumpSimpleConstraint)
 	}
 	return nil
@@ -159,6 +161,8 @@ func (s *Sink) Sink() phono.SinkFunc {
 					if !ok {
 						in = nil
 					} else {
+						fmt.Printf("mock.Sink new message: %+v\n", m)
+						m.RecievedBy(s)
 						if m.Options != nil {
 							m.Options.ApplyTo(s)
 						}
