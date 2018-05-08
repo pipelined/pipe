@@ -40,10 +40,11 @@ type Pipe struct {
 
 	cachedOptions phono.Options
 	options       chan *phono.Options
-	run           action
-	pause         action
-	resume        action
-	init          chan struct{}
+	sync.Mutex
+	run    action
+	pause  action
+	resume action
+	init   chan struct{}
 	// closed when run finshed correctly
 	interrupt chan error
 	// closed when pipe.interrupt is closed
@@ -71,6 +72,7 @@ type action struct {
 var (
 	// ErrInvalidState is returned if pipe method cannot be executed at this moment
 	ErrInvalidState = errors.New("Invalid state")
+	do              struct{}
 )
 
 func (a *action) do() (done chan error, err error) {
@@ -111,13 +113,13 @@ func New(options ...Option) (*Pipe, error) {
 	// start state machine
 	p.init = make(chan struct{})
 	state := state(ready)
+	p.Lock()
 	go func() {
 		for state != nil {
 			state = state(p)
 		}
 		p.stop()
 	}()
-	// done, _ := p.init.do()
 	<-p.init
 	p.init = nil
 	for _, option := range options {
@@ -153,18 +155,24 @@ func WithSinks(sinks ...Sink) Option {
 	}
 }
 
-//Run TODO
+// Run switches pipe into running state
 func (p *Pipe) Run() (chan error, error) {
+	p.Lock()
+	defer p.Unlock()
 	return p.run.do()
 }
 
-//Pause TODO
+// Pause switches pipe into pausing state
 func (p *Pipe) Pause() (chan error, error) {
+	p.Lock()
+	defer p.Unlock()
 	return p.pause.do()
 }
 
-//Resume TODO
+// Resume switches pipe into running state
 func (p *Pipe) Resume() (chan error, error) {
+	p.Lock()
+	defer p.Unlock()
 	return p.resume.do()
 }
 
@@ -298,11 +306,11 @@ func ready(p *Pipe) state {
 	p.message.ask = make(chan struct{})
 	p.message.take = make(chan phono.Message)
 	p.run.initiate()
-	if p.init != nil {
-		close(p.init)
-	}
+	p.Unlock()
+	defer p.Lock()
 	for {
 		select {
+		case p.init <- do:
 		case newOptions, ok := <-p.options:
 			if !ok {
 				return nil
@@ -345,11 +353,13 @@ func ready(p *Pipe) state {
 	}
 }
 
-// running state defines that pipe can:
-//	pause - stop the processing
+// running state defines that pipe can be:
+//	paused - pause the processing
 func running(p *Pipe) state {
 	p.pause.initiate()
 	p.actionCallback()
+	p.Unlock()
+	defer p.Lock()
 	for {
 		select {
 		case <-p.pause.start:
@@ -382,6 +392,8 @@ func running(p *Pipe) state {
 
 // pausing defines a state when pipe accepted a pause command and pushed message with confirmation
 func pausing(p *Pipe) state {
+	p.Unlock()
+	defer p.Lock()
 	for {
 		select {
 		case newOptions, ok := <-p.options:
@@ -416,6 +428,8 @@ func pausing(p *Pipe) state {
 func paused(p *Pipe) state {
 	p.resume.initiate()
 	p.actionCallback()
+	p.Unlock()
+	defer p.Lock()
 	for {
 		select {
 		case newOptions, ok := <-p.options:
@@ -446,5 +460,7 @@ func (p *Pipe) Push(o *phono.Options) {
 
 // Close must be called to clean up pipe's resources
 func (p *Pipe) Close() {
+	p.Lock()
+	defer p.Unlock()
 	close(p.options)
 }
