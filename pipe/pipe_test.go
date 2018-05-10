@@ -3,7 +3,6 @@ package pipe_test
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -15,8 +14,6 @@ import (
 var (
 	bufferSize = 512
 )
-
-// TODO: build tests with mock package
 
 func TestPipe(t *testing.T) {
 
@@ -51,7 +48,7 @@ func TestPipe(t *testing.T) {
 	err = pipe.Wait(done)
 	assert.Nil(t, err)
 
-	time.Sleep(time.Second * 1)
+	// time.Sleep(time.Second * 1)
 
 	s := pump.WithSimple(mock.SimpleOption(10))
 	fmt.Println("sending options")
@@ -66,8 +63,6 @@ func TestPipe(t *testing.T) {
 	assert.Nil(t, err)
 	fmt.Println("done paused")
 
-	// time.Sleep(time.Second * 1)
-
 	done, err = p.Resume()
 	assert.Nil(t, err)
 	fmt.Println("waiting resume")
@@ -76,7 +71,14 @@ func TestPipe(t *testing.T) {
 
 	assert.Nil(t, err)
 	fmt.Println("waiting pipe")
-	err = pipe.Wait(p.Interrupt)
+	err = pipe.Wait(p.Signal.Interrupted)
 	fmt.Println("pipe is done")
 	assert.Nil(t, err)
+
+	// err = p.Push(op)
+	// assert.Nil(t, err)
+	// done, err = p.Run()
+	// assert.Nil(t, err)
+	// pipe.Wait(done)
+	// err = pipe.Wait(p.Signal.Interrupted)
 }
