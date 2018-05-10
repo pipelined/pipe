@@ -45,8 +45,8 @@ func TestPipe(t *testing.T) {
 
 	done, err = p.Run()
 	assert.Nil(t, err)
-	err = pipe.Wait(done)
-	assert.Nil(t, err)
+	// err = pipe.Wait(done)
+	// assert.Nil(t, err)
 
 	// time.Sleep(time.Second * 1)
 
@@ -69,16 +69,16 @@ func TestPipe(t *testing.T) {
 	err = pipe.Wait(done)
 	assert.Nil(t, err)
 
-	assert.Nil(t, err)
-	fmt.Println("waiting pipe")
-	err = pipe.Wait(p.Signal.Interrupted)
-	fmt.Println("pipe is done")
-	assert.Nil(t, err)
+	// assert.Nil(t, err)
+	// fmt.Println("waiting pipe")
+	// err = pipe.Wait(done)
+	// fmt.Println("pipe is done")
+	// assert.Nil(t, err)
 
-	// err = p.Push(op)
-	// assert.Nil(t, err)
-	// done, err = p.Run()
-	// assert.Nil(t, err)
-	// pipe.Wait(done)
+	err = p.Push(op)
+	assert.Nil(t, err)
+	done, err = p.Run()
+	assert.Nil(t, err)
+	pipe.Wait(done)
 	// err = pipe.Wait(p.Signal.Interrupted)
 }

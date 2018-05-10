@@ -3,7 +3,6 @@ package pipe
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/dudk/phono"
@@ -42,25 +41,23 @@ type Pipe struct {
 	cachedOptions phono.Options
 	options       chan *phono.Options
 	sync.Mutex
-	run    action
-	pause  action
-	resume action
+	run    chan struct{}
+	pause  chan struct{}
+	resume chan struct{}
+	errorc chan error
 
-	Signal struct {
-		// closed once state machine is initialised
-		init chan struct{}
-		// closed when run finshed correctly
-		// private channel is needed to accomulate all errors from pipe
+	signal struct {
+		// closed when pipe goes into ready state
 		interrupted chan error
-		// closed when run finshed correctly
-		// public channel is needed to expose channel for handling the processing ending
-		Interrupted chan error
+		// closed when pipe goes paused
+		paused chan error
+		// closed when pipe is resumed
+		resumed chan error
 	}
 	message struct {
 		ask  chan struct{}
 		take chan phono.Message
 	}
-	actionCallback func()
 }
 
 // Option provides a way to set options to pipe
@@ -70,45 +67,19 @@ type Option func(p *Pipe) phono.OptionFunc
 // state for pipe state machine
 type state func(p *Pipe) state
 
-// action performed by user of state machine
-type action struct {
-	start     chan struct{}
-	interrupt chan error
-}
-
 var (
 	// ErrInvalidState is returned if pipe method cannot be executed at this moment
 	ErrInvalidState = errors.New("Invalid state")
-	// ErrActionDismissed is returned if action was executed, but not finished because state changed
-	ErrActionDismissed = errors.New("Action dismissed")
-	do                 struct{}
 )
 
-func (a *action) do() (done chan error, err error) {
-	done = a.interrupt
+func do(action chan struct{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			done = nil
 			err = ErrInvalidState
 		}
 	}()
-	close(a.start)
+	close(action)
 	return
-}
-
-func (p *Pipe) handle(a action) {
-	a.start = nil
-	p.actionCallback = a.done
-}
-
-func (a *action) done() {
-	close(a.interrupt)
-	a.interrupt = nil
-}
-
-func (a *action) initiate() {
-	a.start = make(chan struct{})
-	a.interrupt = make(chan error)
 }
 
 // New creates a new pipe and applies provided options
@@ -120,7 +91,7 @@ func New(options ...Option) (*Pipe, error) {
 	}
 	p.ctx, p.cancelFn = context.WithCancel(context.Background())
 	// start state machine
-	p.Signal.init = make(chan struct{})
+	p.signal.interrupted = make(chan error)
 	state := state(ready)
 	p.Lock()
 	go func() {
@@ -129,8 +100,8 @@ func New(options ...Option) (*Pipe, error) {
 		}
 		p.stop()
 	}()
-	<-p.Signal.init
-	p.Signal.init = nil
+	<-p.signal.interrupted
+	// p.Signal.init = nil
 	for _, option := range options {
 		option(p)()
 	}
@@ -168,21 +139,36 @@ func WithSinks(sinks ...Sink) Option {
 func (p *Pipe) Run() (chan error, error) {
 	p.Lock()
 	defer p.Unlock()
-	return p.run.do()
+	err := do(p.run)
+	if err != nil {
+		return nil, err
+	}
+	p.signal.interrupted = make(chan error)
+	return p.signal.interrupted, nil
 }
 
 // Pause switches pipe into pausing state
 func (p *Pipe) Pause() (chan error, error) {
 	p.Lock()
 	defer p.Unlock()
-	return p.pause.do()
+	err := do(p.pause)
+	if err != nil {
+		return nil, err
+	}
+	p.signal.paused = make(chan error)
+	return p.signal.paused, nil
 }
 
 // Resume switches pipe into running state
 func (p *Pipe) Resume() (chan error, error) {
 	p.Lock()
 	defer p.Unlock()
-	return p.resume.do()
+	err := do(p.resume)
+	if err != nil {
+		return nil, err
+	}
+	p.signal.interrupted = make(chan error)
+	return p.signal.interrupted, nil
 }
 
 // Validate check's if the pipe is valid and ready to be executed
@@ -302,6 +288,8 @@ func (p *Pipe) broadcastToSinks(in <-chan phono.Message) ([]<-chan error, error)
 // if new options are pushed into pipe - next message will contain them
 // if pipe paused this call will block
 func (p *Pipe) soure() phono.NewMessageFunc {
+	p.message.ask = make(chan struct{})
+	p.message.take = make(chan phono.Message)
 	var do struct{}
 	return func() (message phono.Message) {
 		p.message.ask <- do
@@ -312,13 +300,8 @@ func (p *Pipe) soure() phono.NewMessageFunc {
 // ready state defines that pipe can:
 // 	run - start processing
 func ready(p *Pipe) state {
-	fmt.Println("pipe is ready")
-	p.message.ask = make(chan struct{})
-	p.message.take = make(chan phono.Message)
-	p.run.initiate()
-	if p.Signal.init != nil {
-		close(p.Signal.init)
-	}
+	p.run = make(chan struct{})
+	close(p.signal.interrupted)
 	p.Unlock()
 	defer p.Lock()
 	for {
@@ -329,18 +312,19 @@ func ready(p *Pipe) state {
 			}
 			newOptions.ApplyTo(p)
 			p.cachedOptions = *p.cachedOptions.Join(newOptions)
-		case <-p.run.start:
-			p.handle(p.run)
-			p.Signal.Interrupted = make(chan error)
+		case <-p.run:
+			p.run = nil
 			if err := p.Validate(); err != nil {
-				p.run.interrupt <- err
+				p.signal.interrupted <- err
+				return ready
 			}
 			errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 			// start pump
 			out, errc, err := p.pump.Pump()(p.ctx, p.soure())
 			if err != nil {
-				p.run.interrupt <- err
+				p.signal.interrupted <- err
+				return ready
 			}
 			errcList = append(errcList, errc)
 
@@ -348,18 +332,19 @@ func ready(p *Pipe) state {
 			for _, proc := range p.processors {
 				out, errc, err = proc.Process()(p.ctx, out)
 				if err != nil {
-					p.run.interrupt <- err
+					p.signal.interrupted <- err
+					return ready
 				}
 				errcList = append(errcList, errc)
 			}
 
 			sinkErrcList, err := p.broadcastToSinks(out)
 			if err != nil {
-				p.run.interrupt <- err
+				p.signal.interrupted <- err
+				return ready
 			}
 			errcList = append(errcList, sinkErrcList...)
-
-			p.Signal.interrupted = mergeErrors(errcList...)
+			p.errorc = mergeErrors(errcList...)
 			return running
 		}
 	}
@@ -368,15 +353,13 @@ func ready(p *Pipe) state {
 // running state defines that pipe can be:
 //	paused - pause the processing
 func running(p *Pipe) state {
-	fmt.Println("pipe is running")
-	p.pause.initiate()
-	p.actionCallback()
+	p.pause = make(chan struct{})
 	p.Unlock()
 	defer p.Lock()
 	for {
 		select {
-		case <-p.pause.start:
-			p.handle(p.pause)
+		case <-p.pause:
+			p.pause = nil
 			return pausing
 		case newOptions, ok := <-p.options:
 			if !ok {
@@ -391,13 +374,10 @@ func running(p *Pipe) state {
 				p.cachedOptions = phono.Options{}
 			}
 			p.message.take <- message
-		case err, failed := <-p.Signal.interrupted:
-			if !failed {
-				close(p.Signal.Interrupted)
-			} else {
-				p.Signal.Interrupted <- err
+		case err := <-p.errorc:
+			if err != nil {
+				p.signal.interrupted <- err
 			}
-			p.actionCallback = nil
 			return ready
 		}
 	}
@@ -405,7 +385,7 @@ func running(p *Pipe) state {
 
 // pausing defines a state when pipe accepted a pause command and pushed message with confirmation
 func pausing(p *Pipe) state {
-	fmt.Println("pipe is pausing")
+	close(p.signal.interrupted)
 	p.Unlock()
 	defer p.Lock()
 	for {
@@ -427,22 +407,18 @@ func pausing(p *Pipe) state {
 			p.message.take <- message
 			message.Wait()
 			return paused
-		case err, failed := <-p.Signal.interrupted:
-			if !failed {
-				close(p.Signal.Interrupted)
-			} else {
-				p.Signal.Interrupted <- err
+		case err := <-p.errorc:
+			if err != nil {
+				p.signal.interrupted <- err
 			}
-			p.actionCallback = nil
 			return ready
 		}
 	}
 }
 
 func paused(p *Pipe) state {
-	fmt.Println("pipe is paused")
-	p.resume.initiate()
-	p.actionCallback()
+	close(p.signal.paused)
+	p.resume = make(chan struct{})
 	p.Unlock()
 	defer p.Lock()
 	for {
@@ -453,8 +429,8 @@ func paused(p *Pipe) state {
 			}
 			newOptions.ApplyTo(p)
 			p.cachedOptions = *p.cachedOptions.Join(newOptions)
-		case <-p.resume.start:
-			p.handle(p.resume)
+		case <-p.resume:
+			p.resume = nil
 			return running
 		}
 	}
@@ -470,11 +446,6 @@ func (p *Pipe) stop() {
 
 // Push new options into pipe
 func (p *Pipe) Push(o *phono.Options) error {
-	p.Lock()
-	defer p.Unlock()
-	if p.options == nil {
-		return ErrInvalidState
-	}
 	p.options <- o
 	return nil
 }
