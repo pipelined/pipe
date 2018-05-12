@@ -32,7 +32,6 @@ type Sink interface {
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
-	ctx        context.Context
 	cancelFn   context.CancelFunc
 	pump       Pump
 	processors []Processor
@@ -89,7 +88,6 @@ func New(options ...Option) (*Pipe, error) {
 		sinks:      make([]Sink, 0),
 		options:    make(chan *phono.Options),
 	}
-	p.ctx, p.cancelFn = context.WithCancel(context.Background())
 	// start state machine
 	p.signal.interrupted = make(chan error)
 	state := state(ready)
@@ -240,7 +238,7 @@ func mergeErrors(errcList ...<-chan error) chan error {
 	return out
 }
 
-func (p *Pipe) broadcastToSinks(in <-chan phono.Message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
@@ -251,7 +249,7 @@ func (p *Pipe) broadcastToSinks(in <-chan phono.Message) ([]<-chan error, error)
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Sink()(p.ctx, broadcasts[i])
+		errc, err := s.Sink()(ctx, broadcasts[i])
 		if err != nil {
 			return nil, err
 		}
@@ -275,7 +273,7 @@ func (p *Pipe) broadcastToSinks(in <-chan phono.Message) ([]<-chan error, error)
 						broadcasts[i] <- buf
 					}
 				}
-			case <-p.ctx.Done():
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -314,33 +312,39 @@ func ready(p *Pipe) state {
 			p.cachedOptions = *p.cachedOptions.Join(newOptions)
 		case <-p.run:
 			p.run = nil
+			ctx, cancelFn := context.WithCancel(context.Background())
+			p.cancelFn = cancelFn
 			if err := p.Validate(); err != nil {
 				p.signal.interrupted <- err
+				p.cancelFn()
 				return ready
 			}
 			errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 			// start pump
-			out, errc, err := p.pump.Pump()(p.ctx, p.soure())
+			out, errc, err := p.pump.Pump()(ctx, p.soure())
 			if err != nil {
 				p.signal.interrupted <- err
+				p.cancelFn()
 				return ready
 			}
 			errcList = append(errcList, errc)
 
 			// start chained processesing
 			for _, proc := range p.processors {
-				out, errc, err = proc.Process()(p.ctx, out)
+				out, errc, err = proc.Process()(ctx, out)
 				if err != nil {
 					p.signal.interrupted <- err
+					p.cancelFn()
 					return ready
 				}
 				errcList = append(errcList, errc)
 			}
 
-			sinkErrcList, err := p.broadcastToSinks(out)
+			sinkErrcList, err := p.broadcastToSinks(ctx, out)
 			if err != nil {
 				p.signal.interrupted <- err
+				p.cancelFn()
 				return ready
 			}
 			errcList = append(errcList, sinkErrcList...)
@@ -377,6 +381,7 @@ func running(p *Pipe) state {
 		case err := <-p.errorc:
 			if err != nil {
 				p.signal.interrupted <- err
+				p.cancelFn()
 			}
 			return ready
 		}
@@ -410,6 +415,7 @@ func pausing(p *Pipe) state {
 		case err := <-p.errorc:
 			if err != nil {
 				p.signal.interrupted <- err
+				p.cancelFn()
 			}
 			return ready
 		}
@@ -453,6 +459,9 @@ func (p *Pipe) Push(o *phono.Options) error {
 // Close must be called to clean up pipe's resources
 func (p *Pipe) Close() {
 	p.Lock()
+	if p.cancelFn != nil {
+		p.cancelFn()
+	}
 	close(p.options)
 	p.options = nil
 	p.Unlock()
