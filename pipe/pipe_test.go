@@ -36,7 +36,6 @@ func TestPipe(t *testing.T) {
 	err = p.Validate()
 	assert.NotNil(t, err)
 
-	proc.Simple = 100
 	err = p.Validate()
 	assert.Nil(t, err)
 

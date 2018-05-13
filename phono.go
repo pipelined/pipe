@@ -42,8 +42,8 @@ type (
 
 	// Param is a structure for delayed parameters apply
 	Param struct {
-		For   interface{}
-		Apply ParamFunc
+		Consumer interface{}
+		Apply    ParamFunc
 	}
 
 	// Params represents current track attributes: time signature, bpm e.t.c.
@@ -72,30 +72,38 @@ type (
 )
 
 // NewParams returns a new params instance with initialised map inside
-func NewParams() *Params {
-	return &Params{
+func NewParams(params ...Param) (result *Params) {
+	result = &Params{
 		private: make(map[interface{}][]ParamFunc),
 	}
+	result.Add(params...)
+	return
 }
 
 // Add accepts a slice of params
-func (p *Params) Add(reciever interface{}, params ...ParamFunc) *Params {
-	private, ok := p.private[reciever]
-	if !ok {
-		private = make([]ParamFunc, 0, len(params))
+func (p *Params) Add(params ...Param) *Params {
+	if p == nil {
+		return nil
 	}
-	private = append(private, params...)
+	for _, param := range params {
+		private, ok := p.private[param.Consumer]
+		if !ok {
+			private = make([]ParamFunc, 0, len(params))
+		}
+		private = append(private, param.Apply)
 
-	p.private[reciever] = private
+		p.private[param.Consumer] = private
+	}
+
 	return p
 }
 
 // ApplyTo consumes params defined for consumer in this param set
-func (p *Params) ApplyTo(ou interface{}) {
+func (p *Params) ApplyTo(consumer interface{}) {
 	if p == nil {
 		return
 	}
-	if params, ok := p.private[ou]; ok {
+	if params, ok := p.private[consumer]; ok {
 		for _, param := range params {
 			param()
 		}

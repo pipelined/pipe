@@ -12,34 +12,14 @@ const (
 	defaultBufferSize = 512
 	defaultSampleRate = 44100
 
-	pumpSimpleConstraint      = 100
-	processorSimpleConstraint = 0
-	sinkSimpleConstraint      = -100
 	// PumpMaxInterval is 2 seconds
 	PumpMaxInterval = 2000
+	// PumpDefaultLimit is 10 messages
+	PumpDefaultLimit = 10
 )
 
 // Param types
 type (
-	// SimpleParam represents int64-valued param
-	SimpleParam int64
-	// ComplexParam represents  key-valued struct param
-	ComplexParam struct {
-		Key   string
-		Value interface{}
-	}
-
-	// ParamUser is a simple param-user
-	ParamUser struct {
-		Simple  SimpleParam
-		Complex ComplexParam
-	}
-	// SimpleParamUser is a simple param-user with multiple values
-	SimpleParamUser struct {
-		Simple1 SimpleParam
-		Simple2 SimpleParam
-	}
-
 	// Interval between messages in ms
 	Interval int
 	// IntervalConsumer represents Interval parameter consumer
@@ -48,33 +28,37 @@ type (
 	}
 	// Limit messages
 	Limit int
+	// LimitConsumer represents Limit parameter consumer
+	LimitConsumer interface {
+		LimitParam(Limit) phono.Param
+	}
 )
 
-// Validate implements a phono.ParamUser interface
-func (ou *ParamUser) Validate() error {
-	return nil
-}
-
-// WithSimple assignes a SimpleParam to an ParamUser
-func (ou *ParamUser) WithSimple(v SimpleParam) phono.ParamFunc {
-	return func() {
-		ou.Simple = v
-	}
-}
-
-// WithComplex assignes a ComplexParam to an ParamUser
-func (ou *ParamUser) WithComplex(v ComplexParam) phono.ParamFunc {
-	return func() {
-		ou.Complex = v
-	}
-}
-
 // Pump mocks a pipe.Pump interface
-// TODO: add interval and number of messages as params
 type Pump struct {
 	Interval
 	Limit
 	newMessage phono.NewMessageFunc
+}
+
+// IntervalParam implements IntervalConsumer
+func (p *Pump) IntervalParam(i Interval) phono.Param {
+	return phono.Param{
+		Consumer: p,
+		Apply: func() {
+			p.Interval = i
+		},
+	}
+}
+
+// LimitParam implements LimitConsumer
+func (p *Pump) LimitParam(l Limit) phono.Param {
+	return phono.Param{
+		Consumer: p,
+		Apply: func() {
+			p.Limit = l
+		},
+	}
 }
 
 // Pump implements pipe.Pump interface
@@ -107,16 +91,14 @@ func (p *Pump) Pump() phono.PumpFunc {
 
 // Validate implements phono.ParamUser
 func (p *Pump) Validate() error {
-	if p.Interval > pumpSimpleConstraint {
-		return fmt.Errorf("Simple bigger than %v", pumpSimpleConstraint)
+	if p.Interval > PumpMaxInterval {
+		return fmt.Errorf("Interval bigger than %v", PumpMaxInterval)
 	}
 	return nil
 }
 
 // Processor mocks a pipe.Processor interface
-type Processor struct {
-	Simple SimpleParam
-}
+type Processor struct{}
 
 // Process implements pipe.Processor
 func (p *Processor) Process() phono.ProcessFunc {
@@ -151,16 +133,11 @@ func (p *Processor) Process() phono.ProcessFunc {
 
 // Validate the processor
 func (p *Processor) Validate() error {
-	if p.Simple == processorSimpleConstraint {
-		return fmt.Errorf("Simple equals to %v", processorSimpleConstraint)
-	}
 	return nil
 }
 
 // Sink mocks up a pipe.Sink interface
-type Sink struct {
-	simple SimpleParam
-}
+type Sink struct{}
 
 // Sink implements Sink interface
 func (s *Sink) Sink() phono.SinkFunc {
@@ -192,8 +169,5 @@ func (s *Sink) Sink() phono.SinkFunc {
 
 // Validate the sink
 func (s *Sink) Validate() error {
-	if s.simple < sinkSimpleConstraint {
-		return fmt.Errorf("Simple less than %v", sinkSimpleConstraint)
-	}
 	return nil
 }
