@@ -16,13 +16,13 @@ type Pump interface {
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	phono.OptionUser
+	Validate() error
 	Process() phono.ProcessFunc
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	phono.OptionUser
+	Validate() error
 	Sink() phono.SinkFunc
 }
 
@@ -37,8 +37,8 @@ type Pipe struct {
 	processors []Processor
 	sinks      []Sink
 
-	cachedOptions phono.Options
-	options       chan *phono.Options
+	cachedParams phono.Params
+	paramc       chan *phono.Params
 	sync.Mutex
 	run    chan struct{}
 	pause  chan struct{}
@@ -59,9 +59,9 @@ type Pipe struct {
 	}
 }
 
-// Option provides a way to set options to pipe
-// returns phono.Option function, which can be executed later
-type Option func(p *Pipe) phono.OptionFunc
+// Param provides a way to set parameters to pipe
+// returns phono.ParamFunc, which can be executed later
+type Param func(p *Pipe) phono.ParamFunc
 
 // state for pipe state machine
 type state func(p *Pipe) state
@@ -81,12 +81,12 @@ func do(action chan struct{}) (err error) {
 	return
 }
 
-// New creates a new pipe and applies provided options
-func New(options ...Option) (*Pipe, error) {
+// New creates a new pipe and applies provided params
+func New(params ...Param) (*Pipe, error) {
 	p := &Pipe{
 		processors: make([]Processor, 0),
 		sinks:      make([]Sink, 0),
-		options:    make(chan *phono.Options),
+		paramc:     make(chan *phono.Params),
 	}
 	// start state machine
 	p.signal.interrupted = make(chan error)
@@ -100,15 +100,15 @@ func New(options ...Option) (*Pipe, error) {
 	}()
 	<-p.signal.interrupted
 	// p.Signal.init = nil
-	for _, option := range options {
-		option(p)()
+	for _, param := range params {
+		param(p)()
 	}
 	return p, nil
 }
 
 // WithPump sets pump to Pipe
-func WithPump(pump Pump) Option {
-	return func(p *Pipe) phono.OptionFunc {
+func WithPump(pump Pump) Param {
+	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			p.pump = pump
 		}
@@ -116,8 +116,8 @@ func WithPump(pump Pump) Option {
 }
 
 // WithProcessors sets processors to Pipe
-func WithProcessors(processors ...Processor) Option {
-	return func(p *Pipe) phono.OptionFunc {
+func WithProcessors(processors ...Processor) Param {
+	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			p.processors = processors
 		}
@@ -125,8 +125,8 @@ func WithProcessors(processors ...Processor) Option {
 }
 
 // WithSinks sets sinks to Pipe
-func WithSinks(sinks ...Sink) Option {
-	return func(p *Pipe) phono.OptionFunc {
+func WithSinks(sinks ...Sink) Param {
+	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			p.sinks = sinks
 		}
@@ -282,8 +282,8 @@ func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([
 	return errcList, nil
 }
 
-// soure returns a default message producer which caches options
-// if new options are pushed into pipe - next message will contain them
+// soure returns a default message producer which caches params
+// if new params are pushed into pipe - next message will contain them
 // if pipe paused this call will block
 func (p *Pipe) soure() phono.NewMessageFunc {
 	p.message.ask = make(chan struct{})
@@ -304,12 +304,12 @@ func ready(p *Pipe) state {
 	defer p.Lock()
 	for {
 		select {
-		case newOptions, ok := <-p.options:
+		case newParams, ok := <-p.paramc:
 			if !ok {
 				return nil
 			}
-			newOptions.ApplyTo(p)
-			p.cachedOptions = *p.cachedOptions.Join(newOptions)
+			newParams.ApplyTo(p)
+			p.cachedParams = *p.cachedParams.Join(newParams)
 		case <-p.run:
 			p.run = nil
 			ctx, cancelFn := context.WithCancel(context.Background())
@@ -359,23 +359,25 @@ func ready(p *Pipe) state {
 func running(p *Pipe) state {
 	p.pause = make(chan struct{})
 	p.Unlock()
+	defer func() {
+		p.pause = nil
+	}()
 	defer p.Lock()
 	for {
 		select {
 		case <-p.pause:
-			p.pause = nil
 			return pausing
-		case newOptions, ok := <-p.options:
+		case newParams, ok := <-p.paramc:
 			if !ok {
 				return nil
 			}
-			newOptions.ApplyTo(p)
-			p.cachedOptions = *p.cachedOptions.Join(newOptions)
+			newParams.ApplyTo(p)
+			p.cachedParams = *p.cachedParams.Join(newParams)
 		case <-p.message.ask:
 			message := phono.Message{}
-			if !p.cachedOptions.Empty() {
-				message.Options = &p.cachedOptions
-				p.cachedOptions = phono.Options{}
+			if !p.cachedParams.Empty() {
+				message.Params = &p.cachedParams
+				p.cachedParams = phono.Params{}
 			}
 			p.message.take <- message
 		case err := <-p.errorc:
@@ -395,20 +397,20 @@ func pausing(p *Pipe) state {
 	defer p.Lock()
 	for {
 		select {
-		case newOptions, ok := <-p.options:
+		case newParams, ok := <-p.paramc:
 			if !ok {
 				return nil
 			}
-			newOptions.ApplyTo(p)
-			p.cachedOptions = *p.cachedOptions.Join(newOptions)
+			newParams.ApplyTo(p)
+			p.cachedParams = *p.cachedParams.Join(newParams)
 		case <-p.message.ask:
 			message := phono.Message{}
-			if !p.cachedOptions.Empty() {
-				message.Options = &p.cachedOptions
-				p.cachedOptions = phono.Options{}
+			if !p.cachedParams.Empty() {
+				message.Params = &p.cachedParams
+				p.cachedParams = phono.Params{}
 			}
 			message.WaitGroup = &sync.WaitGroup{}
-			message.Add(len(p.sinks))
+			message.WaitGroup.Add(len(p.sinks))
 			p.message.take <- message
 			message.Wait()
 			return paused
@@ -429,12 +431,12 @@ func paused(p *Pipe) state {
 	defer p.Lock()
 	for {
 		select {
-		case newOptions, ok := <-p.options:
+		case newParams, ok := <-p.paramc:
 			if !ok {
 				return nil
 			}
-			newOptions.ApplyTo(p)
-			p.cachedOptions = *p.cachedOptions.Join(newOptions)
+			newParams.ApplyTo(p)
+			p.cachedParams = *p.cachedParams.Join(newParams)
 		case <-p.resume:
 			p.resume = nil
 			return running
@@ -450,9 +452,9 @@ func (p *Pipe) stop() {
 	p.message.take = nil
 }
 
-// Push new options into pipe
-func (p *Pipe) Push(o *phono.Options) error {
-	p.options <- o
+// Push new params into pipe
+func (p *Pipe) Push(o *phono.Params) error {
+	p.paramc <- o
 	return nil
 }
 
@@ -462,7 +464,7 @@ func (p *Pipe) Close() {
 	if p.cancelFn != nil {
 		p.cancelFn()
 	}
-	close(p.options)
-	p.options = nil
+	close(p.paramc)
+	p.paramc = nil
 	p.Unlock()
 }

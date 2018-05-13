@@ -8,35 +8,35 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSimpleOptions(t *testing.T) {
-	ou := &mock.OptionUser{}
-	s := ou.WithSimple(mock.SimpleOption(10))
+func TestSimpleParams(t *testing.T) {
+	ou := &mock.ParamUser{}
+	s := ou.WithSimple(mock.SimpleParam(10))
 	c := ou.WithComplex(
-		mock.ComplexOption{
+		mock.ComplexParam{
 			Key:   "test",
 			Value: 20,
 		})
-	op := phono.NewOptions().AddOptionsFor(ou, s).AddOptionsFor(ou, c)
+	op := phono.NewParams().Add(ou, s).Add(ou, c)
 	op.ApplyTo(ou)
 
-	assert.Equal(t, mock.SimpleOption(10), ou.Simple)
+	assert.Equal(t, mock.SimpleParam(10), ou.Simple)
 	assert.Equal(t, "test", ou.Complex.Key)
 	assert.Equal(t, 20, ou.Complex.Value)
 }
 
-func TestMergeOptions(t *testing.T) {
-	var options *phono.Options
-	ou := &mock.OptionUser{}
+func TestMergeParams(t *testing.T) {
+	var params *phono.Params
+	ou := &mock.ParamUser{}
 
-	simple1 := ou.WithSimple(mock.SimpleOption(10))
-	newOptions1 := phono.NewOptions().AddOptionsFor(ou, simple1)
-	options = options.Join(newOptions1)
-	options.ApplyTo(ou)
-	assert.Equal(t, mock.SimpleOption(10), ou.Simple)
+	simple1 := ou.WithSimple(mock.SimpleParam(10))
+	newParams1 := phono.NewParams().Add(ou, simple1)
+	params = params.Join(newParams1)
+	params.ApplyTo(ou)
+	assert.Equal(t, mock.SimpleParam(10), ou.Simple)
 
-	simple2 := ou.WithSimple(mock.SimpleOption(20))
-	newOptions2 := phono.NewOptions().AddOptionsFor(ou, simple2)
-	options = options.Join(newOptions2)
-	options.ApplyTo(ou)
-	assert.Equal(t, mock.SimpleOption(20), ou.Simple)
+	simple2 := ou.WithSimple(mock.SimpleParam(20))
+	newParams2 := phono.NewParams().Add(ou, simple2)
+	params = params.Join(newParams2)
+	params.ApplyTo(ou)
+	assert.Equal(t, mock.SimpleParam(20), ou.Simple)
 }

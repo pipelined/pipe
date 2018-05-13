@@ -3,10 +3,11 @@ package pipe_test
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-	"github.com/dudk/phono"
 	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
 )
@@ -18,7 +19,8 @@ var (
 func TestPipe(t *testing.T) {
 
 	pump := &mock.Pump{
-		OptionUser: &mock.OptionUser{},
+		Limit:    10,
+		Interval: 100,
 	}
 
 	proc := &mock.Processor{}
@@ -50,17 +52,18 @@ func TestPipe(t *testing.T) {
 
 	// time.Sleep(time.Second * 1)
 
-	s := pump.WithSimple(mock.SimpleOption(10))
-	fmt.Println("sending options")
-	op := phono.NewOptions().AddOptionsFor(pump, s)
-	p.Push(op)
-	fmt.Println("options are sent")
-
+	// s := pump.WithSimple(mock.SimpleParam(10))
+	// fmt.Println("sending params")
+	// op := phono.NewParams().AddParamsFor(pump, s)
+	// p.Push(op)
+	// fmt.Println("params are sent")
+	time.Sleep(time.Millisecond * 100)
 	done, err = p.Pause()
-	assert.Nil(t, err)
+	require.Nil(t, err)
+	require.NotNil(t, done)
 	fmt.Println("waiting paused")
 	err = pipe.Wait(done)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	fmt.Println("done paused")
 
 	done, err = p.Resume()
@@ -75,10 +78,10 @@ func TestPipe(t *testing.T) {
 	// fmt.Println("pipe is done")
 	// assert.Nil(t, err)
 
-	err = p.Push(op)
-	assert.Nil(t, err)
-	done, err = p.Run()
-	assert.Nil(t, err)
-	pipe.Wait(done)
+	// err = p.Push(op)
+	// assert.Nil(t, err)
+	// done, err = p.Run()
+	// assert.Nil(t, err)
+	// pipe.Wait(done)
 	// err = pipe.Wait(p.Signal.Interrupted)
 }

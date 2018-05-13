@@ -15,7 +15,7 @@ type (
 		// Samples of message
 		Samples
 		// Pulse
-		*Options
+		*Params
 		*sync.WaitGroup
 	}
 
@@ -35,23 +35,24 @@ type (
 	SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, err error)
 )
 
-// Options support types
+// Params support types
 type (
-	// OptionFunc represents a function which applies the option
-	OptionFunc func()
+	// ParamFunc represents a function which applies the param
+	ParamFunc func()
 
-	// OptionUser is an interface wich allows to Use options
-	OptionUser interface {
-		Validate() error
+	// Param is a structure for delayed parameters apply
+	Param struct {
+		For   interface{}
+		Apply ParamFunc
 	}
 
-	// Options represents current track attributes: time signature, bpm e.t.c.
-	Options struct {
-		private map[OptionUser][]OptionFunc
+	// Params represents current track attributes: time signature, bpm e.t.c.
+	Params struct {
+		private map[interface{}][]ParamFunc
 	}
 )
 
-// Small types for common options
+// Small types for common params
 type (
 	// BufferSize represents a buffer size value
 	BufferSize int
@@ -70,55 +71,55 @@ type (
 	SamplePosition int64
 )
 
-// NewOptions returns a new Options instance with initialised map inside
-func NewOptions() *Options {
-	return &Options{
-		private: make(map[OptionUser][]OptionFunc),
+// NewParams returns a new params instance with initialised map inside
+func NewParams() *Params {
+	return &Params{
+		private: make(map[interface{}][]ParamFunc),
 	}
 }
 
-// AddOptionsFor accepts an option-user and options
-func (op *Options) AddOptionsFor(reciever OptionUser, options ...OptionFunc) *Options {
-	private, ok := op.private[reciever]
+// Add accepts a slice of params
+func (p *Params) Add(reciever interface{}, params ...ParamFunc) *Params {
+	private, ok := p.private[reciever]
 	if !ok {
-		private = make([]OptionFunc, 0, len(options))
+		private = make([]ParamFunc, 0, len(params))
 	}
-	private = append(private, options...)
+	private = append(private, params...)
 
-	op.private[reciever] = private
-	return op
+	p.private[reciever] = private
+	return p
 }
 
-// ApplyTo consumes options defined for option user in this pulse
-func (op *Options) ApplyTo(ou OptionUser) {
-	if op == nil {
+// ApplyTo consumes params defined for consumer in this param set
+func (p *Params) ApplyTo(ou interface{}) {
+	if p == nil {
 		return
 	}
-	if options, ok := op.private[ou]; ok {
-		for _, option := range options {
-			option()
+	if params, ok := p.private[ou]; ok {
+		for _, param := range params {
+			param()
 		}
 	}
 }
 
-// Join two option sets into one
-func (op *Options) Join(source *Options) *Options {
-	if op == nil || op.Empty() {
+// Join two param sets into one
+func (p *Params) Join(source *Params) *Params {
+	if p == nil || p.Empty() {
 		return source
 	}
 	for newKey, newValues := range source.private {
-		if _, ok := op.private[newKey]; ok {
-			op.private[newKey] = append(op.private[newKey], newValues...)
+		if _, ok := p.private[newKey]; ok {
+			p.private[newKey] = append(p.private[newKey], newValues...)
 		} else {
-			op.private[newKey] = newValues
+			p.private[newKey] = newValues
 		}
 	}
-	return op
+	return p
 }
 
-// Empty returns true if options are empty
-func (op Options) Empty() bool {
-	if op.private == nil || len(op.private) == 0 {
+// Empty returns true if params are empty
+func (p Params) Empty() bool {
+	if p.private == nil || len(p.private) == 0 {
 		return true
 	}
 	return false

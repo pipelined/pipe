@@ -15,52 +15,65 @@ const (
 	pumpSimpleConstraint      = 100
 	processorSimpleConstraint = 0
 	sinkSimpleConstraint      = -100
+	// PumpMaxInterval is 2 seconds
+	PumpMaxInterval = 2000
 )
 
-// Option types
+// Param types
 type (
-	// SimpleOption represents int64-valued option
-	SimpleOption int64
-	// ComplexOption represents  key-valued struct option
-	ComplexOption struct {
+	// SimpleParam represents int64-valued param
+	SimpleParam int64
+	// ComplexParam represents  key-valued struct param
+	ComplexParam struct {
 		Key   string
 		Value interface{}
 	}
 
-	// OptionUser is a simple option-user
-	OptionUser struct {
-		Simple  SimpleOption
-		Complex ComplexOption
+	// ParamUser is a simple param-user
+	ParamUser struct {
+		Simple  SimpleParam
+		Complex ComplexParam
 	}
-	// SimpleOptionUser is a simple option-user with multiple values
-	SimpleOptionUser struct {
-		Simple1 SimpleOption
-		Simple2 SimpleOption
+	// SimpleParamUser is a simple param-user with multiple values
+	SimpleParamUser struct {
+		Simple1 SimpleParam
+		Simple2 SimpleParam
 	}
+
+	// Interval between messages in ms
+	Interval int
+	// IntervalConsumer represents Interval parameter consumer
+	IntervalConsumer interface {
+		IntervalParam(Interval) phono.Param
+	}
+	// Limit messages
+	Limit int
 )
 
-// Validate implements a phono.OptionUser interface
-func (ou *OptionUser) Validate() error {
+// Validate implements a phono.ParamUser interface
+func (ou *ParamUser) Validate() error {
 	return nil
 }
 
-// WithSimple assignes a SimpleOption to an OptionUser
-func (ou *OptionUser) WithSimple(v SimpleOption) phono.OptionFunc {
+// WithSimple assignes a SimpleParam to an ParamUser
+func (ou *ParamUser) WithSimple(v SimpleParam) phono.ParamFunc {
 	return func() {
 		ou.Simple = v
 	}
 }
 
-// WithComplex assignes a ComplexOption to an OptionUser
-func (ou *OptionUser) WithComplex(v ComplexOption) phono.OptionFunc {
+// WithComplex assignes a ComplexParam to an ParamUser
+func (ou *ParamUser) WithComplex(v ComplexParam) phono.ParamFunc {
 	return func() {
 		ou.Complex = v
 	}
 }
 
 // Pump mocks a pipe.Pump interface
+// TODO: add interval and number of messages as params
 type Pump struct {
-	*OptionUser
+	Interval
+	Limit
 	newMessage phono.NewMessageFunc
 }
 
@@ -74,7 +87,7 @@ func (p *Pump) Pump() phono.PumpFunc {
 		go func() {
 			defer close(out)
 			defer close(errc)
-			for i := 0; i < 10; i++ {
+			for i := 0; i < int(p.Limit); i++ {
 				select {
 				case <-ctx.Done():
 					fmt.Println("mock.Pump finished")
@@ -84,7 +97,7 @@ func (p *Pump) Pump() phono.PumpFunc {
 					message := newMessage()
 					fmt.Println("mock.Pump got new message")
 					out <- message
-					time.Sleep(time.Millisecond * 500)
+					time.Sleep(time.Millisecond * time.Duration(p.Interval))
 				}
 			}
 		}()
@@ -92,9 +105,9 @@ func (p *Pump) Pump() phono.PumpFunc {
 	}
 }
 
-// Validate implements phono.OptionUser
+// Validate implements phono.ParamUser
 func (p *Pump) Validate() error {
-	if p.OptionUser.Simple > pumpSimpleConstraint {
+	if p.Interval > pumpSimpleConstraint {
 		return fmt.Errorf("Simple bigger than %v", pumpSimpleConstraint)
 	}
 	return nil
@@ -102,7 +115,7 @@ func (p *Pump) Validate() error {
 
 // Processor mocks a pipe.Processor interface
 type Processor struct {
-	Simple SimpleOption
+	Simple SimpleParam
 }
 
 // Process implements pipe.Processor
@@ -121,8 +134,8 @@ func (p *Processor) Process() phono.ProcessFunc {
 					if !ok {
 						in = nil
 					} else {
-						if m.Options != nil {
-							m.Options.ApplyTo(p)
+						if m.Params != nil {
+							m.Params.ApplyTo(p)
 						}
 						// m.Samples = p.plugin.Process(m.Samples)
 						out <- m
@@ -146,7 +159,7 @@ func (p *Processor) Validate() error {
 
 // Sink mocks up a pipe.Sink interface
 type Sink struct {
-	simple SimpleOption
+	simple SimpleParam
 }
 
 // Sink implements Sink interface
@@ -163,8 +176,8 @@ func (s *Sink) Sink() phono.SinkFunc {
 					} else {
 						fmt.Printf("mock.Sink new message: %+v\n", m)
 						m.RecievedBy(s)
-						if m.Options != nil {
-							m.Options.ApplyTo(s)
+						if m.Params != nil {
+							m.Params.ApplyTo(s)
 						}
 					}
 				case <-ctx.Done():
