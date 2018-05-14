@@ -1,13 +1,12 @@
 package pipe_test
 
 import (
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dudk/phono"
 	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
 )
@@ -20,7 +19,7 @@ func TestPipe(t *testing.T) {
 
 	pump := &mock.Pump{
 		Limit:    10,
-		Interval: 100,
+		Interval: 0,
 	}
 
 	proc := &mock.Processor{}
@@ -33,54 +32,41 @@ func TestPipe(t *testing.T) {
 		pipe.WithSinks(sink),
 	)
 	assert.Nil(t, err)
-	err = p.Validate()
+
+	// test wrong state for new pipe
+	err = pipe.Wait(p.Pause())
 	assert.NotNil(t, err)
+	require.Equal(t, pipe.ErrInvalidState, err)
 
-	err = p.Validate()
-	assert.Nil(t, err)
-
-	// test wrong state pipe
-	done, err := p.Pause()
-	assert.NotNil(t, err)
-	assert.Equal(t, pipe.ErrInvalidState, err)
-
-	done, err = p.Run()
-	assert.Nil(t, err)
-	// err = pipe.Wait(done)
-	// assert.Nil(t, err)
-
-	// time.Sleep(time.Second * 1)
-
-	// s := pump.WithSimple(mock.SimpleParam(10))
-	// fmt.Println("sending params")
-	// op := phono.NewParams().AddParamsFor(pump, s)
-	// p.Push(op)
-	// fmt.Println("params are sent")
-	time.Sleep(time.Millisecond * 100)
-	done, err = p.Pause()
+	// test pipe run
+	err = pipe.Wait(p.Run())
 	require.Nil(t, err)
-	require.NotNil(t, done)
-	fmt.Println("waiting paused")
-	err = pipe.Wait(done)
+	err = pipe.Wait(p.Signal.Running)
 	require.Nil(t, err)
-	fmt.Println("done paused")
 
-	done, err = p.Resume()
+	// test push new opptions
+	limit := mock.Limit(10)
+	op := phono.NewParams().Add(pump.LimitParam(limit))
+	p.Push(op)
+
+	// test pipe pause
+	err = pipe.Wait(p.Pause())
+	require.Nil(t, err)
+	err = pipe.Wait(p.Signal.Paused)
+	require.Nil(t, err)
+
+	// test pipe resume
+	err = pipe.Wait(p.Resume())
+	require.Nil(t, err)
+	err = pipe.Wait(p.Signal.Running)
+	err = pipe.Wait(p.Signal.Ready)
+
+	// test rerun
+	p.Push(op)
 	assert.Nil(t, err)
-	fmt.Println("waiting resume")
-	err = pipe.Wait(done)
-	assert.Nil(t, err)
-
-	// assert.Nil(t, err)
-	// fmt.Println("waiting pipe")
-	// err = pipe.Wait(done)
-	// fmt.Println("pipe is done")
-	// assert.Nil(t, err)
-
-	// err = p.Push(op)
-	// assert.Nil(t, err)
-	// done, err = p.Run()
-	// assert.Nil(t, err)
-	// pipe.Wait(done)
-	// err = pipe.Wait(p.Signal.Interrupted)
+	err = pipe.Wait(p.Run())
+	require.Nil(t, err)
+	err = pipe.Wait(p.Signal.Running)
+	err = pipe.Wait(p.Signal.Ready)
+	require.Nil(t, err)
 }
