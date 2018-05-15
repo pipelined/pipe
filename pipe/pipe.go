@@ -222,8 +222,9 @@ func (p *Pipe) Wait(s Signal) error {
 	return nil
 }
 
-// Wait waits till the Pump is finished
-func Wait(errc <-chan error) error {
+// Do executes a passed action and waits till first error or till the passed function receive a done signal
+func Do(fn func() chan error) error {
+	errc := fn()
 	if errc == nil {
 		return nil
 	}
