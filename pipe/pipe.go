@@ -44,17 +44,10 @@ type Pipe struct {
 	// errors channel
 	errorc chan error
 	// event channel
-	eventc chan event
+	eventc chan eventMessage
+	// signals channel
+	signalc chan signalMessage
 
-	// TODO: replace with single channel
-	Signal struct {
-		// closed when pipe goes into ready state
-		Ready chan error
-		// closed when pipe goes into running state
-		Running chan error
-		// closed when pipe goes paused
-		Paused chan error
-	}
 	message struct {
 		ask  chan struct{}
 		take chan phono.Message
@@ -68,44 +61,50 @@ type Param func(p *Pipe) phono.ParamFunc
 // stateFn for pipe stateFn machine
 type stateFn func(p *Pipe) stateFn
 
-type eventType int
+// event is sent when user does some action
+type event int
 
-const (
-	run eventType = iota
-	pause
-	resume
-)
-
-type event struct {
-	eventType
+type eventMessage struct {
+	event
 	done chan error
 }
+
+// Signal is sent when pipe changes the state
+type Signal int
+
+type signalMessage struct {
+	Signal
+	err error
+}
+
+const (
+	run event = iota
+	pause
+	resume
+
+	// Ready signal is sent when pipe goes to ready state
+	Ready Signal = iota
+	// Running signal is sent when pipe goes to running state
+	Running
+	// Paused signal is sent when pipe goes to paused state
+	Paused
+)
 
 var (
 	// ErrInvalidState is returned if pipe method cannot be executed at this moment
 	ErrInvalidState = errors.New("Invalid state")
 )
 
-func do(action chan struct{}) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = ErrInvalidState
-		}
-	}()
-	close(action)
-	return
-}
-
 // New creates a new pipe and applies provided params
-func New(params ...Param) (*Pipe, error) {
+// returned pipe is in ready state
+func New(params ...Param) *Pipe {
 	p := &Pipe{
 		processors: make([]Processor, 0),
 		sinks:      make([]Sink, 0),
 		paramc:     make(chan *phono.Params),
-		eventc:     make(chan event),
+		eventc:     make(chan eventMessage),
+		signalc:    make(chan signalMessage, 100),
 	}
-	// start state machine
-	p.Signal.Ready = make(chan error)
 	state := stateFn(ready)
 	go func() {
 		for state != nil {
@@ -113,11 +112,11 @@ func New(params ...Param) (*Pipe, error) {
 		}
 		p.stop()
 	}()
-	<-p.Signal.Ready
+	p.Wait(Ready)
 	for _, param := range params {
 		param(p)()
 	}
-	return p, nil
+	return p
 }
 
 // WithPump sets pump to Pipe
@@ -149,9 +148,9 @@ func WithSinks(sinks ...Sink) Param {
 
 // Run switches pipe into running state
 func (p *Pipe) Run() chan error {
-	runEvent := event{
-		eventType: run,
-		done:      make(chan error),
+	runEvent := eventMessage{
+		event: run,
+		done:  make(chan error),
 	}
 	p.eventc <- runEvent
 	return runEvent.done
@@ -159,9 +158,9 @@ func (p *Pipe) Run() chan error {
 
 // Pause switches pipe into pausing state
 func (p *Pipe) Pause() chan error {
-	pauseEvent := event{
-		eventType: pause,
-		done:      make(chan error),
+	pauseEvent := eventMessage{
+		event: pause,
+		done:  make(chan error),
 	}
 	p.eventc <- pauseEvent
 	return pauseEvent.done
@@ -169,9 +168,9 @@ func (p *Pipe) Pause() chan error {
 
 // Resume switches pipe into running state
 func (p *Pipe) Resume() chan error {
-	resumeEvent := event{
-		eventType: resume,
-		done:      make(chan error),
+	resumeEvent := eventMessage{
+		event: resume,
+		done:  make(chan error),
 	}
 	p.eventc <- resumeEvent
 	return resumeEvent.done
@@ -207,6 +206,19 @@ func (p *Pipe) Validate() error {
 		}
 	}
 
+	return nil
+}
+
+// Wait for signal or first error
+func (p *Pipe) Wait(s Signal) error {
+	for msg := range p.signalc {
+		if msg.err != nil {
+			return msg.err
+		}
+		if msg.Signal == s {
+			return nil
+		}
+	}
 	return nil
 }
 
@@ -310,7 +322,7 @@ func (p *Pipe) soure() phono.NewMessageFunc {
 // 	run - start processing
 func ready(p *Pipe) stateFn {
 	fmt.Println("pipe is ready")
-	close(p.Signal.Ready)
+	p.signalc <- signalMessage{Ready, nil}
 	for {
 		select {
 		case newParams, ok := <-p.paramc:
@@ -319,15 +331,14 @@ func ready(p *Pipe) stateFn {
 			}
 			newParams.ApplyTo(p)
 			p.cachedParams = *p.cachedParams.Join(newParams)
-		case event := <-p.eventc:
-			fmt.Printf("got new event: %v\n", event)
-			switch event.eventType {
+		case e := <-p.eventc:
+			fmt.Printf("ready new event: %v\n", e)
+			switch e.event {
 			case run:
-				// p.run = nil
 				ctx, cancelFn := context.WithCancel(context.Background())
 				p.cancelFn = cancelFn
 				if err := p.Validate(); err != nil {
-					event.done <- err
+					e.done <- err
 					p.cancelFn()
 					return ready
 				}
@@ -336,7 +347,7 @@ func ready(p *Pipe) stateFn {
 				// start pump
 				out, errc, err := p.pump.Pump()(ctx, p.soure())
 				if err != nil {
-					event.done <- err
+					e.done <- err
 					p.cancelFn()
 					return ready
 				}
@@ -346,7 +357,7 @@ func ready(p *Pipe) stateFn {
 				for _, proc := range p.processors {
 					out, errc, err = proc.Process()(ctx, out)
 					if err != nil {
-						event.done <- err
+						e.done <- err
 						p.cancelFn()
 						return ready
 					}
@@ -355,17 +366,16 @@ func ready(p *Pipe) stateFn {
 
 				sinkErrcList, err := p.broadcastToSinks(ctx, out)
 				if err != nil {
-					event.done <- err
+					e.done <- err
 					p.cancelFn()
 					return ready
 				}
 				errcList = append(errcList, sinkErrcList...)
 				p.errorc = mergeErrors(errcList...)
-				p.Signal.Running = make(chan error)
-				close(event.done)
+				close(e.done)
 				return running
 			default:
-				event.done <- ErrInvalidState
+				e.done <- ErrInvalidState
 			}
 		}
 	}
@@ -375,8 +385,7 @@ func ready(p *Pipe) stateFn {
 //	paused - pause the processing
 func running(p *Pipe) stateFn {
 	fmt.Println("pipe is running")
-	p.Signal.Ready = make(chan error)
-	close(p.Signal.Running)
+	p.signalc <- signalMessage{Running, nil}
 	for {
 		select {
 		case newParams, ok := <-p.paramc:
@@ -394,19 +403,18 @@ func running(p *Pipe) stateFn {
 			p.message.take <- message
 		case err := <-p.errorc:
 			if err != nil {
-				p.Signal.Ready <- err
+				p.signalc <- signalMessage{Running, err}
 				p.cancelFn()
 			}
 			return ready
-		case event := <-p.eventc:
-			fmt.Printf("got new event: %v\n", event)
-			switch event.eventType {
+		case e := <-p.eventc:
+			fmt.Printf("running new event: %v\n", e)
+			switch e.event {
 			case pause:
-				p.Signal.Paused = make(chan error)
-				close(event.done)
+				close(e.done)
 				return pausing
 			default:
-				event.done <- ErrInvalidState
+				e.done <- ErrInvalidState
 			}
 		}
 	}
@@ -436,7 +444,7 @@ func pausing(p *Pipe) stateFn {
 			return paused
 		case err := <-p.errorc:
 			if err != nil {
-				p.Signal.Ready <- err
+				p.signalc <- signalMessage{Running, nil}
 				p.cancelFn()
 			}
 			return ready
@@ -446,7 +454,7 @@ func pausing(p *Pipe) stateFn {
 
 func paused(p *Pipe) stateFn {
 	fmt.Println("pipe is paused")
-	close(p.Signal.Paused)
+	p.signalc <- signalMessage{Paused, nil}
 	for {
 		select {
 		case newParams, ok := <-p.paramc:
@@ -455,15 +463,14 @@ func paused(p *Pipe) stateFn {
 			}
 			newParams.ApplyTo(p)
 			p.cachedParams = *p.cachedParams.Join(newParams)
-		case event := <-p.eventc:
-			fmt.Printf("got new event: %v\n", event)
-			switch event.eventType {
+		case e := <-p.eventc:
+			fmt.Printf("paused new event: %v\n", e)
+			switch e.event {
 			case resume:
-				p.Signal.Running = make(chan error)
-				close(event.done)
+				close(e.done)
 				return running
 			default:
-				event.done <- ErrInvalidState
+				e.done <- ErrInvalidState
 			}
 		}
 	}

@@ -1,6 +1,7 @@
 package pipe_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,22 +27,22 @@ func TestPipe(t *testing.T) {
 	sink := &mock.Sink{}
 
 	// new pipe
-	p, err := pipe.New(
+	p := pipe.New(
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc),
 		pipe.WithSinks(sink),
 	)
-	assert.Nil(t, err)
 
 	// test wrong state for new pipe
-	err = pipe.Wait(p.Pause())
+	err := pipe.Wait(p.Pause())
 	assert.NotNil(t, err)
 	require.Equal(t, pipe.ErrInvalidState, err)
+	fmt.Println("1")
 
 	// test pipe run
 	err = pipe.Wait(p.Run())
 	require.Nil(t, err)
-	err = pipe.Wait(p.Signal.Running)
+	err = p.Wait(pipe.Running)
 	require.Nil(t, err)
 
 	// test push new opptions
@@ -49,24 +50,25 @@ func TestPipe(t *testing.T) {
 	op := phono.NewParams().Add(pump.LimitParam(limit))
 	p.Push(op)
 
+	// time.Sleep(time.Millisecond * 10)
 	// test pipe pause
 	err = pipe.Wait(p.Pause())
 	require.Nil(t, err)
-	err = pipe.Wait(p.Signal.Paused)
+	err = p.Wait(pipe.Paused)
 	require.Nil(t, err)
 
 	// test pipe resume
 	err = pipe.Wait(p.Resume())
 	require.Nil(t, err)
-	err = pipe.Wait(p.Signal.Running)
-	err = pipe.Wait(p.Signal.Ready)
+	err = p.Wait(pipe.Running)
+	err = p.Wait(pipe.Ready)
 
 	// test rerun
 	p.Push(op)
 	assert.Nil(t, err)
 	err = pipe.Wait(p.Run())
 	require.Nil(t, err)
-	err = pipe.Wait(p.Signal.Running)
-	err = pipe.Wait(p.Signal.Ready)
+	// err = p.Wait(pipe.Running)
+	err = p.Wait(pipe.Ready)
 	require.Nil(t, err)
 }
