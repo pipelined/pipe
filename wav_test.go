@@ -27,17 +27,14 @@ func newMessage() phono.Message {
 func TestWavPump(t *testing.T) {
 	p, err := wav.NewPump(inFile, bufferSize)
 	assert.Nil(t, err)
-	err = p.Validate()
-	assert.Nil(t, err)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	// verify if we still satisfy the interface
 	pipe := pipe.New(
 		pipe.WithPump(p),
 	)
 	assert.NotNil(t, pipe)
-	pc := make(chan phono.Options)
+	pc := make(chan phono.Params)
 	defer close(pc)
 
 	pump := p.Pump()
@@ -70,13 +67,10 @@ func TestWavSink(t *testing.T) {
 
 	p, err := wav.NewPump(inFile, bufferSize)
 	assert.Nil(t, err)
-	pc := make(chan phono.Options)
+	pc := make(chan phono.Params)
 	defer close(pc)
 
 	s := wav.NewSink(outFile, p.WavSampleRate(), p.WavNumChannels(), p.WavBitDepth(), p.WavAudioFormat())
-	err = s.Validate()
-	assert.Nil(t, err)
-	// verify if we still satisfy the interface
 	newPipe := pipe.New(
 		pipe.WithPump(p),
 		pipe.WithSinks(s),

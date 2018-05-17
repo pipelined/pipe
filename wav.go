@@ -17,7 +17,6 @@ type (
 	Pump struct {
 		filePath   string
 		bufferSize phono.BufferSize
-		options    *phono.Options
 		newMessage phono.NewMessageFunc
 
 		// properties of decoded wav
@@ -128,23 +127,6 @@ func (p *Pump) Pump() phono.PumpFunc {
 	}
 }
 
-// Validate implements phono.OptionUser
-func (p *Pump) Validate() error {
-	if p.bufferSize == 0 {
-		return ErrBufferSizeNotDefined
-	}
-
-	if p.wavSampleRate == 0 {
-		return ErrSampleRateNotDefined
-	}
-
-	if p.wavNumChannels == 0 {
-		return ErrNumChannelsNotDefined
-	}
-	// todo: validation
-	return nil
-}
-
 // WavSampleRate returns wav's sample rate
 func (p *Pump) WavSampleRate() phono.SampleRate {
 	return p.wavSampleRate
@@ -220,19 +202,6 @@ func (s *Sink) Sink() phono.SinkFunc {
 
 		return errc, nil
 	}
-}
-
-// Validate implements phono.OptionUser
-func (s *Sink) Validate() error {
-	if s.wavSampleRate == 0 {
-		return ErrSampleRateNotDefined
-	}
-
-	if s.wavNumChannels == 0 {
-		return ErrNumChannelsNotDefined
-	}
-	// todo: validation
-	return nil
 }
 
 func (s *Sink) newIntBuffer() *audio.IntBuffer {
