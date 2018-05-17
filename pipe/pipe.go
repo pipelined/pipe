@@ -11,19 +11,16 @@ import (
 
 // Pump is a source of samples
 type Pump interface {
-	Validate() error
 	Pump() phono.PumpFunc
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	Validate() error
 	Process() phono.ProcessFunc
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Validate() error
 	Sink() phono.SinkFunc
 }
 
@@ -176,39 +173,6 @@ func (p *Pipe) Resume() chan error {
 	return resumeEvent.done
 }
 
-// Validate check's if the pipe is valid and ready to be executed
-func (p *Pipe) Validate() error {
-	// validate pump
-	if p.pump == nil {
-		return errors.New("Pump is not defined")
-	}
-	err := p.pump.Validate()
-	if err != nil {
-		return err
-	}
-
-	// validate sinks
-	if p.sinks == nil || len(p.sinks) == 0 {
-		return errors.New("Sinks are not defined")
-	}
-	for _, sink := range p.sinks {
-		err := sink.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
-	// validate processors
-	for _, proc := range p.processors {
-		err := proc.Validate()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // Wait for signal or first error
 func (p *Pipe) Wait(s Signal) error {
 	for msg := range p.signalc {
@@ -338,11 +302,6 @@ func ready(p *Pipe) stateFn {
 			case run:
 				ctx, cancelFn := context.WithCancel(context.Background())
 				p.cancelFn = cancelFn
-				if err := p.Validate(); err != nil {
-					e.done <- err
-					p.cancelFn()
-					return ready
-				}
 				errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 				// start pump

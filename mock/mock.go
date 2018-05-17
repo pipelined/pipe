@@ -89,14 +89,6 @@ func (p *Pump) Pump() phono.PumpFunc {
 	}
 }
 
-// Validate implements phono.ParamUser
-func (p *Pump) Validate() error {
-	if p.Interval > PumpMaxInterval {
-		return fmt.Errorf("Interval bigger than %v", PumpMaxInterval)
-	}
-	return nil
-}
-
 // Processor mocks a pipe.Processor interface
 type Processor struct{}
 
@@ -131,11 +123,6 @@ func (p *Processor) Process() phono.ProcessFunc {
 	}
 }
 
-// Validate the processor
-func (p *Processor) Validate() error {
-	return nil
-}
-
 // Sink mocks up a pipe.Sink interface
 type Sink struct{}
 
@@ -165,9 +152,4 @@ func (s *Sink) Sink() phono.SinkFunc {
 
 		return errc, nil
 	}
-}
-
-// Validate the sink
-func (s *Sink) Validate() error {
-	return nil
 }
