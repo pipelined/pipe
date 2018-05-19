@@ -20,8 +20,8 @@ var (
 )
 
 // TODO: build with local mock package
-func newMessage() phono.Message {
-	return phono.Message{}
+func newMessage() *phono.Message {
+	return new(phono.Message)
 }
 
 func TestWavPump(t *testing.T) {

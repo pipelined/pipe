@@ -74,7 +74,7 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 // Pump starts the pump process
 // once executed, wav attributes are accessible
 func (p *Pump) Pump() phono.PumpFunc {
-	return func(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan phono.Message, <-chan error, error) {
+	return func(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
 		file, err := os.Open(p.filePath)
 		if err != nil {
 			return nil, nil, err
@@ -84,7 +84,7 @@ func (p *Pump) Pump() phono.PumpFunc {
 			file.Close()
 			return nil, nil, fmt.Errorf("Wav is not valid")
 		}
-		out := make(chan phono.Message)
+		out := make(chan *phono.Message)
 		errc := make(chan error, 1)
 		go func() {
 			defer file.Close()
@@ -168,7 +168,7 @@ func NewSink(path string, wavSampleRate phono.SampleRate, wavNumChannels phono.N
 
 // Sink implements Sink interface
 func (s *Sink) Sink() phono.SinkFunc {
-	return func(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
+	return func(ctx context.Context, in <-chan *phono.Message) (<-chan error, error) {
 		file, err := os.Create(s.filePath)
 		if err != nil {
 			return nil, err
