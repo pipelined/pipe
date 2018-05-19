@@ -20,19 +20,19 @@ type (
 	}
 
 	// NewMessageFunc is a message-producer function
-	NewMessageFunc func() Message
+	NewMessageFunc func() *Message
 )
 
 // Pipe function types
 type (
 	// PumpFunc is a function to pump sound data to pipe
-	PumpFunc func(context.Context, NewMessageFunc) (out <-chan Message, errc <-chan error, err error)
+	PumpFunc func(context.Context, NewMessageFunc) (out <-chan *Message, errc <-chan error, err error)
 
 	// ProcessFunc is a function to process sound data in pipe
-	ProcessFunc func(ctx context.Context, in <-chan Message) (out <-chan Message, errc <-chan error, err error)
+	ProcessFunc func(ctx context.Context, in <-chan *Message) (out <-chan *Message, errc <-chan error, err error)
 
 	// SinkFunc is a function to sink data from pipe
-	SinkFunc func(ctx context.Context, in <-chan Message) (errc <-chan error, err error)
+	SinkFunc func(ctx context.Context, in <-chan *Message) (errc <-chan error, err error)
 )
 
 // Params support types

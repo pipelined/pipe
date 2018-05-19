@@ -64,9 +64,9 @@ func (p *Pump) LimitParam(l Limit) phono.Param {
 // Pump implements pipe.Pump interface
 func (p *Pump) Pump() phono.PumpFunc {
 	fmt.Println("mock.Pump called")
-	return func(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan phono.Message, <-chan error, error) {
+	return func(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
 		fmt.Println("mock.Pump started")
-		out := make(chan phono.Message)
+		out := make(chan *phono.Message)
 		errc := make(chan error, 1)
 		go func() {
 			defer close(out)
@@ -96,9 +96,9 @@ type Processor struct{}
 func (p *Processor) Process() phono.ProcessFunc {
 	// p.pulse = pulse
 	// p.plugin.SetCallback(p.callback())
-	return func(ctx context.Context, in <-chan phono.Message) (<-chan phono.Message, <-chan error, error) {
+	return func(ctx context.Context, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
 		errc := make(chan error, 1)
-		out := make(chan phono.Message)
+		out := make(chan *phono.Message)
 		go func() {
 			defer close(out)
 			defer close(errc)
@@ -128,7 +128,7 @@ type Sink struct{}
 
 // Sink implements Sink interface
 func (s *Sink) Sink() phono.SinkFunc {
-	return func(ctx context.Context, in <-chan phono.Message) (<-chan error, error) {
+	return func(ctx context.Context, in <-chan *phono.Message) (<-chan error, error) {
 		errc := make(chan error, 1)
 		go func() {
 			defer close(errc)

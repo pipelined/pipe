@@ -71,4 +71,5 @@ func TestPipe(t *testing.T) {
 	// err = p.Wait(pipe.Running)
 	err = p.Wait(pipe.Ready)
 	require.Nil(t, err)
+	p.Close()
 }

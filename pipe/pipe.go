@@ -47,7 +47,7 @@ type Pipe struct {
 
 	message struct {
 		ask  chan struct{}
-		take chan phono.Message
+		take chan *phono.Message
 	}
 }
 
@@ -226,13 +226,13 @@ func mergeErrors(errcList ...<-chan error) chan error {
 	return out
 }
 
-func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan *phono.Message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
-	broadcasts := make([]chan phono.Message, len(p.sinks))
+	broadcasts := make([]chan *phono.Message, len(p.sinks))
 	for i := range broadcasts {
-		broadcasts[i] = make(chan phono.Message)
+		broadcasts[i] = make(chan *phono.Message)
 	}
 
 	//start broadcast
@@ -275,9 +275,9 @@ func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan phono.Message) ([
 // if pipe paused this call will block
 func (p *Pipe) soure() phono.NewMessageFunc {
 	p.message.ask = make(chan struct{})
-	p.message.take = make(chan phono.Message)
+	p.message.take = make(chan *phono.Message)
 	var do struct{}
-	return func() (message phono.Message) {
+	return func() *phono.Message {
 		p.message.ask <- do
 		return <-p.message.take
 	}
@@ -355,7 +355,7 @@ func running(p *Pipe) stateFn {
 			newParams.ApplyTo(p)
 			p.cachedParams = *p.cachedParams.Join(newParams)
 		case <-p.message.ask:
-			message := phono.Message{}
+			message := new(phono.Message)
 			if !p.cachedParams.Empty() {
 				message.Params = &p.cachedParams
 				p.cachedParams = phono.Params{}
@@ -392,7 +392,7 @@ func pausing(p *Pipe) stateFn {
 			newParams.ApplyTo(p)
 			p.cachedParams = *p.cachedParams.Join(newParams)
 		case <-p.message.ask:
-			message := phono.Message{}
+			message := new(phono.Message)
 			if !p.cachedParams.Empty() {
 				message.Params = &p.cachedParams
 				p.cachedParams = phono.Params{}
