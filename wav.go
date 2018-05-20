@@ -188,7 +188,7 @@ func (s *Sink) Sink() phono.SinkFunc {
 						in = nil
 					} else {
 						samples := message.Samples
-						err := AsBuffer(ib, *samples)
+						err := AsBuffer(ib, samples)
 						if err = e.Write(ib); err != nil {
 							errc <- err
 							return
@@ -215,7 +215,7 @@ func (s *Sink) newIntBuffer() *audio.IntBuffer {
 }
 
 // AsSamples converts from audio.Buffer to [][]float64 samples
-func AsSamples(b audio.Buffer) (*phono.Samples, error) {
+func AsSamples(b audio.Buffer) (phono.Samples, error) {
 	if b == nil {
 		return nil, nil
 	}
@@ -237,7 +237,7 @@ func AsSamples(b audio.Buffer) (*phono.Samples, error) {
 				s[i] = append(s[i], float64(ib.Data[j])/0x8000)
 			}
 		}
-		return &s, nil
+		return s, nil
 	default:
 		return nil, fmt.Errorf("Conversion to [][]float64 from %T is not defined", b)
 	}
