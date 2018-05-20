@@ -140,3 +140,28 @@ func (m *Message) RecievedBy(reciever interface{}) {
 		m.Done()
 	}
 }
+
+// NewSamples returns initialized slice of samples
+func NewSamples(numChannels int, blockSize int) *Samples {
+	result := Samples(make([][]float64, numChannels))
+	for i := range result {
+		result[i] = make([]float64, blockSize)
+	}
+	return &result
+}
+
+// NumChannels returns number of channels in this sample slice
+func (s *Samples) NumChannels() int {
+	if s == nil {
+		return 0
+	}
+	return len(*s)
+}
+
+// BlockSize returns number of samples in single block in this sample slice
+func (s *Samples) BlockSize() int {
+	if s.NumChannels() == 0 {
+		return 0
+	}
+	return len((*s)[0])
+}
