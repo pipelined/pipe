@@ -101,7 +101,7 @@ func TestIntBufferToSamples(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 2, samples.NumChannels())
 	assert.Equal(t, 8, samples.BlockSize())
-	for _, v := range (*samples)[0] {
+	for _, v := range (samples)[0] {
 		assert.Equal(t, float64(1)/0x8000, v)
 	}
 
