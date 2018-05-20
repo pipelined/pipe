@@ -13,7 +13,7 @@ type (
 	// Message is a main structure for pipe transport
 	Message struct {
 		// Samples of message
-		Samples
+		*Samples
 		// Pulse
 		*Params
 		*sync.WaitGroup
