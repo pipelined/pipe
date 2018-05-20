@@ -51,7 +51,7 @@ func TestWavPump(t *testing.T) {
 			if !ok {
 				out = nil
 			} else {
-				samplesRead = samplesRead + len(m.Samples)*len(m.Samples[0])
+				samplesRead = samplesRead + m.Samples.NumChannels()*m.Samples.BlockSize()
 				bufCount++
 			}
 		case err = <-errorc:
@@ -99,9 +99,9 @@ func TestIntBufferToSamples(t *testing.T) {
 	}
 	samples, err := wav.AsSamples(buf)
 	assert.Nil(t, err)
-	assert.Equal(t, 2, len(samples))
-	assert.Equal(t, 8, len(samples[0]))
-	for _, v := range samples[0] {
+	assert.Equal(t, 2, samples.NumChannels())
+	assert.Equal(t, 8, samples.BlockSize())
+	for _, v := range (*samples)[0] {
 		assert.Equal(t, float64(1)/0x8000, v)
 	}
 
