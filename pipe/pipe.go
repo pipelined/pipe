@@ -292,6 +292,7 @@ func ready(p *Pipe) stateFn {
 		select {
 		case newParams, ok := <-p.paramc:
 			if !ok {
+				p.paramc = nil
 				return nil
 			}
 			newParams.ApplyTo(p)
@@ -350,6 +351,7 @@ func running(p *Pipe) stateFn {
 		select {
 		case newParams, ok := <-p.paramc:
 			if !ok {
+				p.paramc = nil
 				return nil
 			}
 			newParams.ApplyTo(p)
@@ -387,6 +389,7 @@ func pausing(p *Pipe) stateFn {
 		select {
 		case newParams, ok := <-p.paramc:
 			if !ok {
+				p.paramc = nil
 				return nil
 			}
 			newParams.ApplyTo(p)
@@ -419,6 +422,7 @@ func paused(p *Pipe) stateFn {
 		select {
 		case newParams, ok := <-p.paramc:
 			if !ok {
+				p.paramc = nil
 				return nil
 			}
 			newParams.ApplyTo(p)
@@ -455,7 +459,5 @@ func (p *Pipe) Close() {
 		p.cancelFn()
 	}
 	close(p.paramc)
-	p.paramc = nil
 	close(p.eventc)
-	p.eventc = nil
 }

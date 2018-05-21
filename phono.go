@@ -142,12 +142,12 @@ func (m *Message) RecievedBy(reciever interface{}) {
 }
 
 // NewSamples returns initialized slice of samples
-func NewSamples(numChannels NumChannels, bufferSize BufferSize) *Samples {
+func NewSamples(numChannels NumChannels, bufferSize BufferSize) Samples {
 	result := Samples(make([][]float64, numChannels))
 	for i := range result {
 		result[i] = make([]float64, bufferSize)
 	}
-	return &result
+	return result
 }
 
 // NumChannels returns number of channels in this sample slice
