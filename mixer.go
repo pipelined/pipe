@@ -2,6 +2,7 @@ package mixer
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	"github.com/dudk/phono"
@@ -40,13 +41,15 @@ const (
 )
 
 // New returns a new mixer
-func New() *Mixer {
+func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
 		process:        make(chan *message, processBuffer),
 		buffer:         make(map[uint64][]phono.Samples),
 		expectedInputs: make(map[uint64]int),
 		inputs:         make(map[bool]map[<-chan *phono.Message]*Input),
 		bufferCounters: make([]uint64, 0),
+		numChannels:    nc,
+		bufferSize:     bs,
 	}
 	m.inputs[enabled] = make(map[<-chan *phono.Message]*Input)
 	m.inputs[disabled] = make(map[<-chan *phono.Message]*Input)
@@ -106,16 +109,20 @@ func (m *Mixer) Pump() phono.PumpFunc {
 						input.counter++
 					} else {
 						// todo: handle input disable
+						fmt.Printf("message: %v m.bufferCounters: %v m.expectedInputs: %v\n", msg, m.bufferCounters, m.expectedInputs)
 						i := sort.Search(len(m.expectedInputs), func(i int) bool { return m.bufferCounters[i] >= input.counter })
+						fmt.Printf("Found: %v\n", i)
 						if i < len(m.expectedInputs) && m.bufferCounters[i] == input.counter {
-							for ; i < len(m.bufferCounters); i++ {
+							for i < len(m.bufferCounters) {
 								counter := m.bufferCounters[i]
 								// oh crap...
+								fmt.Printf("Reducing expectations for %v\n", counter)
 								m.expectedInputs[counter]--
 
 								// DUPLICATION START
 								// check if all expected inputs received
 								if m.expectedInputs[counter] == len(m.buffer[counter]) {
+									fmt.Printf("pushing message for %v\n", counter)
 									// send message
 									message := newMessage()
 									message.Samples = m.sum(m.buffer[counter])
@@ -127,15 +134,17 @@ func (m *Mixer) Pump() phono.PumpFunc {
 									delete(m.buffer, counter)
 									m.bufferCounters = m.bufferCounters[1:]
 									m.counter++
+								} else {
+									i++
 								}
 								// DUPLICATION DONE
 							}
-						} else {
-							// x is not present in data,
-							// but i is the index where it would be inserted.
 						}
 						m.inputs[disabled][msg.in] = m.inputs[enabled][msg.in]
 						delete(m.inputs[enabled], msg.in)
+					}
+					if len(m.inputs[enabled]) == 0 {
+						return
 					}
 				}
 			}
@@ -145,14 +154,19 @@ func (m *Mixer) Pump() phono.PumpFunc {
 }
 
 func (m *Mixer) sum(in []phono.Samples) phono.Samples {
-	result := phono.NewSamples(m.numChannels, m.bufferSize)
+	result := *phono.NewSamples(m.numChannels, m.bufferSize)
 	for s := 0; s < int(m.bufferSize); s++ {
 		for c := 0; c < int(m.numChannels); c++ {
 			sum := float64(0)
+			signals := float64(0)
 			for _, samples := range in {
+				if len(samples[c]) <= s {
+					break
+				}
 				sum = sum + samples[c][s]
+				signals++
 			}
-			result[c][s] = sum / float64(len(in))
+			result[c][s] = sum / signals
 		}
 	}
 	return result
@@ -173,9 +187,10 @@ func (m *Mixer) Sink() phono.SinkFunc {
 					if !ok {
 						// we need to pass this channel to process, all inputs managemend should be in pump
 						m.process <- &message{close: true, in: in}
-					} else {
-						m.process <- &message{message: msg, in: in}
+						in = nil
+						return
 					}
+					m.process <- &message{message: msg, in: in}
 				case <-ctx.Done():
 					return
 				}

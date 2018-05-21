@@ -24,6 +24,10 @@
 #   go-tests = true
 #   unused-packages = true
 
+[[override]]
+  branch = "master"
+  name = "github.com/dudk/phono"
+
 [[constraint]]
   branch = "master"
   name = "github.com/dudk/phono"

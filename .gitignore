@@ -20,3 +20,8 @@ vendor/
 
 # Golang dep tool
 Gopkg.lock
+
+# Output files
+*.wav
+!test1.wav
+!test2.wav
