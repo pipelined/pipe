@@ -292,12 +292,14 @@ func ready(p *Pipe) stateFn {
 		select {
 		case newParams, ok := <-p.paramc:
 			if !ok {
-				p.paramc = nil
 				return nil
 			}
 			newParams.ApplyTo(p)
 			p.cachedParams = *p.cachedParams.Join(newParams)
-		case e := <-p.eventc:
+		case e, ok := <-p.eventc:
+			if !ok {
+				return nil
+			}
 			fmt.Printf("ready new event: %v\n", e)
 			switch e.event {
 			case run:
@@ -351,7 +353,6 @@ func running(p *Pipe) stateFn {
 		select {
 		case newParams, ok := <-p.paramc:
 			if !ok {
-				p.paramc = nil
 				return nil
 			}
 			newParams.ApplyTo(p)
@@ -369,8 +370,10 @@ func running(p *Pipe) stateFn {
 				p.cancelFn()
 			}
 			return ready
-		case e := <-p.eventc:
-			fmt.Printf("running new event: %v\n", e)
+		case e, ok := <-p.eventc:
+			if !ok {
+				return nil
+			}
 			switch e.event {
 			case pause:
 				close(e.done)
@@ -389,7 +392,6 @@ func pausing(p *Pipe) stateFn {
 		select {
 		case newParams, ok := <-p.paramc:
 			if !ok {
-				p.paramc = nil
 				return nil
 			}
 			newParams.ApplyTo(p)
@@ -422,12 +424,14 @@ func paused(p *Pipe) stateFn {
 		select {
 		case newParams, ok := <-p.paramc:
 			if !ok {
-				p.paramc = nil
 				return nil
 			}
 			newParams.ApplyTo(p)
 			p.cachedParams = *p.cachedParams.Join(newParams)
-		case e := <-p.eventc:
+		case e, ok := <-p.eventc:
+			if !ok {
+				return nil
+			}
 			fmt.Printf("paused new event: %v\n", e)
 			switch e.event {
 			case resume:
@@ -443,9 +447,7 @@ func paused(p *Pipe) stateFn {
 // stop the pipe and clean up resources
 func (p *Pipe) stop() {
 	close(p.message.ask)
-	p.message.ask = nil
 	close(p.message.take)
-	p.message.take = nil
 }
 
 // Push new params into pipe
