@@ -255,11 +255,10 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 			select {
 			case buf, ok := <-in:
 				if !ok {
-					in = nil
-				} else {
-					for i := range broadcasts {
-						broadcasts[i] <- buf
-					}
+					return
+				}
+				for i := range broadcasts {
+					broadcasts[i] <- buf
 				}
 			}
 		}
