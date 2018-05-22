@@ -94,9 +94,7 @@ type Processor struct{}
 
 // Process implements pipe.Processor
 func (p *Processor) Process() phono.ProcessFunc {
-	// p.pulse = pulse
-	// p.plugin.SetCallback(p.callback())
-	return func(ctx context.Context, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
+	return func(in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
 		errc := make(chan error, 1)
 		out := make(chan *phono.Message)
 		go func() {
@@ -106,16 +104,12 @@ func (p *Processor) Process() phono.ProcessFunc {
 				select {
 				case m, ok := <-in:
 					if !ok {
-						in = nil
-					} else {
-						if m.Params != nil {
-							m.Params.ApplyTo(p)
-						}
-						// m.Samples = p.plugin.Process(m.Samples)
-						out <- m
+						return
 					}
-				case <-ctx.Done():
-					return
+					if m.Params != nil {
+						m.Params.ApplyTo(p)
+					}
+					out <- m
 				}
 			}
 		}()
@@ -128,7 +122,7 @@ type Sink struct{}
 
 // Sink implements Sink interface
 func (s *Sink) Sink() phono.SinkFunc {
-	return func(ctx context.Context, in <-chan *phono.Message) (<-chan error, error) {
+	return func(in <-chan *phono.Message) (<-chan error, error) {
 		errc := make(chan error, 1)
 		go func() {
 			defer close(errc)
@@ -136,16 +130,13 @@ func (s *Sink) Sink() phono.SinkFunc {
 				select {
 				case m, ok := <-in:
 					if !ok {
-						in = nil
-					} else {
-						fmt.Printf("mock.Sink new message: %+v\n", m)
-						m.RecievedBy(s)
-						if m.Params != nil {
-							m.Params.ApplyTo(s)
-						}
+						return
 					}
-				case <-ctx.Done():
-					return
+					fmt.Printf("mock.Sink new message: %+v\n", m)
+					m.RecievedBy(s)
+					if m.Params != nil {
+						m.Params.ApplyTo(s)
+					}
 				}
 			}
 		}()

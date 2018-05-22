@@ -226,7 +226,7 @@ func mergeErrors(errcList ...<-chan error) chan error {
 	return out
 }
 
-func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan *phono.Message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
@@ -237,7 +237,7 @@ func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan *phono.Message) (
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Sink()(ctx, broadcasts[i])
+		errc, err := s.Sink()(broadcasts[i])
 		if err != nil {
 			return nil, err
 		}
@@ -261,8 +261,6 @@ func (p *Pipe) broadcastToSinks(ctx context.Context, in <-chan *phono.Message) (
 						broadcasts[i] <- buf
 					}
 				}
-			case <-ctx.Done():
-				return
 			}
 		}
 	}()
@@ -318,7 +316,7 @@ func ready(p *Pipe) stateFn {
 
 				// start chained processesing
 				for _, proc := range p.processors {
-					out, errc, err = proc.Process()(ctx, out)
+					out, errc, err = proc.Process()(out)
 					if err != nil {
 						e.done <- err
 						p.cancelFn()
@@ -327,7 +325,7 @@ func ready(p *Pipe) stateFn {
 					errcList = append(errcList, errc)
 				}
 
-				sinkErrcList, err := p.broadcastToSinks(ctx, out)
+				sinkErrcList, err := p.broadcastToSinks(out)
 				if err != nil {
 					e.done <- err
 					p.cancelFn()

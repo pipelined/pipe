@@ -29,10 +29,10 @@ type (
 	PumpFunc func(context.Context, NewMessageFunc) (out <-chan *Message, errc <-chan error, err error)
 
 	// ProcessFunc is a function to process sound data in pipe
-	ProcessFunc func(ctx context.Context, in <-chan *Message) (out <-chan *Message, errc <-chan error, err error)
+	ProcessFunc func(in <-chan *Message) (out <-chan *Message, errc <-chan error, err error)
 
 	// SinkFunc is a function to sink data from pipe
-	SinkFunc func(ctx context.Context, in <-chan *Message) (errc <-chan error, err error)
+	SinkFunc func(in <-chan *Message) (errc <-chan error, err error)
 )
 
 // Params support types
