@@ -81,7 +81,7 @@ func TestWavSink(t *testing.T) {
 	out, _, err := p.Pump()(ctx, newMessage)
 	assert.Nil(t, err)
 
-	errorc, err := s.Sink()(ctx, out)
+	errorc, err := s.Sink()(out)
 	assert.Nil(t, err)
 	for err = range errorc {
 		fmt.Printf("Error waiting for sink: %v", err)

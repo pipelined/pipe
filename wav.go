@@ -168,7 +168,7 @@ func NewSink(path string, wavSampleRate phono.SampleRate, wavNumChannels phono.N
 
 // Sink implements Sink interface
 func (s *Sink) Sink() phono.SinkFunc {
-	return func(ctx context.Context, in <-chan *phono.Message) (<-chan error, error) {
+	return func(in <-chan *phono.Message) (<-chan error, error) {
 		file, err := os.Create(s.filePath)
 		if err != nil {
 			return nil, err
@@ -185,17 +185,14 @@ func (s *Sink) Sink() phono.SinkFunc {
 				select {
 				case message, ok := <-in:
 					if !ok {
-						in = nil
-					} else {
-						samples := message.Samples
-						err := AsBuffer(ib, samples)
-						if err = e.Write(ib); err != nil {
-							errc <- err
-							return
-						}
+						return
 					}
-				case <-ctx.Done():
-					return
+					samples := message.Samples
+					err := AsBuffer(ib, samples)
+					if err = e.Write(ib); err != nil {
+						errc <- err
+						return
+					}
 				}
 			}
 		}()
