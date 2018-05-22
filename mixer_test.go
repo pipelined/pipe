@@ -41,14 +41,17 @@ func TestMixer(t *testing.T) {
 	)
 
 	pipe.Do(track1.Run)
-	defer track1.Close()
+	// defer track1.Close()
 	pipe.Do(track2.Run)
-	defer track2.Close()
+	// defer track2.Close()
 	pipe.Do(playback.Run)
-	defer playback.Close()
+	// defer playback.Close()
 
 	track1.Wait(pipe.Ready)
 	track2.Wait(pipe.Ready)
 	playback.Wait(pipe.Ready)
 
+	track1.Close()
+	track2.Close()
+	playback.Close()
 }

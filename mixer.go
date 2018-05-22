@@ -73,10 +73,7 @@ func (m *Mixer) Pump() phono.PumpFunc {
 				select {
 				case <-ctx.Done():
 					return
-				case msg, ok := <-m.process:
-					if !ok {
-						return
-					}
+				case msg := <-m.process:
 					input := m.inputs[enabled][msg.in]
 					// input's state didn't change
 					if !msg.close {
@@ -140,10 +137,9 @@ func (m *Mixer) Pump() phono.PumpFunc {
 								// DUPLICATION DONE
 							}
 						}
-						m.inputs[disabled][msg.in] = m.inputs[enabled][msg.in]
 						delete(m.inputs[enabled], msg.in)
 					}
-					if len(m.inputs[enabled]) == 0 {
+					if len(m.inputs[enabled]) == 0 && len(m.inputs[disabled]) == 0 {
 						return
 					}
 				}
@@ -154,7 +150,7 @@ func (m *Mixer) Pump() phono.PumpFunc {
 }
 
 func (m *Mixer) sum(in []phono.Samples) phono.Samples {
-	result := *phono.NewSamples(m.numChannels, m.bufferSize)
+	result := phono.NewSamples(m.numChannels, m.bufferSize)
 	for s := 0; s < int(m.bufferSize); s++ {
 		for c := 0; c < int(m.numChannels); c++ {
 			sum := float64(0)
@@ -175,8 +171,7 @@ func (m *Mixer) sum(in []phono.Samples) phono.Samples {
 // Sink adds a new input channel to mix
 // this method should not be called after
 func (m *Mixer) Sink() phono.SinkFunc {
-	return func(ctx context.Context, in <-chan *phono.Message) (<-chan error, error) {
-		// m.ins = append(m.ins, in)
+	return func(in <-chan *phono.Message) (<-chan error, error) {
 		m.inputs[enabled][in] = &Input{}
 		errc := make(chan error, 1)
 		go func() {
@@ -185,14 +180,10 @@ func (m *Mixer) Sink() phono.SinkFunc {
 				select {
 				case msg, ok := <-in:
 					if !ok {
-						// we need to pass this channel to process, all inputs managemend should be in pump
 						m.process <- &message{close: true, in: in}
-						in = nil
 						return
 					}
 					m.process <- &message{message: msg, in: in}
-				case <-ctx.Done():
-					return
 				}
 			}
 		}()
