@@ -36,20 +36,18 @@ type buffer struct {
 
 // sum returns a mixed samples
 func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) phono.Samples {
-	// in []phono.Samples
+	var sum float64
+	var signals float64
 	result := phono.NewSamples(numChannels, bufferSize)
-	for s := 0; s < int(bufferSize); s++ {
-		for c := 0; c < int(numChannels); c++ {
-			sum := float64(0)
-			signals := float64(0)
-			for _, samples := range b.samples {
-				if len(samples[c]) <= s {
-					break
-				}
-				sum = sum + samples[c][s]
+	for nc := 0; nc < int(numChannels); nc++ {
+		for bs := 0; bs < int(bufferSize); bs++ {
+			sum = 0
+			signals = 0
+			for i := 0; i < len(b.samples) && len(b.samples[i][nc]) > bs; i++ {
+				sum = sum + b.samples[i][nc][bs]
 				signals++
 			}
-			result[c][s] = sum / signals
+			result[nc][bs] = sum / signals
 		}
 	}
 	return result
