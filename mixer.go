@@ -15,13 +15,19 @@ type Mixer struct {
 
 	inputs map[bool]map[<-chan *phono.Message]*Input
 
-	process chan *message
-
-	buffers        map[uint64]*buffer
-	bufferCounters []uint64
-	counter        uint64
+	process    chan *message
+	buffers    map[index]*buffer
+	indexOrder []index
+	sent       index
 }
 
+// Input represents a mixer input and is getting created everytime Sink method is called
+type Input struct {
+	// pos buffers
+	index
+}
+
+// message is used to pass received message from sink goroutines to pump
 type message struct {
 	message *phono.Message
 	in      <-chan *phono.Message
@@ -33,6 +39,9 @@ type buffer struct {
 	samples  []phono.Samples
 	expected int
 }
+
+// index is a counter of recieved buffers
+type index uint64
 
 // sum returns a mixed samples
 func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) phono.Samples {
@@ -53,12 +62,6 @@ func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize)
 	return result
 }
 
-// Input represents a mixer input and is getting created everytime Sink method is called
-type Input struct {
-	// counter of received buffers
-	counter uint64
-}
-
 const (
 	processBuffer = 256
 	enabled       = true
@@ -68,12 +71,12 @@ const (
 // New returns a new mixer
 func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
-		process:        make(chan *message, processBuffer),
-		buffers:        make(map[uint64]*buffer),
-		inputs:         make(map[bool]map[<-chan *phono.Message]*Input),
-		bufferCounters: make([]uint64, 0, processBuffer),
-		numChannels:    nc,
-		bufferSize:     bs,
+		process:     make(chan *message, processBuffer),
+		buffers:     make(map[index]*buffer),
+		inputs:      make(map[bool]map[<-chan *phono.Message]*Input),
+		indexOrder:  make([]index, 0, processBuffer),
+		numChannels: nc,
+		bufferSize:  bs,
 	}
 	m.inputs[enabled] = make(map[<-chan *phono.Message]*Input)
 	m.inputs[disabled] = make(map[<-chan *phono.Message]*Input)
@@ -86,7 +89,7 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 // LIMITATION: if one of the sources is significantly faster input is frequently enabled/disabled - performance can beaffected
 func (m *Mixer) Pump() phono.PumpFunc {
 	out := make(chan *phono.Message)
-	m.counter = 0
+	m.sent = 0
 	return func(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
 		errc := make(chan error, 1)
 		go func() {
@@ -105,14 +108,14 @@ func (m *Mixer) Pump() phono.PumpFunc {
 						var exists bool
 						enabledInputs := len(m.inputs[enabled])
 						// if first sample for this buffer came in
-						if b, exists = m.buffers[input.counter]; !exists {
+						if b, exists = m.buffers[input.index]; !exists {
 							b = &buffer{
 								samples:  make([]phono.Samples, 0, enabledInputs),
 								expected: enabledInputs,
 							}
-							m.buffers[input.counter] = b
-							// add new buffer counter
-							m.bufferCounters = append(m.bufferCounters, input.counter)
+							m.buffers[input.index] = b
+							// add new buffer index
+							m.indexOrder = append(m.indexOrder, input.index)
 						}
 						// append new samples to buffer
 						b.samples = append(b.samples, msg.message.Samples)
@@ -125,34 +128,34 @@ func (m *Mixer) Pump() phono.PumpFunc {
 							out <- message
 
 							// clean up
-							delete(m.buffers, input.counter)
-							m.bufferCounters = m.bufferCounters[1:]
-							m.counter++
+							delete(m.buffers, input.index)
+							m.indexOrder = m.indexOrder[1:]
+							m.sent++
 						}
-						input.counter++
+						input.index++
 					} else {
-						i := sort.Search(len(m.bufferCounters), func(i int) bool { return m.bufferCounters[i] >= input.counter })
+						i := sort.Search(len(m.indexOrder), func(i int) bool { return m.indexOrder[i] >= input.index })
 						fmt.Printf("Found: %v\n", i)
-						if i < len(m.bufferCounters) && m.bufferCounters[i] == input.counter {
-							for i < len(m.bufferCounters) {
-								counter := m.bufferCounters[i]
-								fmt.Printf("Reducing expectations for %v\n", counter)
+						if i < len(m.indexOrder) && m.indexOrder[i] == input.index {
+							for i < len(m.indexOrder) {
+								index := m.indexOrder[i]
+								fmt.Printf("Reducing expectations for %v\n", index)
 
 								// DUPLICATION START
 								// check if all expected inputs received
-								b := m.buffers[counter]
+								b := m.buffers[index]
 								b.expected--
 								if b.expected == len(b.samples) {
-									fmt.Printf("pushing message for %v\n", counter)
+									fmt.Printf("pushing message for %v\n", index)
 									// send message
 									message := newMessage()
 									message.Samples = b.sum(m.numChannels, m.bufferSize)
 									out <- message
 
 									// clean up
-									delete(m.buffers, counter)
-									m.bufferCounters = m.bufferCounters[1:]
-									m.counter++
+									delete(m.buffers, index)
+									m.indexOrder = m.indexOrder[1:]
+									m.sent++
 								} else {
 									// because slice was shorten, include index only here
 									i++
