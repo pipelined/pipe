@@ -2,7 +2,6 @@ package mixer
 
 import (
 	"context"
-	"fmt"
 	"sort"
 
 	"github.com/dudk/phono"
@@ -44,7 +43,10 @@ type buffer struct {
 type index uint64
 
 // sum returns a mixed samples
-func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) phono.Samples {
+func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) (phono.Samples, bool) {
+	if b.expected != len(b.samples) {
+		return nil, false
+	}
 	var sum float64
 	var signals float64
 	result := phono.NewSamples(numChannels, bufferSize)
@@ -52,6 +54,7 @@ func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize)
 		for bs := 0; bs < int(bufferSize); bs++ {
 			sum = 0
 			signals = 0
+			// additional check to sum partial blocks
 			for i := 0; i < len(b.samples) && len(b.samples[i][nc]) > bs; i++ {
 				sum = sum + b.samples[i][nc][bs]
 				signals++
@@ -59,7 +62,7 @@ func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize)
 			result[nc][bs] = sum / signals
 		}
 	}
-	return result
+	return result, true
 }
 
 const (
@@ -121,10 +124,10 @@ func (m *Mixer) Pump() phono.PumpFunc {
 						b.samples = append(b.samples, msg.message.Samples)
 
 						// check if all expected inputs received
-						if b.expected == len(b.samples) {
+						if samples, ok := b.sum(m.numChannels, m.bufferSize); ok {
 							// send message
 							message := newMessage()
-							message.Samples = b.sum(m.numChannels, m.bufferSize)
+							message.Samples = samples
 							out <- message
 
 							// clean up
@@ -134,22 +137,17 @@ func (m *Mixer) Pump() phono.PumpFunc {
 						}
 						input.index++
 					} else {
+						// search and decrease expectations of buffers received before
 						i := sort.Search(len(m.indexOrder), func(i int) bool { return m.indexOrder[i] >= input.index })
-						fmt.Printf("Found: %v\n", i)
 						if i < len(m.indexOrder) && m.indexOrder[i] == input.index {
 							for i < len(m.indexOrder) {
 								index := m.indexOrder[i]
-								fmt.Printf("Reducing expectations for %v\n", index)
-
-								// DUPLICATION START
-								// check if all expected inputs received
 								b := m.buffers[index]
 								b.expected--
-								if b.expected == len(b.samples) {
-									fmt.Printf("pushing message for %v\n", index)
+								if samples, ok := b.sum(m.numChannels, m.bufferSize); ok {
 									// send message
 									message := newMessage()
-									message.Samples = b.sum(m.numChannels, m.bufferSize)
+									message.Samples = samples
 									out <- message
 
 									// clean up
@@ -157,10 +155,9 @@ func (m *Mixer) Pump() phono.PumpFunc {
 									m.indexOrder = m.indexOrder[1:]
 									m.sent++
 								} else {
-									// because slice was shorten, include index only here
+									// because slice was shorten, increase index only here
 									i++
 								}
-								// DUPLICATION DONE
 							}
 						}
 						delete(m.inputs[enabled], msg.in)
