@@ -17,7 +17,7 @@ type Mixer struct {
 
 	process chan *message
 
-	buffer         map[uint64][]phono.Samples
+	buffers        map[uint64]*buffer
 	bufferCounters []uint64
 	expectedInputs map[uint64]int
 	counter        uint64
@@ -29,8 +29,35 @@ type message struct {
 	close   bool
 }
 
+// buffer represents a slice of samples to mix
+type buffer struct {
+	samples []phono.Samples
+}
+
+// sum returns a mixed samples
+func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) phono.Samples {
+	// in []phono.Samples
+	result := phono.NewSamples(numChannels, bufferSize)
+	for s := 0; s < int(bufferSize); s++ {
+		for c := 0; c < int(numChannels); c++ {
+			sum := float64(0)
+			signals := float64(0)
+			for _, samples := range b.samples {
+				if len(samples[c]) <= s {
+					break
+				}
+				sum = sum + samples[c][s]
+				signals++
+			}
+			result[c][s] = sum / signals
+		}
+	}
+	return result
+}
+
 // Input represents a mixer input and is getting created everytime Sink method is called
 type Input struct {
+	// counter of received buffers
 	counter uint64
 }
 
@@ -44,10 +71,10 @@ const (
 func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
 		process:        make(chan *message, processBuffer),
-		buffer:         make(map[uint64][]phono.Samples),
+		buffers:        make(map[uint64]*buffer),
 		expectedInputs: make(map[uint64]int),
 		inputs:         make(map[bool]map[<-chan *phono.Message]*Input),
-		bufferCounters: make([]uint64, 0),
+		bufferCounters: make([]uint64, 0, processBuffer),
 		numChannels:    nc,
 		bufferSize:     bs,
 	}
@@ -77,32 +104,35 @@ func (m *Mixer) Pump() phono.PumpFunc {
 					input := m.inputs[enabled][msg.in]
 					// input's state didn't change
 					if !msg.close {
+						var b *buffer
+						var exists bool
+						enabledInputs := len(m.inputs[enabled])
 						// if first sample for this buffer came in
-						if _, exists := m.buffer[input.counter]; !exists {
-							m.buffer[input.counter] = make([]phono.Samples, 0, len(m.inputs[enabled]))
+						if b, exists = m.buffers[input.counter]; !exists {
+							b = &buffer{samples: make([]phono.Samples, 0, enabledInputs)}
+							m.buffers[input.counter] = b
 							// set new expected inputs
-							m.expectedInputs[input.counter] = len(m.inputs[enabled])
+							m.expectedInputs[input.counter] = enabledInputs
 							// add new buffer counter
 							m.bufferCounters = append(m.bufferCounters, input.counter)
 						}
 						// append new samples to buffer
-						m.buffer[input.counter] = append(m.buffer[input.counter], msg.message.Samples)
+						b.samples = append(b.samples, msg.message.Samples)
 
 						// check if all expected inputs received
-						if m.expectedInputs[input.counter] == len(m.buffer[input.counter]) {
+						if m.expectedInputs[input.counter] == len(b.samples) {
 							// send message
 							message := newMessage()
-							message.Samples = m.sum(m.buffer[input.counter])
+							message.Samples = b.sum(m.numChannels, m.bufferSize)
 							out <- message
 
 							// clean up
 							delete(m.expectedInputs, input.counter)
 							// clean up
-							delete(m.buffer, input.counter)
+							delete(m.buffers, input.counter)
 							m.bufferCounters = m.bufferCounters[1:]
 							m.counter++
 						}
-
 						input.counter++
 					} else {
 						// todo: handle input disable
@@ -112,26 +142,27 @@ func (m *Mixer) Pump() phono.PumpFunc {
 						if i < len(m.expectedInputs) && m.bufferCounters[i] == input.counter {
 							for i < len(m.bufferCounters) {
 								counter := m.bufferCounters[i]
-								// oh crap...
 								fmt.Printf("Reducing expectations for %v\n", counter)
 								m.expectedInputs[counter]--
 
 								// DUPLICATION START
 								// check if all expected inputs received
-								if m.expectedInputs[counter] == len(m.buffer[counter]) {
+								b := m.buffers[counter]
+								if m.expectedInputs[counter] == len(b.samples) {
 									fmt.Printf("pushing message for %v\n", counter)
 									// send message
 									message := newMessage()
-									message.Samples = m.sum(m.buffer[counter])
+									message.Samples = b.sum(m.numChannels, m.bufferSize)
 									out <- message
 
 									// clean up
 									delete(m.expectedInputs, counter)
 									// clean up
-									delete(m.buffer, counter)
+									delete(m.buffers, counter)
 									m.bufferCounters = m.bufferCounters[1:]
 									m.counter++
 								} else {
+									// because slice was shorten, include index only here
 									i++
 								}
 								// DUPLICATION DONE
@@ -147,25 +178,6 @@ func (m *Mixer) Pump() phono.PumpFunc {
 		}()
 		return out, errc, nil
 	}
-}
-
-func (m *Mixer) sum(in []phono.Samples) phono.Samples {
-	result := phono.NewSamples(m.numChannels, m.bufferSize)
-	for s := 0; s < int(m.bufferSize); s++ {
-		for c := 0; c < int(m.numChannels); c++ {
-			sum := float64(0)
-			signals := float64(0)
-			for _, samples := range in {
-				if len(samples[c]) <= s {
-					break
-				}
-				sum = sum + samples[c][s]
-				signals++
-			}
-			result[c][s] = sum / signals
-		}
-	}
-	return result
 }
 
 // Sink adds a new input channel to mix
