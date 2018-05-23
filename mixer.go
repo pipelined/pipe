@@ -19,7 +19,6 @@ type Mixer struct {
 
 	buffers        map[uint64]*buffer
 	bufferCounters []uint64
-	expectedInputs map[uint64]int
 	counter        uint64
 }
 
@@ -31,7 +30,8 @@ type message struct {
 
 // buffer represents a slice of samples to mix
 type buffer struct {
-	samples []phono.Samples
+	samples  []phono.Samples
+	expected int
 }
 
 // sum returns a mixed samples
@@ -70,7 +70,6 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
 		process:        make(chan *message, processBuffer),
 		buffers:        make(map[uint64]*buffer),
-		expectedInputs: make(map[uint64]int),
 		inputs:         make(map[bool]map[<-chan *phono.Message]*Input),
 		bufferCounters: make([]uint64, 0, processBuffer),
 		numChannels:    nc,
@@ -107,10 +106,11 @@ func (m *Mixer) Pump() phono.PumpFunc {
 						enabledInputs := len(m.inputs[enabled])
 						// if first sample for this buffer came in
 						if b, exists = m.buffers[input.counter]; !exists {
-							b = &buffer{samples: make([]phono.Samples, 0, enabledInputs)}
+							b = &buffer{
+								samples:  make([]phono.Samples, 0, enabledInputs),
+								expected: enabledInputs,
+							}
 							m.buffers[input.counter] = b
-							// set new expected inputs
-							m.expectedInputs[input.counter] = enabledInputs
 							// add new buffer counter
 							m.bufferCounters = append(m.bufferCounters, input.counter)
 						}
@@ -118,14 +118,12 @@ func (m *Mixer) Pump() phono.PumpFunc {
 						b.samples = append(b.samples, msg.message.Samples)
 
 						// check if all expected inputs received
-						if m.expectedInputs[input.counter] == len(b.samples) {
+						if b.expected == len(b.samples) {
 							// send message
 							message := newMessage()
 							message.Samples = b.sum(m.numChannels, m.bufferSize)
 							out <- message
 
-							// clean up
-							delete(m.expectedInputs, input.counter)
 							// clean up
 							delete(m.buffers, input.counter)
 							m.bufferCounters = m.bufferCounters[1:]
@@ -133,28 +131,24 @@ func (m *Mixer) Pump() phono.PumpFunc {
 						}
 						input.counter++
 					} else {
-						// todo: handle input disable
-						fmt.Printf("message: %v m.bufferCounters: %v m.expectedInputs: %v\n", msg, m.bufferCounters, m.expectedInputs)
-						i := sort.Search(len(m.expectedInputs), func(i int) bool { return m.bufferCounters[i] >= input.counter })
+						i := sort.Search(len(m.bufferCounters), func(i int) bool { return m.bufferCounters[i] >= input.counter })
 						fmt.Printf("Found: %v\n", i)
-						if i < len(m.expectedInputs) && m.bufferCounters[i] == input.counter {
+						if i < len(m.bufferCounters) && m.bufferCounters[i] == input.counter {
 							for i < len(m.bufferCounters) {
 								counter := m.bufferCounters[i]
 								fmt.Printf("Reducing expectations for %v\n", counter)
-								m.expectedInputs[counter]--
 
 								// DUPLICATION START
 								// check if all expected inputs received
 								b := m.buffers[counter]
-								if m.expectedInputs[counter] == len(b.samples) {
+								b.expected--
+								if b.expected == len(b.samples) {
 									fmt.Printf("pushing message for %v\n", counter)
 									// send message
 									message := newMessage()
 									message.Samples = b.sum(m.numChannels, m.bufferSize)
 									out <- message
 
-									// clean up
-									delete(m.expectedInputs, counter)
 									// clean up
 									delete(m.buffers, counter)
 									m.bufferCounters = m.bufferCounters[1:]
