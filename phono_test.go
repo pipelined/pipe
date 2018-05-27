@@ -34,13 +34,13 @@ func TestMergeParams(t *testing.T) {
 	assert.Equal(t, newInterval, p.Interval)
 }
 
-func TestSamples(t *testing.T) {
-	var s phono.Samples
-	assert.Equal(t, 0, s.NumChannels())
-	assert.Equal(t, 0, s.BufferSize())
-	s = phono.NewSamples(1, 0)
-	assert.Equal(t, 1, s.NumChannels())
-	assert.Equal(t, 0, s.BufferSize())
+func TestBuffer(t *testing.T) {
+	var s phono.Buffer
+	assert.Equal(t, phono.NumChannels(0), s.NumChannels())
+	assert.Equal(t, phono.BufferSize(0), s.Size())
+	s = phono.NewBuffer(1, 0)
+	assert.Equal(t, phono.NumChannels(1), s.NumChannels())
+	assert.Equal(t, phono.BufferSize(0), s.Size())
 	s[0] = make([]float64, 512)
-	assert.Equal(t, 512, s.BufferSize())
+	assert.Equal(t, phono.BufferSize(512), s.Size())
 }

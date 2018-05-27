@@ -7,13 +7,13 @@ import (
 
 // Pipe transport types
 type (
-	// Samples represent a sample data sliced per channel
-	Samples [][]float64
+	// Buffer represent a sample data sliced per channel
+	Buffer [][]float64
 
 	// Message is a main structure for pipe transport
 	Message struct {
-		// Samples of message
-		Samples
+		// Buffer of message
+		Buffer
 		// Pulse
 		*Params
 		*sync.WaitGroup
@@ -141,9 +141,9 @@ func (m *Message) RecievedBy(reciever interface{}) {
 	}
 }
 
-// NewSamples returns initialized slice of samples
-func NewSamples(numChannels NumChannels, bufferSize BufferSize) Samples {
-	result := Samples(make([][]float64, numChannels))
+// NewBuffer returns initialized slice of samples
+func NewBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
+	result := Buffer(make([][]float64, numChannels))
 	for i := range result {
 		result[i] = make([]float64, bufferSize)
 	}
@@ -151,17 +151,17 @@ func NewSamples(numChannels NumChannels, bufferSize BufferSize) Samples {
 }
 
 // NumChannels returns number of channels in this sample slice
-func (s *Samples) NumChannels() int {
+func (s *Buffer) NumChannels() NumChannels {
 	if s == nil {
 		return 0
 	}
-	return len(*s)
+	return NumChannels(len(*s))
 }
 
-// BufferSize returns number of samples in single block in this sample slice
-func (s *Samples) BufferSize() int {
+// Size returns number of samples in single block in this sample slice
+func (s *Buffer) Size() BufferSize {
 	if s.NumChannels() == 0 {
 		return 0
 	}
-	return len((*s)[0])
+	return BufferSize(len((*s)[0]))
 }
