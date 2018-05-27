@@ -109,8 +109,8 @@ func (p *Pump) Pump() phono.PumpFunc {
 					// p.position += phono.SamplePosition(readSamples)
 					// prune buffer to actual size
 					ib.Data = ib.Data[:readSamples]
-					// convert buffer to samples
-					samples, err := AsSamples(ib)
+					// convert buffer to buffer
+					buffer, err := AsSamples(ib)
 					if err != nil {
 						errc <- err
 						return
@@ -118,7 +118,7 @@ func (p *Pump) Pump() phono.PumpFunc {
 					// create and send message
 					message := newMessage()
 					message.ApplyTo(p)
-					message.Samples = samples
+					message.Buffer = buffer
 					out <- message
 				}
 			}
@@ -187,8 +187,8 @@ func (s *Sink) Sink() phono.SinkFunc {
 					if !ok {
 						return
 					}
-					samples := message.Samples
-					err := AsBuffer(ib, samples)
+					buffer := message.Buffer
+					err := AsBuffer(ib, buffer)
 					if err = e.Write(ib); err != nil {
 						errc <- err
 						return
@@ -211,8 +211,8 @@ func (s *Sink) newIntBuffer() *audio.IntBuffer {
 	}
 }
 
-// AsSamples converts from audio.Buffer to [][]float64 samples
-func AsSamples(b audio.Buffer) (phono.Samples, error) {
+// AsSamples converts from audio.Buffer to [][]float64 buffer
+func AsSamples(b audio.Buffer) (phono.Buffer, error) {
 	if b == nil {
 		return nil, nil
 	}
@@ -222,7 +222,7 @@ func AsSamples(b audio.Buffer) (phono.Samples, error) {
 	}
 
 	numChannels := b.PCMFormat().NumChannels
-	s := phono.Samples(make([][]float64, numChannels))
+	s := phono.Buffer(make([][]float64, numChannels))
 	bufferLen := numChannels * b.NumFrames()
 
 	switch b.(type) {
@@ -241,7 +241,7 @@ func AsSamples(b audio.Buffer) (phono.Samples, error) {
 }
 
 // AsBuffer converts from [][]float64 to audio.Buffer
-func AsBuffer(b audio.Buffer, s phono.Samples) error {
+func AsBuffer(b audio.Buffer, s phono.Buffer) error {
 	if b == nil || s == nil {
 		return nil
 	}
