@@ -292,7 +292,7 @@ func ready(p *Pipe) stateFn {
 				return nil
 			}
 			newParams.ApplyTo(p)
-			p.cachedParams = *p.cachedParams.Join(newParams)
+			p.cachedParams = *p.cachedParams.Merge(newParams)
 		case e, ok := <-p.eventc:
 			if !ok {
 				return nil
@@ -353,7 +353,7 @@ func running(p *Pipe) stateFn {
 				return nil
 			}
 			newParams.ApplyTo(p)
-			p.cachedParams = *p.cachedParams.Join(newParams)
+			p.cachedParams = *p.cachedParams.Merge(newParams)
 		case <-p.message.ask:
 			message := new(phono.Message)
 			if !p.cachedParams.Empty() {
@@ -392,7 +392,7 @@ func pausing(p *Pipe) stateFn {
 				return nil
 			}
 			newParams.ApplyTo(p)
-			p.cachedParams = *p.cachedParams.Join(newParams)
+			p.cachedParams = *p.cachedParams.Merge(newParams)
 		case <-p.message.ask:
 			message := new(phono.Message)
 			if !p.cachedParams.Empty() {
@@ -424,7 +424,7 @@ func paused(p *Pipe) stateFn {
 				return nil
 			}
 			newParams.ApplyTo(p)
-			p.cachedParams = *p.cachedParams.Join(newParams)
+			p.cachedParams = *p.cachedParams.Merge(newParams)
 		case e, ok := <-p.eventc:
 			if !ok {
 				return nil

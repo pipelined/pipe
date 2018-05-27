@@ -110,8 +110,8 @@ func (p *Params) ApplyTo(consumer interface{}) {
 	}
 }
 
-// Join two param sets into one
-func (p *Params) Join(source *Params) *Params {
+// Merge two param sets into one
+func (p *Params) Merge(source *Params) *Params {
 	if p == nil || p.Empty() {
 		return source
 	}
@@ -151,17 +151,28 @@ func NewBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
 }
 
 // NumChannels returns number of channels in this sample slice
-func (s *Buffer) NumChannels() NumChannels {
-	if s == nil {
+func (b Buffer) NumChannels() NumChannels {
+	if b == nil {
 		return 0
 	}
-	return NumChannels(len(*s))
+	return NumChannels(len(b))
 }
 
 // Size returns number of samples in single block in this sample slice
-func (s *Buffer) Size() BufferSize {
-	if s.NumChannels() == 0 {
+func (b Buffer) Size() BufferSize {
+	if b.NumChannels() == 0 {
 		return 0
 	}
-	return BufferSize(len((*s)[0]))
+	return BufferSize(len((b)[0]))
+}
+
+// Append buffers set to existing one one
+func (b Buffer) Append(source Buffer) Buffer {
+	if b == nil {
+		return source
+	}
+	for i := range source {
+		b[i] = append(b[i], source[i]...)
+	}
+	return b
 }
