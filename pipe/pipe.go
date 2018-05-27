@@ -39,7 +39,7 @@ type Pipe struct {
 	// params channel
 	paramc chan *phono.Params
 	// errors channel
-	errorc chan error
+	errc chan error
 	// event channel
 	eventc chan eventMessage
 	// signals channel
@@ -331,7 +331,7 @@ func ready(p *Pipe) stateFn {
 					return ready
 				}
 				errcList = append(errcList, sinkErrcList...)
-				p.errorc = mergeErrors(errcList...)
+				p.errc = mergeErrors(errcList...)
 				close(e.done)
 				return running
 			default:
@@ -361,7 +361,7 @@ func running(p *Pipe) stateFn {
 				p.cachedParams = phono.Params{}
 			}
 			p.message.take <- message
-		case err := <-p.errorc:
+		case err := <-p.errc:
 			if err != nil {
 				p.signalc <- signalMessage{Running, err}
 				p.cancelFn()
@@ -404,7 +404,7 @@ func pausing(p *Pipe) stateFn {
 			p.message.take <- message
 			message.Wait()
 			return paused
-		case err := <-p.errorc:
+		case err := <-p.errc:
 			if err != nil {
 				p.signalc <- signalMessage{Running, nil}
 				p.cancelFn()
