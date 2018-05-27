@@ -35,7 +35,7 @@ type message struct {
 
 // buffer represents a slice of samples to mix
 type buffer struct {
-	samples  []phono.Samples
+	samples  []phono.Buffer
 	expected int
 }
 
@@ -43,13 +43,13 @@ type buffer struct {
 type index uint64
 
 // sum returns a mixed samples
-func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) (phono.Samples, bool) {
+func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) (phono.Buffer, bool) {
 	if b.expected != len(b.samples) {
 		return nil, false
 	}
 	var sum float64
 	var signals float64
-	result := phono.NewSamples(numChannels, bufferSize)
+	result := phono.NewBuffer(numChannels, bufferSize)
 	for nc := 0; nc < int(numChannels); nc++ {
 		for bs := 0; bs < int(bufferSize); bs++ {
 			sum = 0
@@ -113,7 +113,7 @@ func (m *Mixer) Pump() phono.PumpFunc {
 						// if first sample for this buffer came in
 						if b, exists = m.buffers[input.index]; !exists {
 							b = &buffer{
-								samples:  make([]phono.Samples, 0, enabledInputs),
+								samples:  make([]phono.Buffer, 0, enabledInputs),
 								expected: enabledInputs,
 							}
 							m.buffers[input.index] = b
@@ -121,13 +121,13 @@ func (m *Mixer) Pump() phono.PumpFunc {
 							m.indexOrder = append(m.indexOrder, input.index)
 						}
 						// append new samples to buffer
-						b.samples = append(b.samples, msg.message.Samples)
+						b.samples = append(b.samples, msg.message.Buffer)
 
 						// check if all expected inputs received
 						if samples, ok := b.sum(m.numChannels, m.bufferSize); ok {
 							// send message
 							message := newMessage()
-							message.Samples = samples
+							message.Buffer = samples
 							out <- message
 
 							// clean up
@@ -147,7 +147,7 @@ func (m *Mixer) Pump() phono.PumpFunc {
 								if samples, ok := b.sum(m.numChannels, m.bufferSize); ok {
 									// send message
 									message := newMessage()
-									message.Samples = samples
+									message.Buffer = samples
 									out <- message
 
 									// clean up
