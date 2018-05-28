@@ -54,12 +54,12 @@ func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize)
 		for bs := 0; bs < int(bufferSize); bs++ {
 			sum = 0
 			signals = 0
-			// additional check to sum partial blocks
+			// additional check to sum shorten blocks
 			for i := 0; i < len(b.samples) && len(b.samples[i][nc]) > bs; i++ {
 				sum = sum + b.samples[i][nc][bs]
 				signals++
 			}
-			result[nc][bs] = sum / signals
+			result[nc] = append(result[nc], sum/signals)
 		}
 	}
 	return result, true
