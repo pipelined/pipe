@@ -46,5 +46,8 @@ func TestBuffer(t *testing.T) {
 
 	s2 := phono.NewBuffer(phono.NumChannels(1), phono.BufferSize(512))
 	s = s.Append(s2)
+	assert.Equal(t, phono.BufferSize(512), s.Size())
+	s2[0] = make([]float64, 512)
+	s = s.Append(s2)
 	assert.Equal(t, phono.BufferSize(1024), s.Size())
 }

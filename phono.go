@@ -145,7 +145,7 @@ func (m *Message) RecievedBy(reciever interface{}) {
 func NewBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
 	result := Buffer(make([][]float64, numChannels))
 	for i := range result {
-		result[i] = make([]float64, bufferSize)
+		result[i] = make([]float64, 0, bufferSize)
 	}
 	return result
 }
