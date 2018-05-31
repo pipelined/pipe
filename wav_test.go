@@ -38,7 +38,7 @@ func TestWavPump(t *testing.T) {
 	defer close(pc)
 
 	pump := p.Pump()
-	out, errorc, err := pump(ctx, newMessage)
+	out, errc, err := pump(ctx, newMessage)
 	assert.Nil(t, err)
 	assert.Equal(t, phono.SampleRate(44100), p.WavSampleRate())
 	assert.Equal(t, 16, p.WavBitDepth())
@@ -54,7 +54,7 @@ func TestWavPump(t *testing.T) {
 				samplesRead = samplesRead + int(m.Buffer.NumChannels())*int(m.Buffer.Size())
 				bufCount++
 			}
-		case err = <-errorc:
+		case err = <-errc:
 			assert.Nil(t, err)
 		}
 
@@ -81,9 +81,9 @@ func TestWavSink(t *testing.T) {
 	out, _, err := p.Pump()(ctx, newMessage)
 	assert.Nil(t, err)
 
-	errorc, err := s.Sink()(out)
+	errc, err := s.Sink()(out)
 	assert.Nil(t, err)
-	for err = range errorc {
+	for err = range errc {
 		fmt.Printf("Error waiting for sink: %v", err)
 	}
 	assert.Nil(t, err)
