@@ -141,15 +141,6 @@ func (m *Message) RecievedBy(reciever interface{}) {
 	}
 }
 
-// NewBuffer returns initialized slice of samples
-func NewBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
-	result := Buffer(make([][]float64, numChannels))
-	for i := range result {
-		result[i] = make([]float64, 0, bufferSize)
-	}
-	return result
-}
-
 // NumChannels returns number of channels in this sample slice
 func (b Buffer) NumChannels() NumChannels {
 	if b == nil {
