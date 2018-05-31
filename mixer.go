@@ -49,8 +49,9 @@ func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize)
 	}
 	var sum float64
 	var signals float64
-	result := phono.NewBuffer(numChannels, bufferSize)
+	result := phono.Buffer(make([][]float64, numChannels))
 	for nc := 0; nc < int(numChannels); nc++ {
+		result[nc] = make([]float64, 0, bufferSize)
 		for bs := 0; bs < int(bufferSize); bs++ {
 			sum = 0
 			signals = 0
