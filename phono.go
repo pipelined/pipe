@@ -126,8 +126,8 @@ func (p *Params) Merge(source *Params) *Params {
 }
 
 // Empty returns true if params are empty
-func (p Params) Empty() bool {
-	if p.private == nil || len(p.private) == 0 {
+func (p *Params) Empty() bool {
+	if p == nil || p.private == nil || len(p.private) == 0 {
 		return true
 	}
 	return false

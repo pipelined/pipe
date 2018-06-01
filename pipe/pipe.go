@@ -35,7 +35,7 @@ type Pipe struct {
 	processors []Processor
 	sinks      []Sink
 
-	cachedParams phono.Params
+	cachedParams *phono.Params
 	// params channel
 	paramc chan *phono.Params
 	// errors channel
@@ -292,7 +292,7 @@ func ready(p *Pipe) stateFn {
 				return nil
 			}
 			newParams.ApplyTo(p)
-			p.cachedParams = *p.cachedParams.Merge(newParams)
+			p.cachedParams = p.cachedParams.Merge(newParams)
 		case e, ok := <-p.eventc:
 			if !ok {
 				return nil
@@ -353,12 +353,12 @@ func running(p *Pipe) stateFn {
 				return nil
 			}
 			newParams.ApplyTo(p)
-			p.cachedParams = *p.cachedParams.Merge(newParams)
+			p.cachedParams = p.cachedParams.Merge(newParams)
 		case <-p.message.ask:
 			message := new(phono.Message)
 			if !p.cachedParams.Empty() {
-				message.Params = &p.cachedParams
-				p.cachedParams = phono.Params{}
+				message.Params = p.cachedParams
+				p.cachedParams = &phono.Params{}
 			}
 			p.message.take <- message
 		case err := <-p.errc:
@@ -392,12 +392,12 @@ func pausing(p *Pipe) stateFn {
 				return nil
 			}
 			newParams.ApplyTo(p)
-			p.cachedParams = *p.cachedParams.Merge(newParams)
+			p.cachedParams = p.cachedParams.Merge(newParams)
 		case <-p.message.ask:
 			message := new(phono.Message)
 			if !p.cachedParams.Empty() {
-				message.Params = &p.cachedParams
-				p.cachedParams = phono.Params{}
+				message.Params = p.cachedParams
+				p.cachedParams = &phono.Params{}
 			}
 			message.WaitGroup = &sync.WaitGroup{}
 			message.WaitGroup.Add(len(p.sinks))
@@ -424,7 +424,7 @@ func paused(p *Pipe) stateFn {
 				return nil
 			}
 			newParams.ApplyTo(p)
-			p.cachedParams = *p.cachedParams.Merge(newParams)
+			p.cachedParams = p.cachedParams.Merge(newParams)
 		case e, ok := <-p.eventc:
 			if !ok {
 				return nil
