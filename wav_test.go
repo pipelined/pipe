@@ -1,9 +1,10 @@
 package wav_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
+
+	"github.com/dudk/phono/mock"
 
 	"github.com/go-audio/audio"
 
@@ -19,74 +20,49 @@ var (
 	bufferSize = phono.BufferSize(512)
 )
 
-// TODO: build with local mock package
-func newMessage() *phono.Message {
-	return new(phono.Message)
+var tests = []struct {
+	phono.BufferSize
+	inFile   string
+	outFile  string
+	messages uint64
+	samples  uint64
+}{
+	{
+		BufferSize: 512,
+		inFile:     "_testdata/in.wav",
+		outFile:    "_testdata/out.wav",
+		messages:   uint64(646),
+		samples:    uint64(330534),
+	},
+	{
+		BufferSize: 512,
+		inFile:     "_testdata/out.wav",
+		outFile:    "_testdata/out1.wav",
+		messages:   uint64(646),
+		samples:    uint64(330534),
+	},
 }
 
-func TestWavPump(t *testing.T) {
-	p, err := wav.NewPump(inFile, bufferSize)
-	assert.Nil(t, err)
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
+func TestWavPipe(t *testing.T) {
+	for _, test := range tests {
+		pump, err := wav.NewPump(test.inFile, bufferSize)
+		assert.Nil(t, err)
+		sink := wav.NewSink(test.outFile, pump.WavSampleRate(), pump.WavNumChannels(), pump.WavBitDepth(), pump.WavAudioFormat())
 
-	pipe := pipe.New(
-		pipe.WithPump(p),
-	)
-	assert.NotNil(t, pipe)
-	pc := make(chan phono.Params)
-	defer close(pc)
-
-	pump := p.Pump()
-	out, errc, err := pump(ctx, newMessage)
-	assert.Nil(t, err)
-	assert.Equal(t, phono.SampleRate(44100), p.WavSampleRate())
-	assert.Equal(t, 16, p.WavBitDepth())
-	assert.Equal(t, phono.NumChannels(2), p.WavNumChannels())
-
-	samplesRead, bufCount := 0, 0
-	for out != nil {
-		select {
-		case m, ok := <-out:
-			if !ok {
-				out = nil
-			} else {
-				samplesRead = samplesRead + int(m.Buffer.NumChannels())*int(m.Buffer.Size())
-				bufCount++
-			}
-		case err = <-errc:
-			assert.Nil(t, err)
-		}
-
+		processor := &mock.Processor{}
+		p := pipe.New(
+			pipe.WithPump(pump),
+			pipe.WithProcessors(processor),
+			pipe.WithSinks(sink),
+		)
+		err = pipe.Do(p.Run)
+		assert.Nil(t, err)
+		err = p.Wait(pipe.Ready)
+		assert.Nil(t, err)
+		messageCount, sampleCount := processor.Count()
+		assert.Equal(t, test.messages, messageCount)
+		assert.Equal(t, test.samples, sampleCount)
 	}
-	assert.Equal(t, 646, bufCount)
-	assert.Equal(t, 330534, samplesRead/int(p.WavNumChannels()))
-}
-
-func TestWavSink(t *testing.T) {
-
-	p, err := wav.NewPump(inFile, bufferSize)
-	assert.Nil(t, err)
-	pc := make(chan phono.Params)
-	defer close(pc)
-
-	s := wav.NewSink(outFile, p.WavSampleRate(), p.WavNumChannels(), p.WavBitDepth(), p.WavAudioFormat())
-	newPipe := pipe.New(
-		pipe.WithPump(p),
-		pipe.WithSinks(s),
-	)
-	assert.NotNil(t, newPipe)
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
-	out, _, err := p.Pump()(ctx, newMessage)
-	assert.Nil(t, err)
-
-	errc, err := s.Sink()(out)
-	assert.Nil(t, err)
-	for err = range errc {
-		fmt.Printf("Error waiting for sink: %v", err)
-	}
-	assert.Nil(t, err)
 }
 
 func TestIntBufferToSamples(t *testing.T) {
