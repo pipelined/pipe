@@ -37,18 +37,29 @@ type (
 
 // Params support types
 type (
+	// Identifiable defines a unique component
+	Identifiable interface {
+		ID() string
+		SetID(string)
+	}
+
+	// UID is a string unique identifier
+	UID struct {
+		value string
+	}
+
 	// ParamFunc represents a function which applies the param
 	ParamFunc func()
 
 	// Param is a structure for delayed parameters apply
 	Param struct {
-		Consumer interface{}
+		Consumer Identifiable
 		Apply    ParamFunc
 	}
 
 	// Params represents current track attributes: time signature, bpm e.t.c.
 	Params struct {
-		private map[interface{}][]ParamFunc
+		private map[string][]ParamFunc
 	}
 )
 
@@ -74,7 +85,7 @@ type (
 // NewParams returns a new params instance with initialised map inside
 func NewParams(params ...Param) (result *Params) {
 	result = &Params{
-		private: make(map[interface{}][]ParamFunc),
+		private: make(map[string][]ParamFunc),
 	}
 	result.Add(params...)
 	return
@@ -86,24 +97,24 @@ func (p *Params) Add(params ...Param) *Params {
 		return nil
 	}
 	for _, param := range params {
-		private, ok := p.private[param.Consumer]
+		private, ok := p.private[param.Consumer.ID()]
 		if !ok {
 			private = make([]ParamFunc, 0, len(params))
 		}
 		private = append(private, param.Apply)
 
-		p.private[param.Consumer] = private
+		p.private[param.Consumer.ID()] = private
 	}
 
 	return p
 }
 
 // ApplyTo consumes params defined for consumer in this param set
-func (p *Params) ApplyTo(consumer interface{}) {
+func (p *Params) ApplyTo(consumer Identifiable) {
 	if p == nil {
 		return
 	}
-	if params, ok := p.private[consumer]; ok {
+	if params, ok := p.private[consumer.ID()]; ok {
 		for _, param := range params {
 			param()
 		}
@@ -131,6 +142,16 @@ func (p *Params) Empty() bool {
 		return true
 	}
 	return false
+}
+
+// ID of the pipe
+func (i *UID) ID() string {
+	return i.value
+}
+
+// SetID to the pipe
+func (i *UID) SetID(id string) {
+	i.value = id
 }
 
 // RecievedBy should be called by sink once message is recieved

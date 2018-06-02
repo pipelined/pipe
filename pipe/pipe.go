@@ -7,20 +7,24 @@ import (
 	"sync"
 
 	"github.com/dudk/phono"
+	"github.com/rs/xid"
 )
 
 // Pump is a source of samples
 type Pump interface {
+	phono.Identifiable
 	Pump() phono.PumpFunc
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
+	phono.Identifiable
 	Process() phono.ProcessFunc
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
+	phono.Identifiable
 	Sink() phono.SinkFunc
 }
 
@@ -30,6 +34,7 @@ type Sink interface {
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
+	phono.UID
 	cancelFn   context.CancelFunc
 	pump       Pump
 	processors []Processor
@@ -96,6 +101,7 @@ var (
 // returned pipe is in ready state
 func New(params ...Param) *Pipe {
 	p := &Pipe{
+		// id:         xid.New().String(),
 		processors: make([]Processor, 0),
 		sinks:      make([]Sink, 0),
 		paramc:     make(chan *phono.Params),
@@ -118,6 +124,9 @@ func New(params ...Param) *Pipe {
 
 // WithPump sets pump to Pipe
 func WithPump(pump Pump) Param {
+	if pump.ID() == "" {
+		pump.SetID(xid.New().String())
+	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			p.pump = pump
@@ -127,6 +136,11 @@ func WithPump(pump Pump) Param {
 
 // WithProcessors sets processors to Pipe
 func WithProcessors(processors ...Processor) Param {
+	for i := range processors {
+		if processors[i].ID() == "" {
+			processors[i].SetID(xid.New().String())
+		}
+	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			p.processors = processors
@@ -136,6 +150,11 @@ func WithProcessors(processors ...Processor) Param {
 
 // WithSinks sets sinks to Pipe
 func WithSinks(sinks ...Sink) Param {
+	for i := range sinks {
+		if sinks[i].ID() == "" {
+			sinks[i].SetID(xid.New().String())
+		}
+	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			p.sinks = sinks
@@ -184,6 +203,20 @@ func (p *Pipe) Wait(s Signal) error {
 		}
 	}
 	return nil
+}
+
+// Push new params into pipe
+func (p *Pipe) Push(o *phono.Params) {
+	p.paramc <- o
+}
+
+// Close must be called to clean up pipe's resources
+func (p *Pipe) Close() {
+	if p.cancelFn != nil {
+		p.cancelFn()
+	}
+	close(p.paramc)
+	close(p.eventc)
 }
 
 // Do executes a passed action and waits till first error or till the passed function receive a done signal
@@ -445,18 +478,4 @@ func paused(p *Pipe) stateFn {
 func (p *Pipe) stop() {
 	close(p.message.ask)
 	close(p.message.take)
-}
-
-// Push new params into pipe
-func (p *Pipe) Push(o *phono.Params) {
-	p.paramc <- o
-}
-
-// Close must be called to clean up pipe's resources
-func (p *Pipe) Close() {
-	if p.cancelFn != nil {
-		p.cancelFn()
-	}
-	close(p.paramc)
-	close(p.eventc)
 }
