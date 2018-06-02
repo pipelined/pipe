@@ -15,6 +15,7 @@ type (
 	// Pump reads from wav file
 	// todo: implement conversion if needed
 	Pump struct {
+		phono.UID
 		filePath   string
 		bufferSize phono.BufferSize
 		newMessage phono.NewMessageFunc
@@ -29,6 +30,7 @@ type (
 
 	// Sink sink saves audio to wav file
 	Sink struct {
+		phono.UID
 		filePath string
 
 		wavSampleRate  phono.SampleRate
@@ -187,6 +189,7 @@ func (s *Sink) Sink() phono.SinkFunc {
 					if !ok {
 						return
 					}
+					message.ApplyTo(s)
 					buffer := message.Buffer
 					err := AsBuffer(ib, buffer)
 					if err = e.Write(ib); err != nil {
