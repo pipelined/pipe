@@ -154,9 +154,11 @@ func (p *Processor) Process() phono.ProcessFunc {
 }
 
 // Sink mocks up a pipe.Sink interface
+// Buffer is not thread-safe, so should not be checked while pipe is running
 type Sink struct {
 	phono.UID
 	Counter
+	phono.Buffer
 }
 
 // Sink implements Sink interface
@@ -172,6 +174,7 @@ func (s *Sink) Sink() phono.SinkFunc {
 					if !ok {
 						return
 					}
+					s.Buffer.Append(m.Buffer)
 					s.Counter.advance(m)
 					m.RecievedBy(s)
 					if m.Params != nil {
