@@ -12,21 +12,27 @@ import (
 
 var tests = []struct {
 	phono.BufferSize
+	phono.NumChannels
 	mock.Limit
+	value    float64
 	messages uint64
 	samples  uint64
 }{
 	{
-		BufferSize: 10,
-		Limit:      10,
-		messages:   10,
-		samples:    100,
+		BufferSize:  10,
+		NumChannels: 1,
+		Limit:       10,
+		value:       0.5,
+		messages:    10,
+		samples:     100,
 	},
 	{
-		BufferSize: phono.BufferSize(10),
-		Limit:      100,
-		messages:   100,
-		samples:    1000,
+		BufferSize:  10,
+		NumChannels: 2,
+		Limit:       100,
+		value:       0.7,
+		messages:    100,
+		samples:     1000,
 	},
 }
 
@@ -42,7 +48,11 @@ func TestPipe(t *testing.T) {
 
 	for _, test := range tests {
 		pump.BufferSize = test.BufferSize
-		params := phono.NewParams(pump.LimitParam(test.Limit))
+		params := phono.NewParams(
+			pump.LimitParam(test.Limit),
+			pump.NumChannelsParam(test.NumChannels),
+			pump.ValueParam(test.value),
+		)
 		p.Push(params)
 		err := pipe.Do(p.Run)
 		assert.Nil(t, err)
@@ -60,5 +70,8 @@ func TestPipe(t *testing.T) {
 		messageCount, samplesCount = sink.Count()
 		assert.Equal(t, test.messages, messageCount)
 		assert.Equal(t, test.samples, samplesCount)
+
+		assert.Equal(t, test.NumChannels, sink.Buffer.NumChannels())
+		assert.Equal(t, test.samples, uint64(sink.Buffer.Size()))
 	}
 }

@@ -22,16 +22,8 @@ const (
 type (
 	// Interval between messages in ms
 	Interval int
-	// IntervalConsumer represents Interval parameter consumer
-	IntervalConsumer interface {
-		IntervalParam(Interval) phono.Param
-	}
 	// Limit messages
 	Limit int
-	// LimitConsumer represents Limit parameter consumer
-	LimitConsumer interface {
-		LimitParam(Limit) phono.Param
-	}
 
 	// Counter can be used to check metrics for mocks
 	Counter struct {
@@ -67,11 +59,13 @@ type Pump struct {
 	Counter
 	Interval
 	Limit
+	Value float64
 	phono.BufferSize
+	phono.NumChannels
 	newMessage phono.NewMessageFunc
 }
 
-// IntervalParam implements IntervalConsumer
+// IntervalParam pushes new interval value for pump
 func (p *Pump) IntervalParam(i Interval) phono.Param {
 	return phono.Param{
 		Consumer: p,
@@ -81,12 +75,32 @@ func (p *Pump) IntervalParam(i Interval) phono.Param {
 	}
 }
 
-// LimitParam implements LimitConsumer
+// LimitParam pushes new limit value for pump
 func (p *Pump) LimitParam(l Limit) phono.Param {
 	return phono.Param{
 		Consumer: p,
 		Apply: func() {
 			p.Limit = l
+		},
+	}
+}
+
+// ValueParam pushes new signal value for pump
+func (p *Pump) ValueParam(v float64) phono.Param {
+	return phono.Param{
+		Consumer: p,
+		Apply: func() {
+			p.Value = v
+		},
+	}
+}
+
+// NumChannelsParam pushes new number of channels for pump
+func (p *Pump) NumChannelsParam(nc phono.NumChannels) phono.Param {
+	return phono.Param{
+		Consumer: p,
+		Apply: func() {
+			p.NumChannels = nc
 		},
 	}
 }
@@ -108,7 +122,13 @@ func (p *Pump) Pump() phono.PumpFunc {
 				default:
 					message := newMessage()
 					message.ApplyTo(p)
-					message.Buffer = phono.Buffer([][]float64{make([]float64, p.BufferSize)})
+					message.Buffer = phono.Buffer(make([][]float64, p.NumChannels))
+					for i := range message.Buffer {
+						message.Buffer[i] = make([]float64, p.BufferSize)
+						for j := range message.Buffer[i] {
+							message.Buffer[i][j] = p.Value
+						}
+					}
 					p.Counter.advance(message)
 					out <- message
 					i++
@@ -141,10 +161,8 @@ func (p *Processor) Process() phono.ProcessFunc {
 					if !ok {
 						return
 					}
+					m.Params.ApplyTo(p)
 					p.Counter.advance(m)
-					if m.Params != nil {
-						m.Params.ApplyTo(p)
-					}
 					out <- m
 				}
 			}
@@ -164,6 +182,7 @@ type Sink struct {
 // Sink implements Sink interface
 func (s *Sink) Sink() phono.SinkFunc {
 	s.Counter.reset()
+	s.Buffer = nil
 	return func(in <-chan *phono.Message) (<-chan error, error) {
 		errc := make(chan error, 1)
 		go func() {
@@ -174,12 +193,10 @@ func (s *Sink) Sink() phono.SinkFunc {
 					if !ok {
 						return
 					}
-					s.Buffer.Append(m.Buffer)
+					m.Params.ApplyTo(s)
+					s.Buffer = s.Buffer.Append(m.Buffer)
 					s.Counter.advance(m)
 					m.RecievedBy(s)
-					if m.Params != nil {
-						m.Params.ApplyTo(s)
-					}
 				}
 			}
 		}()
