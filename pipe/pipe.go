@@ -243,6 +243,15 @@ func Begin(fn actionFn) (Signal, error) {
 	return sig, nil
 }
 
+// Do begins an action and waits for returned signal
+func (p *Pipe) Do(fn actionFn) error {
+	sig, err := Begin(fn)
+	if err != nil {
+		return err
+	}
+	return p.Wait(sig)
+}
+
 // merge error channels
 func mergeErrors(errcList ...<-chan error) chan error {
 	var wg sync.WaitGroup
