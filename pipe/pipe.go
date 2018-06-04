@@ -63,8 +63,12 @@ type Pipe struct {
 // returns phono.ParamFunc, which can be executed later
 type Param func(p *Pipe) phono.ParamFunc
 
-// stateFn for pipe stateFn machine
+// stateFn is the state function for pipe state machine
 type stateFn func(p *Pipe) stateFn
+
+// actionFn is an action function which causes a pipe state change
+// chan error is closed when state is changed
+type actionFn func() (chan error, Signal)
 
 // event is sent when user does some action
 type event int
@@ -167,33 +171,33 @@ func WithSinks(sinks ...Sink) Param {
 }
 
 // Run switches pipe into running state
-func (p *Pipe) Run() chan error {
+func (p *Pipe) Run() (chan error, Signal) {
 	runEvent := eventMessage{
 		event: run,
 		done:  make(chan error),
 	}
 	p.eventc <- runEvent
-	return runEvent.done
+	return runEvent.done, Ready
 }
 
 // Pause switches pipe into pausing state
-func (p *Pipe) Pause() chan error {
+func (p *Pipe) Pause() (chan error, Signal) {
 	pauseEvent := eventMessage{
 		event: pause,
 		done:  make(chan error),
 	}
 	p.eventc <- pauseEvent
-	return pauseEvent.done
+	return pauseEvent.done, Paused
 }
 
 // Resume switches pipe into running state
-func (p *Pipe) Resume() chan error {
+func (p *Pipe) Resume() (chan error, Signal) {
 	resumeEvent := eventMessage{
 		event: resume,
 		done:  make(chan error),
 	}
 	p.eventc <- resumeEvent
-	return resumeEvent.done
+	return resumeEvent.done, Ready
 }
 
 // Wait for signal or first error
@@ -225,18 +229,18 @@ func (p *Pipe) Close() {
 	close(p.eventc)
 }
 
-// Do executes a passed action and waits till first error or till the passed function receive a done signal
-func Do(fn func() chan error) error {
-	errc := fn()
+// Begin executes a passed action and waits till first error or till the passed function receive a done signal
+func Begin(fn actionFn) (Signal, error) {
+	errc, sig := fn()
 	if errc == nil {
-		return nil
+		return sig, nil
 	}
 	for err := range errc {
 		if err != nil {
-			return err
+			return sig, err
 		}
 	}
-	return nil
+	return sig, nil
 }
 
 // merge error channels
@@ -449,9 +453,11 @@ func pausing(p *Pipe) stateFn {
 			return paused
 		case err := <-p.errc:
 			if err != nil {
-				p.signalc <- signalMessage{Running, nil}
+				p.signalc <- signalMessage{Running, err}
 				p.cancelFn()
 			}
+			// send to cancel Do(Pause)
+			p.signalc <- signalMessage{Paused, nil}
 			return ready
 		}
 	}

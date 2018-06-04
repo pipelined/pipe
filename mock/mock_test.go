@@ -57,9 +57,9 @@ func TestPipe(t *testing.T) {
 			pump.ValueParam(test.value),
 		)
 		p.Push(params)
-		err := pipe.Do(p.Run)
+		sig, err := pipe.Begin(p.Run)
 		assert.Nil(t, err)
-		err = p.Wait(pipe.Ready)
+		err = p.Wait(sig)
 		assert.Nil(t, err)
 
 		messageCount, samplesCount := pump.Count()
