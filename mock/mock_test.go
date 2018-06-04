@@ -10,34 +10,38 @@ import (
 	"github.com/dudk/phono/pipe"
 )
 
-var tests = []struct {
-	phono.BufferSize
-	phono.NumChannels
-	mock.Limit
-	value    float64
-	messages uint64
-	samples  uint64
-}{
-	{
-		BufferSize:  10,
-		NumChannels: 1,
-		Limit:       10,
-		value:       0.5,
-		messages:    10,
-		samples:     100,
-	},
-	{
-		BufferSize:  10,
-		NumChannels: 2,
-		Limit:       100,
-		value:       0.7,
-		messages:    100,
-		samples:     1000,
-	},
-}
+var (
+	tests = []struct {
+		phono.BufferSize
+		phono.NumChannels
+		mock.Limit
+		value    float64
+		messages uint64
+		samples  uint64
+	}{
+		{
+			NumChannels: 1,
+			Limit:       10,
+			value:       0.5,
+			messages:    10,
+			samples:     100,
+		},
+		{
+			NumChannels: 2,
+			Limit:       100,
+			value:       0.7,
+			messages:    100,
+			samples:     1000,
+		},
+	}
+	bufferSize = phono.BufferSize(10)
+)
 
 func TestPipe(t *testing.T) {
-	pump := &mock.Pump{Limit: 1}
+	pump := &mock.Pump{
+		Limit:      1,
+		BufferSize: bufferSize,
+	}
 	processor := &mock.Processor{}
 	sink := &mock.Sink{}
 	p := pipe.New(
@@ -47,7 +51,6 @@ func TestPipe(t *testing.T) {
 	)
 
 	for _, test := range tests {
-		pump.BufferSize = test.BufferSize
 		params := phono.NewParams(
 			pump.LimitParam(test.Limit),
 			pump.NumChannelsParam(test.NumChannels),

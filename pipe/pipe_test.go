@@ -18,7 +18,7 @@ var (
 func TestPipe(t *testing.T) {
 
 	pump := &mock.Pump{
-		Limit:    10,
+		Limit:    1000,
 		Interval: 0,
 	}
 
@@ -44,8 +44,7 @@ func TestPipe(t *testing.T) {
 	require.Nil(t, err)
 
 	// test push new opptions
-	limit := mock.Limit(10)
-	op := phono.NewParams(pump.LimitParam(limit))
+	op := phono.NewParams(pump.LimitParam(100))
 	p.Push(op)
 
 	// time.Sleep(time.Millisecond * 10)
