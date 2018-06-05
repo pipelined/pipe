@@ -3,15 +3,20 @@ package mixer
 import (
 	"context"
 	"sort"
+	"sync"
 
 	"github.com/dudk/phono"
+	"github.com/dudk/phono/log"
 )
 
 // Mixer summs up multiple channels of messages into a single channel
 type Mixer struct {
+	phono.UID
+	log.Logger
 	numChannels phono.NumChannels
 	bufferSize  phono.BufferSize
 
+	mutex  sync.RWMutex
 	inputs map[bool]map[<-chan *phono.Message]*Input
 
 	process    chan *message
@@ -75,6 +80,7 @@ const (
 // New returns a new mixer
 func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
+		Logger:      log.GetLogger(),
 		process:     make(chan *message, processBuffer),
 		buffers:     make(map[index]*buffer),
 		inputs:      make(map[bool]map[<-chan *phono.Message]*Input),
@@ -98,19 +104,23 @@ func (m *Mixer) Pump() phono.PumpFunc {
 		errc := make(chan error, 1)
 		go func() {
 			defer close(out)
-			defer close(m.process)
 			defer close(errc)
 			for {
 				select {
 				case <-ctx.Done():
 					return
-				case msg := <-m.process:
+				case msg, ok := <-m.process:
+					if !ok {
+						return
+					}
+					m.mutex.RLock()
 					input := m.inputs[enabled][msg.in]
+					enabledInputs := len(m.inputs[enabled])
+					m.mutex.RUnlock()
 					// input's state didn't change
 					if !msg.close {
 						var b *buffer
 						var exists bool
-						enabledInputs := len(m.inputs[enabled])
 						// if first sample for this buffer came in
 						if b, exists = m.buffers[input.index]; !exists {
 							b = &buffer{
@@ -161,11 +171,16 @@ func (m *Mixer) Pump() phono.PumpFunc {
 								}
 							}
 						}
+						m.mutex.Lock()
 						delete(m.inputs[enabled], msg.in)
+						m.mutex.Unlock()
 					}
+					// m.mutex.RLock()
 					if len(m.inputs[enabled]) == 0 && len(m.inputs[disabled]) == 0 {
+						// m.mutex.RUnlock()
 						return
 					}
+					// m.mutex.RUnlock()
 				}
 			}
 		}()
@@ -177,7 +192,9 @@ func (m *Mixer) Pump() phono.PumpFunc {
 // this method should not be called after
 func (m *Mixer) Sink() phono.SinkFunc {
 	return func(in <-chan *phono.Message) (<-chan error, error) {
+		m.mutex.Lock()
 		m.inputs[enabled][in] = &Input{}
+		m.mutex.Unlock()
 		errc := make(chan error, 1)
 		go func() {
 			defer close(errc)
