@@ -45,6 +45,7 @@ func TestPipe(t *testing.T) {
 	processor := &mock.Processor{}
 	sink := &mock.Sink{}
 	p := pipe.New(
+		pipe.WithName("Mock"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(processor),
 		pipe.WithSinks(sink),

@@ -27,6 +27,7 @@ func TestPipe(t *testing.T) {
 
 	// new pipe
 	p := pipe.New(
+		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc),
 		pipe.WithSinks(sink),

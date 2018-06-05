@@ -35,6 +35,7 @@ type Sink interface {
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
+	name string
 	phono.UID
 	cancelFn   context.CancelFunc
 	pump       Pump
@@ -116,6 +117,9 @@ func New(params ...Param) *Pipe {
 		log:        log.GetLogger(),
 	}
 	p.SetID(xid.New().String())
+	for _, param := range params {
+		param(p)()
+	}
 	state := stateFn(ready)
 	go func() {
 		for state != nil {
@@ -124,10 +128,16 @@ func New(params ...Param) *Pipe {
 		p.stop()
 	}()
 	p.Wait(Ready)
-	for _, param := range params {
-		param(p)()
-	}
 	return p
+}
+
+// WithName sets name to Pipe
+func WithName(n string) Param {
+	return func(p *Pipe) phono.ParamFunc {
+		return func() {
+			p.name = n
+		}
+	}
 }
 
 // WithPump sets pump to Pipe
@@ -204,11 +214,11 @@ func (p *Pipe) Resume() (chan error, Signal) {
 func (p *Pipe) Wait(s Signal) error {
 	for msg := range p.signalc {
 		if msg.err != nil {
-			p.log.Debug(fmt.Sprintf("Pipe %v received signal: %v with error: %v", p.ID(), msg.Signal, msg.err))
+			p.log.Debug(fmt.Sprintf("%v received signal: %v with error: %v", p, msg.Signal, msg.err))
 			return msg.err
 		}
 		if msg.Signal == s {
-			p.log.Debug(fmt.Sprintf("Pipe %v received signal: %v", p.ID(), msg.Signal))
+			p.log.Debug(fmt.Sprintf("%v received signal: %v", p, msg.Signal))
 			return nil
 		}
 	}
@@ -291,7 +301,7 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 	for i, s := range p.sinks {
 		errc, err := s.Sink()(broadcasts[i])
 		if err != nil {
-			p.log.Debug(fmt.Sprintf("Pipe %v failed to start sink %v error: %v", p.ID(), s.ID(), err))
+			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
 			return nil, err
 		}
 		errcList = append(errcList, errc)
@@ -336,7 +346,7 @@ func (p *Pipe) soure() phono.NewMessageFunc {
 // ready state defines that pipe can:
 // 	run - start processing
 func ready(p *Pipe) stateFn {
-	p.log.Debug(fmt.Sprintf("Pipe %v is ready", p.ID()))
+	p.log.Debug(fmt.Sprintf("%v is ready", p))
 	p.signalc <- signalMessage{Ready, nil}
 	for {
 		select {
@@ -350,7 +360,7 @@ func ready(p *Pipe) stateFn {
 			if !ok {
 				return nil
 			}
-			p.log.Debug(fmt.Sprintf("Pipe %v got new event: %v", p.ID(), e))
+			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
 			switch e.event {
 			case run:
 				ctx, cancelFn := context.WithCancel(context.Background())
@@ -360,7 +370,7 @@ func ready(p *Pipe) stateFn {
 				// start pump
 				out, errc, err := p.pump.Pump()(ctx, p.soure())
 				if err != nil {
-					p.log.Debug(fmt.Sprintf("Pipe %v failed to start pump %v error: %v", p.ID(), p.pump.ID(), err))
+					p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 					e.done <- err
 					p.cancelFn()
 					return ready
@@ -371,7 +381,7 @@ func ready(p *Pipe) stateFn {
 				for _, proc := range p.processors {
 					out, errc, err = proc.Process()(out)
 					if err != nil {
-						p.log.Debug(fmt.Sprintf("Pipe %v failed to start processor %v error: %v", p.ID(), proc.ID(), err))
+						p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 						e.done <- err
 						p.cancelFn()
 						return ready
@@ -399,7 +409,7 @@ func ready(p *Pipe) stateFn {
 // running state defines that pipe can be:
 //	paused - pause the processing
 func running(p *Pipe) stateFn {
-	p.log.Debug(fmt.Sprintf("Pipe %v is running", p.ID()))
+	p.log.Debug(fmt.Sprintf("%v is running", p))
 	p.signalc <- signalMessage{Running, nil}
 	for {
 		select {
@@ -426,7 +436,7 @@ func running(p *Pipe) stateFn {
 			if !ok {
 				return nil
 			}
-			p.log.Debug(fmt.Sprintf("Pipe %v got new event: %v", p.ID(), e))
+			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
 			switch e.event {
 			case pause:
 				close(e.done)
@@ -440,7 +450,7 @@ func running(p *Pipe) stateFn {
 
 // pausing defines a state when pipe accepted a pause command and pushed message with confirmation
 func pausing(p *Pipe) stateFn {
-	p.log.Debug(fmt.Sprintf("Pipe %v is pausing", p.ID()))
+	p.log.Debug(fmt.Sprintf("%v is pausing", p))
 	for {
 		select {
 		case newParams, ok := <-p.paramc:
@@ -473,7 +483,7 @@ func pausing(p *Pipe) stateFn {
 }
 
 func paused(p *Pipe) stateFn {
-	p.log.Debug(fmt.Sprintf("Pipe %v is paused", p.ID()))
+	p.log.Debug(fmt.Sprintf("%v is paused", p))
 	p.signalc <- signalMessage{Paused, nil}
 	for {
 		select {
@@ -487,7 +497,7 @@ func paused(p *Pipe) stateFn {
 			if !ok {
 				return nil
 			}
-			p.log.Debug(fmt.Sprintf("Pipe %v got new event: %v", p.ID(), e))
+			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
 			switch e.event {
 			case resume:
 				close(e.done)
@@ -529,4 +539,12 @@ func (s Signal) String() string {
 		return "paused"
 	}
 	return "unknown"
+}
+
+// Convert pipe to string. If name is included if has value
+func (p *Pipe) String() string {
+	if p.name == "" {
+		return p.ID()
+	}
+	return fmt.Sprintf("%v %v", p.name, p.ID())
 }
