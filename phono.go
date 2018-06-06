@@ -188,3 +188,12 @@ func (b Buffer) Append(source Buffer) Buffer {
 	}
 	return b
 }
+
+// EmptyBuffer returns an empty buffer of specified length
+func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
+	result := Buffer(make([][]float64, numChannels))
+	for i := range result {
+		result[i] = make([]float64, bufferSize)
+	}
+	return result
+}
