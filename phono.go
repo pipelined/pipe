@@ -53,8 +53,8 @@ type (
 
 	// Param is a structure for delayed parameters apply
 	Param struct {
-		Consumer Identifiable
-		Apply    ParamFunc
+		ID    string
+		Apply ParamFunc
 	}
 
 	// Params represents current track attributes: time signature, bpm e.t.c.
@@ -97,13 +97,13 @@ func (p *Params) Add(params ...Param) *Params {
 		return nil
 	}
 	for _, param := range params {
-		private, ok := p.private[param.Consumer.ID()]
+		private, ok := p.private[param.ID]
 		if !ok {
 			private = make([]ParamFunc, 0, len(params))
 		}
 		private = append(private, param.Apply)
 
-		p.private[param.Consumer.ID()] = private
+		p.private[param.ID] = private
 	}
 
 	return p

@@ -68,7 +68,7 @@ type Pump struct {
 // IntervalParam pushes new interval value for pump
 func (p *Pump) IntervalParam(i Interval) phono.Param {
 	return phono.Param{
-		Consumer: p,
+		ID: p.ID(),
 		Apply: func() {
 			p.Interval = i
 		},
@@ -78,7 +78,7 @@ func (p *Pump) IntervalParam(i Interval) phono.Param {
 // LimitParam pushes new limit value for pump
 func (p *Pump) LimitParam(l Limit) phono.Param {
 	return phono.Param{
-		Consumer: p,
+		ID: p.ID(),
 		Apply: func() {
 			p.Limit = l
 		},
@@ -88,7 +88,7 @@ func (p *Pump) LimitParam(l Limit) phono.Param {
 // ValueParam pushes new signal value for pump
 func (p *Pump) ValueParam(v float64) phono.Param {
 	return phono.Param{
-		Consumer: p,
+		ID: p.ID(),
 		Apply: func() {
 			p.Value = v
 		},
@@ -98,7 +98,7 @@ func (p *Pump) ValueParam(v float64) phono.Param {
 // NumChannelsParam pushes new number of channels for pump
 func (p *Pump) NumChannelsParam(nc phono.NumChannels) phono.Param {
 	return phono.Param{
-		Consumer: p,
+		ID: p.ID(),
 		Apply: func() {
 			p.NumChannels = nc
 		},
