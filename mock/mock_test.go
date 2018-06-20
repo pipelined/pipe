@@ -16,8 +16,8 @@ var (
 		phono.NumChannels
 		mock.Limit
 		value    float64
-		messages uint64
-		samples  uint64
+		messages int64
+		samples  int64
 	}{
 		{
 			NumChannels: 1,
@@ -74,6 +74,6 @@ func TestPipe(t *testing.T) {
 		assert.Equal(t, test.samples, samplesCount)
 
 		assert.Equal(t, test.NumChannels, sink.Buffer.NumChannels())
-		assert.Equal(t, test.samples, uint64(sink.Buffer.Size()))
+		assert.Equal(t, phono.BufferSize(test.samples), sink.Buffer.Size())
 	}
 }

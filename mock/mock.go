@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/dudk/phono"
+	"github.com/dudk/phono/pipe"
+	"github.com/dudk/phono/pipe/runner"
 )
 
 const (
@@ -28,15 +30,15 @@ type (
 	// Counter can be used to check metrics for mocks
 	Counter struct {
 		m        sync.Mutex
-		messages uint64
-		samples  uint64
+		messages int64
+		samples  int64
 	}
 )
 
-func (c *Counter) advance(msg *phono.Message) {
+func (c *Counter) advance(buf phono.Buffer) {
 	c.m.Lock()
 	c.messages++
-	c.samples = c.samples + uint64(msg.Buffer.Size())
+	c.samples = c.samples + int64(buf.Size())
 	c.m.Unlock()
 }
 
@@ -47,7 +49,7 @@ func (c *Counter) reset() {
 }
 
 // Count returns message and samples counted
-func (c *Counter) Count() (uint64, uint64) {
+func (c *Counter) Count() (int64, int64) {
 	c.m.Lock()
 	defer c.m.Unlock()
 	return c.messages, c.samples
@@ -129,7 +131,7 @@ func (p *Pump) Pump() phono.PumpFunc {
 							message.Buffer[i][j] = p.Value
 						}
 					}
-					p.Counter.advance(message)
+					p.Counter.advance(message.Buffer)
 					out <- message
 					i++
 					time.Sleep(time.Millisecond * time.Duration(p.Interval))
@@ -146,28 +148,20 @@ type Processor struct {
 	Counter
 }
 
-// Process implements pipe.Processor
-func (p *Processor) Process() phono.ProcessFunc {
-	p.Counter.reset()
-	return func(in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
-		errc := make(chan error, 1)
-		out := make(chan *phono.Message)
-		go func() {
-			defer close(out)
-			defer close(errc)
-			for in != nil {
-				select {
-				case m, ok := <-in:
-					if !ok {
-						return
-					}
-					m.Params.ApplyTo(p)
-					p.Counter.advance(m)
-					out <- m
-				}
-			}
-		}()
-		return out, errc, nil
+// Process implementation for runner
+func (p *Processor) Process(buf phono.Buffer) phono.Buffer {
+	p.Counter.advance(buf)
+	return buf
+}
+
+// RunProcess returns a pipe.ProcessRunner for this processor
+func (p *Processor) RunProcess() pipe.ProcessRunner {
+	return &runner.Processor{
+		Processor: p,
+		Before: func() error {
+			p.reset()
+			return nil
+		},
 	}
 }
 
@@ -195,7 +189,7 @@ func (s *Sink) Sink() phono.SinkFunc {
 					}
 					m.Params.ApplyTo(s)
 					s.Buffer = s.Buffer.Append(m.Buffer)
-					s.Counter.advance(m)
+					s.Counter.advance(m.Buffer)
 					m.RecievedBy(s)
 				}
 			}

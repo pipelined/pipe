@@ -20,13 +20,19 @@ type Pump interface {
 // Processor defines interface for pipe-processors
 type Processor interface {
 	phono.Identifiable
-	Process() phono.ProcessFunc
+	RunProcess() ProcessRunner
+	Process(phono.Buffer) phono.Buffer
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
 	phono.Identifiable
 	Sink() phono.SinkFunc
+}
+
+// ProcessRunner represents processor iterator
+type ProcessRunner interface {
+	Run(<-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence
@@ -379,7 +385,8 @@ func ready(p *Pipe) stateFn {
 
 				// start chained processesing
 				for _, proc := range p.processors {
-					out, errc, err = proc.Process()(out)
+					pr := proc.RunProcess()
+					out, errc, err = pr.Run(out)
 					if err != nil {
 						p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 						e.done <- err
