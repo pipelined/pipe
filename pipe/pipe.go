@@ -15,21 +15,21 @@ import (
 type Pump interface {
 	phono.Identifiable
 	RunPump() PumpRunner
-	Pump() (phono.Buffer, bool)
+	Pump() (phono.Buffer, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
 	phono.Identifiable
 	RunProcess() ProcessRunner
-	Process(phono.Buffer) phono.Buffer
+	Process(phono.Buffer) (phono.Buffer, error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
 	phono.Identifiable
 	RunSink() SinkRunner
-	Sink(phono.Buffer)
+	Sink(phono.Buffer) error
 }
 
 // PumpRunner is a pump runner
@@ -121,6 +121,8 @@ const (
 var (
 	// ErrInvalidState is returned if pipe method cannot be executed at this moment
 	ErrInvalidState = errors.New("Invalid state")
+	// ErrPumpDone is returned if pump finished it's job
+	ErrPumpDone = errors.New("Pump done")
 )
 
 // New creates a new pipe and applies provided params

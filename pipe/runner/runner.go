@@ -55,8 +55,11 @@ func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan
 		for {
 			message := newMessage()
 			message.ApplyTo(p.Pump)
-			buf, ok := p.Pump.Pump()
-			if !ok {
+			buf, err := p.Pump.Pump()
+			if err != nil {
+				if err != pipe.ErrPumpDone {
+					errc <- err
+				}
 				return
 			}
 			select {
@@ -96,7 +99,11 @@ func (r *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan e
 					return
 				}
 				m.ApplyTo(r.Processor)
-				m.Buffer = r.Process(m.Buffer)
+				m.Buffer, err = r.Process(m.Buffer)
+				if err != nil {
+					errc <- err
+					return
+				}
 				r.out <- m
 			}
 		}
@@ -126,7 +133,11 @@ func (s *Sink) Run(in <-chan *phono.Message) (<-chan error, error) {
 					return
 				}
 				m.Params.ApplyTo(s)
-				s.Sink.Sink(m.Buffer)
+				err = s.Sink.Sink(m.Buffer)
+				if err != nil {
+					errc <- err
+					return
+				}
 			}
 		}
 	}()
