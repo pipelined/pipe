@@ -96,7 +96,6 @@ func (r *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan e
 					return
 				}
 				m.ApplyTo(r.Processor)
-				m.RecievedBy(r.Processor)
 				m.Buffer = r.Process(m.Buffer)
 				r.out <- m
 			}
@@ -128,7 +127,6 @@ func (s *Sink) Run(in <-chan *phono.Message) (<-chan error, error) {
 				}
 				m.Params.ApplyTo(s)
 				s.Sink.Sink(m.Buffer)
-				m.RecievedBy(s)
 			}
 		}
 	}()

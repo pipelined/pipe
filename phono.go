@@ -2,7 +2,6 @@ package phono
 
 import (
 	"context"
-	"sync"
 )
 
 // Pipe transport types
@@ -16,7 +15,6 @@ type (
 		Buffer
 		// Pulse
 		*Params
-		*sync.WaitGroup
 	}
 
 	// NewMessageFunc is a message-producer function
@@ -115,6 +113,7 @@ func (p *Params) ApplyTo(consumer Identifiable) {
 		for _, param := range params {
 			param()
 		}
+		delete(p.private, consumer.ID())
 	}
 }
 
@@ -151,11 +150,14 @@ func (i *UID) SetID(id string) {
 	i.value = id
 }
 
-// RecievedBy should be called by sink once message is recieved
-func (m *Message) RecievedBy(reciever interface{}) {
-	// TODO check in map of receivers
-	if m.WaitGroup != nil {
-		m.Done()
+// ReceivedBy returns channel which is closed when param received
+func ReceivedBy(id Identifiable) (<-chan struct{}, Param) {
+	c := make(chan struct{})
+	return c, Param{
+		ID: id.ID(),
+		Apply: func() {
+			close(c)
+		},
 	}
 }
 
