@@ -1,9 +1,19 @@
 package runner
 
 import (
+	"context"
+
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/pipe"
 )
+
+// Pump represents pump's runner
+type Pump struct {
+	pipe.Pump
+	Before BeforeAfterFunc
+	After  BeforeAfterFunc
+	out    chan *phono.Message
+}
 
 // Process represents processor's runner
 type Process struct {
@@ -16,6 +26,42 @@ type Process struct {
 
 // BeforeAfterFunc represents setup/clean up functions which are executed on Run start and finish
 type BeforeAfterFunc func() error
+
+// Run the runner
+func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
+	err := p.Before.call()
+	if err != nil {
+		return nil, nil, err
+	}
+	out := make(chan *phono.Message)
+	errc := make(chan error, 1)
+	go func() {
+		defer close(out)
+		defer close(errc)
+		defer func() {
+			err := p.After.call()
+			if err != nil {
+				errc <- err
+			}
+		}()
+		for {
+			message := newMessage()
+			message.ApplyTo(p.Pump)
+			buf, ok := p.Pump.Pump()
+			if !ok {
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				message.Buffer = buf
+				out <- message
+			}
+		}
+	}()
+	return out, errc, nil
+}
 
 // Run the runner
 func (r *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {

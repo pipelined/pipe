@@ -177,7 +177,7 @@ func (b Buffer) Size() BufferSize {
 
 // Append buffers set to existing one one
 func (b Buffer) Append(source Buffer) Buffer {
-	if b == nil {
+	if b.Size() == 0 {
 		return source
 	}
 	for i := range source {

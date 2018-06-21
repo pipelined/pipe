@@ -14,7 +14,8 @@ import (
 // Pump is a source of samples
 type Pump interface {
 	phono.Identifiable
-	Pump() phono.PumpFunc
+	RunPump() PumpRunner
+	Pump() (phono.Buffer, bool)
 }
 
 // Processor defines interface for pipe-processors
@@ -30,7 +31,12 @@ type Sink interface {
 	Sink() phono.SinkFunc
 }
 
-// ProcessRunner represents processor iterator
+// PumpRunner is a pump runner
+type PumpRunner interface {
+	Run(context.Context, phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error)
+}
+
+// ProcessRunner is a processor runner
 type ProcessRunner interface {
 	Run(<-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
 }
@@ -374,7 +380,8 @@ func ready(p *Pipe) stateFn {
 				errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 				// start pump
-				out, errc, err := p.pump.Pump()(ctx, p.soure())
+				pumpRunner := p.pump.RunPump()
+				out, errc, err := pumpRunner.Run(ctx, p.soure())
 				if err != nil {
 					p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 					e.done <- err
@@ -385,8 +392,8 @@ func ready(p *Pipe) stateFn {
 
 				// start chained processesing
 				for _, proc := range p.processors {
-					pr := proc.RunProcess()
-					out, errc, err = pr.Run(out)
+					processRunner := proc.RunProcess()
+					out, errc, err = processRunner.Run(out)
 					if err != nil {
 						p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 						e.done <- err
