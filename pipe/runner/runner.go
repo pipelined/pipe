@@ -24,10 +24,18 @@ type Process struct {
 	out    chan *phono.Message
 }
 
+// Sink represents sink's runner
+type Sink struct {
+	pipe.Sink
+	Before BeforeAfterFunc
+	After  BeforeAfterFunc
+	in     <-chan *phono.Message
+}
+
 // BeforeAfterFunc represents setup/clean up functions which are executed on Run start and finish
 type BeforeAfterFunc func() error
 
-// Run the runner
+// Run the Pump runner
 func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
 	err := p.Before.call()
 	if err != nil {
@@ -63,7 +71,7 @@ func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan
 	return out, errc, nil
 }
 
-// Run the runner
+// Run the Processor runner
 func (r *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
 	err := r.Before.call()
 	if err != nil {
@@ -95,6 +103,37 @@ func (r *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan e
 		}
 	}()
 	return r.out, errc, nil
+}
+
+// Run the sink runner
+func (s *Sink) Run(in <-chan *phono.Message) (<-chan error, error) {
+	err := s.Before.call()
+	if err != nil {
+		return nil, err
+	}
+	errc := make(chan error, 1)
+	go func() {
+		defer close(errc)
+		defer func() {
+			err := s.After.call()
+			if err != nil {
+				errc <- err
+			}
+		}()
+		for in != nil {
+			select {
+			case m, ok := <-in:
+				if !ok {
+					return
+				}
+				m.Params.ApplyTo(s)
+				s.Sink.Sink(m.Buffer)
+				m.RecievedBy(s)
+			}
+		}
+	}()
+
+	return errc, nil
 }
 
 func (fn BeforeAfterFunc) call() error {

@@ -28,7 +28,8 @@ type Processor interface {
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
 	phono.Identifiable
-	Sink() phono.SinkFunc
+	RunSink() SinkRunner
+	Sink(phono.Buffer)
 }
 
 // PumpRunner is a pump runner
@@ -39,6 +40,11 @@ type PumpRunner interface {
 // ProcessRunner is a processor runner
 type ProcessRunner interface {
 	Run(<-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
+}
+
+// SinkRunner is a sink runner
+type SinkRunner interface {
+	Run(in <-chan *phono.Message) (errc <-chan error, err error)
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence
@@ -311,7 +317,8 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Sink()(broadcasts[i])
+		sinkRunner := s.RunSink()
+		errc, err := sinkRunner.Run(broadcasts[i])
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
 			return nil, err

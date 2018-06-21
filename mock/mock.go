@@ -124,7 +124,7 @@ func (p *Pump) Pump() (phono.Buffer, bool) {
 	return buf, true
 }
 
-// RunPump returns new pipe runner
+// RunPump returns new pump runner
 func (p *Pump) RunPump() pipe.PumpRunner {
 	return &runner.Pump{
 		Pump: p,
@@ -166,28 +166,20 @@ type Sink struct {
 	phono.Buffer
 }
 
-// Sink implements Sink interface
-func (s *Sink) Sink() phono.SinkFunc {
-	s.Counter.reset()
-	s.Buffer = nil
-	return func(in <-chan *phono.Message) (<-chan error, error) {
-		errc := make(chan error, 1)
-		go func() {
-			defer close(errc)
-			for in != nil {
-				select {
-				case m, ok := <-in:
-					if !ok {
-						return
-					}
-					m.Params.ApplyTo(s)
-					s.Buffer = s.Buffer.Append(m.Buffer)
-					s.Counter.advance(m.Buffer)
-					m.RecievedBy(s)
-				}
-			}
-		}()
+// Sink implementation for runner
+func (s *Sink) Sink(buf phono.Buffer) {
+	s.Buffer = s.Buffer.Append(buf)
+	s.Counter.advance(buf)
+}
 
-		return errc, nil
+// RunSink returns new sink runner
+func (s *Sink) RunSink() pipe.SinkRunner {
+	return &runner.Sink{
+		Sink: s,
+		Before: func() error {
+			s.Buffer = nil
+			s.reset()
+			return nil
+		},
 	}
 }
