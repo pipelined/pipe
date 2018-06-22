@@ -24,22 +24,22 @@ var tests = []struct {
 	phono.BufferSize
 	inFile   string
 	outFile  string
-	messages uint64
-	samples  uint64
+	messages int64
+	samples  int64
 }{
 	{
 		BufferSize: 512,
 		inFile:     "_testdata/in.wav",
 		outFile:    "_testdata/out.wav",
-		messages:   uint64(646),
-		samples:    uint64(330534),
+		messages:   646,
+		samples:    330534,
 	},
 	{
 		BufferSize: 512,
 		inFile:     "_testdata/out.wav",
 		outFile:    "_testdata/out1.wav",
-		messages:   uint64(646),
-		samples:    uint64(330534),
+		messages:   646,
+		samples:    330534,
 	},
 }
 
@@ -47,7 +47,8 @@ func TestWavPipe(t *testing.T) {
 	for _, test := range tests {
 		pump, err := wav.NewPump(test.inFile, bufferSize)
 		assert.Nil(t, err)
-		sink := wav.NewSink(test.outFile, pump.WavSampleRate(), pump.WavNumChannels(), pump.WavBitDepth(), pump.WavAudioFormat())
+		sink, err := wav.NewSink(test.outFile, pump.WavSampleRate(), pump.WavNumChannels(), pump.WavBitDepth(), pump.WavAudioFormat())
+		assert.Nil(t, err)
 
 		processor := &mock.Processor{}
 		p := pipe.New(
@@ -55,9 +56,7 @@ func TestWavPipe(t *testing.T) {
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),
 		)
-		err = pipe.Do(p.Run)
-		assert.Nil(t, err)
-		err = p.Wait(pipe.Ready)
+		err = p.Do(p.Run)
 		assert.Nil(t, err)
 		messageCount, sampleCount := processor.Count()
 		assert.Equal(t, test.messages, messageCount)
