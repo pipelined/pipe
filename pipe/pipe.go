@@ -358,9 +358,11 @@ func (p *Pipe) soure() phono.NewMessageFunc {
 	p.message.ask = make(chan struct{})
 	p.message.take = make(chan *phono.Message)
 	var do struct{}
-	return func() *phono.Message {
+	return func(sourceID string) *phono.Message {
 		p.message.ask <- do
-		return <-p.message.take
+		msg := <-p.message.take
+		msg.SourceID = sourceID
+		return msg
 	}
 }
 

@@ -13,12 +13,15 @@ type (
 	Message struct {
 		// Buffer of message
 		Buffer
-		// Pulse
+		// Params for pipe
 		*Params
+		// ID of original pipe
+		SourceID string
 	}
 
 	// NewMessageFunc is a message-producer function
-	NewMessageFunc func() *Message
+	// sourceID expected to be pump's id
+	NewMessageFunc func(sourceID string) *Message
 )
 
 // Pipe function types
