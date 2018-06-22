@@ -121,8 +121,8 @@ const (
 var (
 	// ErrInvalidState is returned if pipe method cannot be executed at this moment
 	ErrInvalidState = errors.New("Invalid state")
-	// ErrPumpDone is returned if pump finished it's job
-	ErrPumpDone = errors.New("Pump done")
+	// ErrEOP is returned if pump finished processing and indicates a gracefull ending
+	ErrEOP = errors.New("End of pipe")
 )
 
 // New creates a new pipe and applies provided params

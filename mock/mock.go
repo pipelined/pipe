@@ -109,7 +109,7 @@ func (p *Pump) NumChannelsParam(nc phono.NumChannels) phono.Param {
 // Pump returns new buffer for pipe
 func (p *Pump) Pump() (phono.Buffer, error) {
 	if Limit(p.Counter.messages) >= p.Limit {
-		return nil, pipe.ErrPumpDone
+		return nil, pipe.ErrEOP
 	}
 	time.Sleep(time.Millisecond * time.Duration(p.Interval))
 

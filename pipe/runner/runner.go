@@ -57,7 +57,7 @@ func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan
 			message.ApplyTo(p.Pump)
 			buf, err := p.Pump.Pump()
 			if err != nil {
-				if err != pipe.ErrPumpDone {
+				if err != pipe.ErrEOP {
 					errc <- err
 				}
 				return
