@@ -1,9 +1,5 @@
 package phono
 
-import (
-	"context"
-)
-
 // Pipe transport types
 type (
 	// Buffer represent a sample data sliced per channel
@@ -22,15 +18,6 @@ type (
 	// NewMessageFunc is a message-producer function
 	// sourceID expected to be pump's id
 	NewMessageFunc func() *Message
-)
-
-// Pipe function types
-type (
-	// PumpFunc is a function to pump sound data to pipe
-	PumpFunc func(context.Context, NewMessageFunc) (out <-chan *Message, errc <-chan error, err error)
-
-	// SinkFunc is a function to sink data from pipe
-	SinkFunc func(in <-chan *Message) (errc <-chan error, err error)
 )
 
 // Params support types
