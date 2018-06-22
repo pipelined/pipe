@@ -84,7 +84,7 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 }
 
 // RunPump starts wav file processing
-func (p *Pump) RunPump() pipe.PumpRunner {
+func (p *Pump) RunPump(sourceID string) pipe.PumpRunner {
 	return &runner.Pump{
 		Pump: p,
 		After: func() error {
@@ -95,7 +95,7 @@ func (p *Pump) RunPump() pipe.PumpRunner {
 
 // Pump starts the pump process
 // once executed, wav attributes are accessible
-func (p *Pump) Pump() (phono.Buffer, error) {
+func (p *Pump) Pump(m *phono.Message) (*phono.Message, error) {
 	if p.decoder == nil {
 		return nil, errors.New("Source is not defined")
 	}
@@ -111,11 +111,11 @@ func (p *Pump) Pump() (phono.Buffer, error) {
 	// prune buffer to actual size
 	p.ib.Data = p.ib.Data[:readSamples]
 	// convert buffer to buffer
-	buffer, err := AsSamples(p.ib)
+	m.Buffer, err = AsSamples(p.ib)
 	if err != nil {
 		return nil, err
 	}
-	return buffer, nil
+	return m, nil
 }
 
 // WavSampleRate returns wav's sample rate
@@ -164,7 +164,7 @@ func NewSink(path string, wavSampleRate phono.SampleRate, wavNumChannels phono.N
 }
 
 // RunSink returns new sink runner with defined configuration
-func (s *Sink) RunSink() pipe.SinkRunner {
+func (s *Sink) RunSink(sourceID string) pipe.SinkRunner {
 	return &runner.Sink{
 		Sink: s,
 		After: func() error {
@@ -178,8 +178,8 @@ func (s *Sink) RunSink() pipe.SinkRunner {
 }
 
 // Sink implements Sink interface
-func (s *Sink) Sink(b phono.Buffer) error {
-	err := AsBuffer(s.ib, b)
+func (s *Sink) Sink(m *phono.Message) error {
+	err := AsBuffer(s.ib, m.Buffer)
 	if err != nil {
 		return err
 	}
