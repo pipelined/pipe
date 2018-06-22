@@ -125,7 +125,7 @@ func (p *Pump) Pump() (phono.Buffer, error) {
 }
 
 // RunPump returns new pump runner
-func (p *Pump) RunPump() pipe.PumpRunner {
+func (p *Pump) RunPump(sourceID string) pipe.PumpRunner {
 	return &runner.Pump{
 		Pump: p,
 		Before: func() error {
@@ -148,7 +148,7 @@ func (p *Processor) Process(buf phono.Buffer) (phono.Buffer, error) {
 }
 
 // RunProcess returns a pipe.ProcessRunner for this processor
-func (p *Processor) RunProcess() pipe.ProcessRunner {
+func (p *Processor) RunProcess(sourceID string) pipe.ProcessRunner {
 	return &runner.Process{
 		Processor: p,
 		Before: func() error {
@@ -174,7 +174,7 @@ func (s *Sink) Sink(buf phono.Buffer) error {
 }
 
 // RunSink returns new sink runner
-func (s *Sink) RunSink() pipe.SinkRunner {
+func (s *Sink) RunSink(sourceID string) pipe.SinkRunner {
 	return &runner.Sink{
 		Sink: s,
 		Before: func() error {

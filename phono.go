@@ -21,7 +21,7 @@ type (
 
 	// NewMessageFunc is a message-producer function
 	// sourceID expected to be pump's id
-	NewMessageFunc func(sourceID string) *Message
+	NewMessageFunc func() *Message
 )
 
 // Pipe function types

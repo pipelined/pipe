@@ -53,7 +53,7 @@ func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan
 			}
 		}()
 		for {
-			message := newMessage(p.Pump.ID())
+			message := newMessage()
 			message.ApplyTo(p.Pump)
 			buf, err := p.Pump.Pump()
 			if err != nil {

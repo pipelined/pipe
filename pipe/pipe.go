@@ -14,21 +14,21 @@ import (
 // Pump is a source of samples
 type Pump interface {
 	phono.Identifiable
-	RunPump() PumpRunner
+	RunPump(sourceID string) PumpRunner
 	Pump() (phono.Buffer, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
 	phono.Identifiable
-	RunProcess() ProcessRunner
+	RunProcess(sourceID string) ProcessRunner
 	Process(phono.Buffer) (phono.Buffer, error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
 	phono.Identifiable
-	RunSink() SinkRunner
+	RunSink(sourceID string) SinkRunner
 	Sink(phono.Buffer) error
 }
 
@@ -319,7 +319,7 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 
 	//start broadcast
 	for i, s := range p.sinks {
-		sinkRunner := s.RunSink()
+		sinkRunner := s.RunSink(p.ID())
 		errc, err := sinkRunner.Run(broadcasts[i])
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
@@ -358,10 +358,10 @@ func (p *Pipe) soure() phono.NewMessageFunc {
 	p.message.ask = make(chan struct{})
 	p.message.take = make(chan *phono.Message)
 	var do struct{}
-	return func(sourceID string) *phono.Message {
+	return func() *phono.Message {
 		p.message.ask <- do
 		msg := <-p.message.take
-		msg.SourceID = sourceID
+		msg.SourceID = p.ID()
 		return msg
 	}
 }
@@ -391,7 +391,7 @@ func ready(p *Pipe) stateFn {
 				errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 				// start pump
-				pumpRunner := p.pump.RunPump()
+				pumpRunner := p.pump.RunPump(p.ID())
 				out, errc, err := pumpRunner.Run(ctx, p.soure())
 				if err != nil {
 					p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
@@ -403,7 +403,7 @@ func ready(p *Pipe) stateFn {
 
 				// start chained processesing
 				for _, proc := range p.processors {
-					processRunner := proc.RunProcess()
+					processRunner := proc.RunProcess(p.ID())
 					out, errc, err = processRunner.Run(out)
 					if err != nil {
 						p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
