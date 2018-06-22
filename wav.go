@@ -106,7 +106,7 @@ func (p *Pump) Pump() (phono.Buffer, error) {
 	}
 
 	if readSamples == 0 {
-		return nil, pipe.ErrPumpDone
+		return nil, pipe.ErrEOP
 	}
 	// prune buffer to actual size
 	p.ib.Data = p.ib.Data[:readSamples]
