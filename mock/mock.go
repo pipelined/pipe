@@ -107,21 +107,21 @@ func (p *Pump) NumChannelsParam(nc phono.NumChannels) phono.Param {
 }
 
 // Pump returns new buffer for pipe
-func (p *Pump) Pump() (phono.Buffer, error) {
+func (p *Pump) Pump(m *phono.Message) (*phono.Message, error) {
 	if Limit(p.Counter.messages) >= p.Limit {
 		return nil, pipe.ErrEOP
 	}
 	time.Sleep(time.Millisecond * time.Duration(p.Interval))
 
-	buf := phono.Buffer(make([][]float64, p.NumChannels))
-	for i := range buf {
-		buf[i] = make([]float64, p.BufferSize)
-		for j := range buf[i] {
-			buf[i][j] = p.Value
+	m.Buffer = phono.Buffer(make([][]float64, p.NumChannels))
+	for i := range m.Buffer {
+		m.Buffer[i] = make([]float64, p.BufferSize)
+		for j := range m.Buffer[i] {
+			m.Buffer[i][j] = p.Value
 		}
 	}
-	p.Counter.advance(buf)
-	return buf, nil
+	p.Counter.advance(m.Buffer)
+	return m, nil
 }
 
 // RunPump returns new pump runner
@@ -142,9 +142,9 @@ type Processor struct {
 }
 
 // Process implementation for runner
-func (p *Processor) Process(buf phono.Buffer) (phono.Buffer, error) {
-	p.Counter.advance(buf)
-	return buf, nil
+func (p *Processor) Process(m *phono.Message) (*phono.Message, error) {
+	p.Counter.advance(m.Buffer)
+	return m, nil
 }
 
 // RunProcess returns a pipe.ProcessRunner for this processor
@@ -167,9 +167,9 @@ type Sink struct {
 }
 
 // Sink implementation for runner
-func (s *Sink) Sink(buf phono.Buffer) error {
-	s.Buffer = s.Buffer.Append(buf)
-	s.Counter.advance(buf)
+func (s *Sink) Sink(m *phono.Message) error {
+	s.Buffer = s.Buffer.Append(m.Buffer)
+	s.Counter.advance(m.Buffer)
 	return nil
 }
 

@@ -53,9 +53,9 @@ func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan
 			}
 		}()
 		for {
-			message := newMessage()
-			message.ApplyTo(p.Pump)
-			buf, err := p.Pump.Pump()
+			m := newMessage()
+			m.ApplyTo(p.Pump)
+			m, err := p.Pump.Pump(m)
 			if err != nil {
 				if err != pipe.ErrEOP {
 					errc <- err
@@ -66,8 +66,7 @@ func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan
 			case <-ctx.Done():
 				return
 			default:
-				message.Buffer = buf
-				out <- message
+				out <- m
 			}
 		}
 	}()
@@ -99,7 +98,7 @@ func (r *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan e
 					return
 				}
 				m.ApplyTo(r.Processor)
-				m.Buffer, err = r.Process(m.Buffer)
+				m, err = r.Process(m)
 				if err != nil {
 					errc <- err
 					return
@@ -133,7 +132,7 @@ func (s *Sink) Run(in <-chan *phono.Message) (<-chan error, error) {
 					return
 				}
 				m.Params.ApplyTo(s)
-				err = s.Sink.Sink(m.Buffer)
+				err = s.Sink.Sink(m)
 				if err != nil {
 					errc <- err
 					return

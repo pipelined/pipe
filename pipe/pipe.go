@@ -15,21 +15,21 @@ import (
 type Pump interface {
 	phono.Identifiable
 	RunPump(sourceID string) PumpRunner
-	Pump() (phono.Buffer, error)
+	Pump(*phono.Message) (*phono.Message, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
 	phono.Identifiable
 	RunProcess(sourceID string) ProcessRunner
-	Process(phono.Buffer) (phono.Buffer, error)
+	Process(*phono.Message) (*phono.Message, error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
 	phono.Identifiable
 	RunSink(sourceID string) SinkRunner
-	Sink(phono.Buffer) error
+	Sink(*phono.Message) error
 }
 
 // PumpRunner is a pump runner
