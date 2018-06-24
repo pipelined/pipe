@@ -34,16 +34,19 @@ type Sink interface {
 
 // PumpRunner is a pump runner
 type PumpRunner interface {
+	phono.Identifiable
 	Run(context.Context, phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error)
 }
 
 // ProcessRunner is a processor runner
 type ProcessRunner interface {
+	phono.Identifiable
 	Run(<-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
 }
 
 // SinkRunner is a sink runner
 type SinkRunner interface {
+	phono.Identifiable
 	Run(in <-chan *phono.Message) (errc <-chan error, err error)
 }
 
@@ -56,9 +59,9 @@ type Pipe struct {
 	name string
 	phono.UID
 	cancelFn   context.CancelFunc
-	pump       Pump
-	processors []Processor
-	sinks      []Sink
+	pump       PumpRunner
+	processors []ProcessRunner
+	sinks      []SinkRunner
 
 	cachedParams *phono.Params
 	// params channel
@@ -129,8 +132,8 @@ var (
 // returned pipe is in ready state
 func New(params ...Param) *Pipe {
 	p := &Pipe{
-		processors: make([]Processor, 0),
-		sinks:      make([]Sink, 0),
+		processors: make([]ProcessRunner, 0),
+		sinks:      make([]SinkRunner, 0),
 		paramc:     make(chan *phono.Params),
 		eventc:     make(chan eventMessage),
 		signalc:    make(chan signalMessage, 100),
@@ -167,7 +170,7 @@ func WithPump(pump Pump) Param {
 	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
-			p.pump = pump
+			p.pump = pump.RunPump(p.ID())
 		}
 	}
 }
@@ -181,7 +184,9 @@ func WithProcessors(processors ...Processor) Param {
 	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
-			p.processors = processors
+			for i := range processors {
+				p.processors = append(p.processors, processors[i].RunProcess(p.ID()))
+			}
 		}
 	}
 }
@@ -195,7 +200,9 @@ func WithSinks(sinks ...Sink) Param {
 	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
-			p.sinks = sinks
+			for i := range sinks {
+				p.sinks = append(p.sinks, sinks[i].RunSink(p.ID()))
+			}
 		}
 	}
 }
@@ -319,8 +326,7 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 
 	//start broadcast
 	for i, s := range p.sinks {
-		sinkRunner := s.RunSink(p.ID())
-		errc, err := sinkRunner.Run(broadcasts[i])
+		errc, err := s.Run(broadcasts[i])
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
 			return nil, err
@@ -391,8 +397,8 @@ func ready(p *Pipe) stateFn {
 				errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 				// start pump
-				pumpRunner := p.pump.RunPump(p.ID())
-				out, errc, err := pumpRunner.Run(ctx, p.soure())
+				// pumpRunner := p.pump.RunPump(p.ID())
+				out, errc, err := p.pump.Run(ctx, p.soure())
 				if err != nil {
 					p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 					e.done <- err
@@ -403,8 +409,7 @@ func ready(p *Pipe) stateFn {
 
 				// start chained processesing
 				for _, proc := range p.processors {
-					processRunner := proc.RunProcess(p.ID())
-					out, errc, err = processRunner.Run(out)
+					out, errc, err = proc.Run(out)
 					if err != nil {
 						p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 						e.done <- err
