@@ -1,12 +1,13 @@
 package mixer
 
 import (
-	"context"
-	"sort"
 	"sync"
+
+	"github.com/dudk/phono/pipe/runner"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/log"
+	"github.com/dudk/phono/pipe"
 )
 
 // Mixer summs up multiple channels of messages into a single channel
@@ -16,42 +17,46 @@ type Mixer struct {
 	numChannels phono.NumChannels
 	bufferSize  phono.BufferSize
 
-	mutex  sync.RWMutex
-	inputs map[bool]map[<-chan *phono.Message]*Input
+	// channel to send signals about closing inputs
+	close chan string
+	// channel to send frames ready for mix
+	ready chan *frame
 
-	process    chan *message
-	buffers    map[index]*buffer
-	indexOrder []index
-	sent       index
+	sent int64
+
+	sync.RWMutex
+	inputs map[string]*Input
+	*frame
 }
 
 // Input represents a mixer input and is getting created everytime Sink method is called
 type Input struct {
 	// pos buffers
-	index
+	*frame
+	received int64
 }
 
 // message is used to pass received message from sink goroutines to pump
 type message struct {
 	message *phono.Message
-	in      <-chan *phono.Message
+	in      string
 	close   bool
 }
 
-// buffer represents a slice of samples to mix
-type buffer struct {
-	samples  []phono.Buffer
+// frame represents a slice of samples to mix
+type frame struct {
+	sync.Mutex
+	buffers  []phono.Buffer
 	expected int
+	next     *frame
 }
 
-// index is a counter of recieved buffers
-type index uint64
+func (f *frame) isFull() bool {
+	return f.expected == len(f.buffers)
+}
 
 // sum returns a mixed samples
-func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) (phono.Buffer, bool) {
-	if b.expected != len(b.samples) {
-		return nil, false
-	}
+func (f *frame) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) phono.Buffer {
 	var sum float64
 	var signals float64
 	result := phono.Buffer(make([][]float64, numChannels))
@@ -61,155 +66,126 @@ func (b *buffer) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize)
 			sum = 0
 			signals = 0
 			// additional check to sum shorten blocks
-			for i := 0; i < len(b.samples) && len(b.samples[i][nc]) > bs; i++ {
-				sum = sum + b.samples[i][nc][bs]
+			for i := 0; i < len(f.buffers) && len(f.buffers[i][nc]) > bs; i++ {
+				sum = sum + f.buffers[i][nc][bs]
 				signals++
 			}
 			result[nc] = append(result[nc], sum/signals)
 		}
 	}
-	return result, true
+	return result
 }
 
 const (
-	processBuffer = 256
-	enabled       = true
-	disabled      = false
+	defaultBufferLimit = 256
+	enabled            = true
+	disabled           = false
 )
 
 // New returns a new mixer
 func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
 		Logger:      log.GetLogger(),
-		process:     make(chan *message, processBuffer),
-		buffers:     make(map[index]*buffer),
-		inputs:      make(map[bool]map[<-chan *phono.Message]*Input),
-		indexOrder:  make([]index, 0, processBuffer),
+		frame:       &frame{},
+		close:       make(chan string, defaultBufferLimit),
+		inputs:      make(map[string]*Input),
+		ready:       make(chan *frame, defaultBufferLimit),
 		numChannels: nc,
 		bufferSize:  bs,
 	}
-	m.inputs[enabled] = make(map[<-chan *phono.Message]*Input)
-	m.inputs[disabled] = make(map[<-chan *phono.Message]*Input)
 	return m
 }
 
-// Pump returns a pump function which allows to read the out channel
-// TODO: only one pump goroutine is allowed
-// TODO: add a slice of received blocks to check it when input becomes idle or closed
-// LIMITATION: if one of the sources is significantly faster input is frequently enabled/disabled - performance can beaffected
-func (m *Mixer) Pump() phono.PumpFunc {
-	out := make(chan *phono.Message)
-	m.sent = 0
-	return func(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
-		errc := make(chan error, 1)
-		go func() {
-			defer close(out)
-			defer close(errc)
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case msg, ok := <-m.process:
-					if !ok {
-						return
-					}
-					m.mutex.RLock()
-					input := m.inputs[enabled][msg.in]
-					enabledInputs := len(m.inputs[enabled])
-					m.mutex.RUnlock()
-					// input's state didn't change
-					if !msg.close {
-						var b *buffer
-						var exists bool
-						// if first sample for this buffer came in
-						if b, exists = m.buffers[input.index]; !exists {
-							b = &buffer{
-								samples:  make([]phono.Buffer, 0, enabledInputs),
-								expected: enabledInputs,
-							}
-							m.buffers[input.index] = b
-							// add new buffer index
-							m.indexOrder = append(m.indexOrder, input.index)
-						}
-						// append new samples to buffer
-						b.samples = append(b.samples, msg.message.Buffer)
-
-						// check if all expected inputs received
-						if samples, ok := b.sum(m.numChannels, m.bufferSize); ok {
-							// send message
-							message := newMessage()
-							message.Buffer = samples
-							out <- message
-
-							// clean up
-							delete(m.buffers, input.index)
-							m.indexOrder = m.indexOrder[1:]
-							m.sent++
-						}
-						input.index++
-					} else {
-						// search and decrease expectations of buffers received before
-						i := sort.Search(len(m.indexOrder), func(i int) bool { return m.indexOrder[i] >= input.index })
-						if i < len(m.indexOrder) && m.indexOrder[i] == input.index {
-							for i < len(m.indexOrder) {
-								index := m.indexOrder[i]
-								b := m.buffers[index]
-								b.expected--
-								if samples, ok := b.sum(m.numChannels, m.bufferSize); ok {
-									// send message
-									message := newMessage()
-									message.Buffer = samples
-									out <- message
-
-									// clean up
-									delete(m.buffers, index)
-									m.indexOrder = m.indexOrder[1:]
-									m.sent++
-								} else {
-									// because slice was shorten, increase index only here
-									i++
-								}
-							}
-						}
-						m.mutex.Lock()
-						delete(m.inputs[enabled], msg.in)
-						m.mutex.Unlock()
-					}
-					// m.mutex.RLock()
-					if len(m.inputs[enabled]) == 0 && len(m.inputs[disabled]) == 0 {
-						// m.mutex.RUnlock()
-						return
-					}
-					// m.mutex.RUnlock()
-				}
-			}
-		}()
-		return out, errc, nil
+// RunPump returns initialized pump runner
+func (m *Mixer) RunPump(sourceID string) pipe.PumpRunner {
+	return &runner.Pump{
+		Pump: m,
 	}
 }
 
-// Sink adds a new input channel to mix
-// this method should not be called after
-func (m *Mixer) Sink() phono.SinkFunc {
-	return func(in <-chan *phono.Message) (<-chan error, error) {
-		m.mutex.Lock()
-		m.inputs[enabled][in] = &Input{}
-		m.mutex.Unlock()
-		errc := make(chan error, 1)
-		go func() {
-			defer close(errc)
-			for in != nil {
-				select {
-				case msg, ok := <-in:
-					if !ok {
-						m.process <- &message{close: true, in: in}
-						return
-					}
-					m.process <- &message{message: msg, in: in}
+// Pump returns a pump function which allows to read the out channel
+func (m *Mixer) Pump(msg *phono.Message) (*phono.Message, error) {
+	for {
+		select {
+		case inputID := <-m.close:
+			m.Lock()
+			input := m.inputs[inputID]
+			for f := input.frame; f != nil; f = f.next {
+				f.Lock()
+				f.expected--
+				ready := f.isFull() && f.expected > 0
+				f.Unlock()
+				if ready {
+					m.ready <- f
 				}
 			}
-		}()
-
-		return errc, nil
+			delete(m.inputs, inputID)
+			if len(m.inputs) == 0 {
+				close(m.close)
+				m.close = nil
+			}
+			m.Unlock()
+		case f, ok := <-m.ready:
+			if !ok {
+				return nil, pipe.ErrEOP
+			}
+			m.Lock()
+			m.frame = f.next
+			m.Unlock()
+			msg.Buffer = f.sum(m.numChannels, m.bufferSize)
+			m.sent++
+			return msg, nil
+		default:
+			m.RLock()
+			if len(m.inputs) == 0 {
+				m.RUnlock()
+				return nil, pipe.ErrEOP
+			}
+			m.RUnlock()
+		}
 	}
+}
+
+// RunSink returns initialized sink runner
+func (m *Mixer) RunSink(sourceID string) pipe.SinkRunner {
+	m.Lock()
+	m.inputs[sourceID] = &Input{frame: m.frame}
+	m.frame.expected = len(m.inputs)
+	m.Unlock()
+	return &runner.Sink{
+		Sink: m,
+		After: func() error {
+			m.close <- sourceID
+			return nil
+		},
+	}
+}
+
+// Sink processes the single input
+func (m *Mixer) Sink(msg *phono.Message) error {
+	// get input info from mixer
+	m.RLock()
+	input := m.inputs[msg.SourceID]
+	input.received++
+	numInputs := len(m.inputs)
+	// first sink call
+	if input.frame == nil {
+		input.frame = m.frame
+	}
+	m.RUnlock()
+
+	input.frame.Lock()
+	input.frame.buffers = append(input.frame.buffers, msg.Buffer)
+	ready := input.frame.isFull()
+	if input.frame.next == nil {
+		input.frame.next = &frame{expected: numInputs}
+	}
+	input.frame.Unlock()
+
+	if ready {
+		m.ready <- input.frame
+	}
+
+	input.frame = input.frame.next
+	return nil
 }

@@ -1,7 +1,6 @@
 package mixer_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,25 +26,25 @@ var (
 		value1   float64
 		value2   float64
 		sum      float64
-		messages uint64
-		samples  uint64
+		messages int64
+		samples  int64
 	}{
 		{
-			Limit:    10,
+			Limit:    3,
 			value1:   0.5,
 			value2:   0.7,
 			sum:      0.6,
-			messages: 10,
-			samples:  100,
+			messages: 3,
+			samples:  30,
 		},
-		{
-			Limit:    1000,
-			value1:   0.7,
-			value2:   0.9,
-			sum:      0.8,
-			messages: 1000,
-			samples:  10000,
-		},
+		// {
+		// 	Limit:    1000,
+		// 	value1:   0.7,
+		// 	value2:   0.9,
+		// 	sum:      0.8,
+		// 	messages: 1000,
+		// 	samples:  10000,
+		// },
 	}
 )
 
@@ -79,8 +78,7 @@ func TestMixer(t *testing.T) {
 	)
 
 	var err error
-	for i, test := range tests {
-		fmt.Printf("Test %v\n", i)
+	for _, test := range tests {
 		track1.Push(phono.NewParams(
 			pump1.LimitParam(test.Limit),
 			pump1.ValueParam(test.value1),
@@ -121,7 +119,7 @@ func TestWavMixer(t *testing.T) {
 	p1, _ := wav.NewPump(wavPath1, bs)
 	p2, _ := wav.NewPump(wavPath2, bs)
 
-	s := wav.NewSink(outPath, p1.WavSampleRate(), p1.WavNumChannels(), p1.WavBitDepth(), p1.WavAudioFormat())
+	s, _ := wav.NewSink(outPath, p1.WavSampleRate(), p1.WavNumChannels(), p1.WavBitDepth(), p1.WavAudioFormat())
 
 	m := mixer.New(bs, p1.WavNumChannels())
 
