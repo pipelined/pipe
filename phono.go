@@ -1,5 +1,10 @@
 package phono
 
+import (
+	"fmt"
+	"sync"
+)
+
 // Pipe transport types
 type (
 	// Buffer represent a sample data sliced per channel
@@ -79,16 +84,17 @@ func NewParams(params ...Param) (result *Params) {
 // Add accepts a slice of params
 func (p *Params) Add(params ...Param) *Params {
 	if p == nil {
-		return nil
-	}
-	for _, param := range params {
-		private, ok := p.private[param.ID]
-		if !ok {
-			private = make([]ParamFunc, 0, len(params))
-		}
-		private = append(private, param.Apply)
+		p = NewParams(params...)
+	} else {
+		for _, param := range params {
+			private, ok := p.private[param.ID]
+			if !ok {
+				private = make([]ParamFunc, 0, len(params))
+			}
+			private = append(private, param.Apply)
 
-		p.private[param.ID] = private
+			p.private[param.ID] = private
+		}
 	}
 
 	return p
@@ -141,12 +147,12 @@ func (i *UID) SetID(id string) {
 }
 
 // ReceivedBy returns channel which is closed when param received
-func ReceivedBy(id Identifiable) (<-chan struct{}, Param) {
-	c := make(chan struct{})
-	return c, Param{
+func ReceivedBy(wg *sync.WaitGroup, id Identifiable) Param {
+	return Param{
 		ID: id.ID(),
 		Apply: func() {
-			close(c)
+			fmt.Printf("recieved by %v\n", id.ID())
+			wg.Done()
 		},
 	}
 }

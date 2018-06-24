@@ -495,17 +495,14 @@ func pausing(p *Pipe) stateFn {
 				message.Params = p.cachedParams
 				p.cachedParams = &phono.Params{}
 			}
-			chans := make([]<-chan struct{}, 0, len(p.sinks))
+			var wg sync.WaitGroup
+			wg.Add(len(p.sinks))
 			for _, sink := range p.sinks {
-				c, param := phono.ReceivedBy(sink)
-				chans = append(chans, c)
-				message.Params.Add(param)
+				param := phono.ReceivedBy(&wg, sink)
+				message.Params = message.Params.Add(param)
 			}
 			p.message.take <- message
-			// todo: refactor
-			for i := range chans {
-				<-chans[i]
-			}
+			wg.Wait()
 			return paused
 		case err := <-p.errc:
 			if err != nil {

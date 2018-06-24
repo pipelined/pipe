@@ -131,7 +131,7 @@ func (s *Sink) Run(in <-chan *phono.Message) (<-chan error, error) {
 				if !ok {
 					return
 				}
-				m.Params.ApplyTo(s)
+				m.Params.ApplyTo(s.Sink)
 				err = s.Sink.Sink(m)
 				if err != nil {
 					errc <- err
