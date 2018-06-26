@@ -9,7 +9,7 @@ The purpose of this package is to provide useful pipe mocks to test pumps, proce
 TBD
 
 #### mock.Processor example
-[Wav package](https://github.com/dudk/wav) contains Pump and Sink which allows to read/write wav files respectively. To test both components next tests structure were defined:
+[Wav package](https://github.com/dudk/phono/wav) contains Pump and Sink which allows to read/write wav files respectively. To test both components next tests structure were defined:
 ```go
 var tests = []struct {
 	phono.BufferSize
@@ -61,3 +61,26 @@ func TestWavPipe(t *testing.T) {
 #### mock.Sink example
 
 TBD
+
+# WAV phono implementation
+WAV pump and sink
+
+# Usage
+## Pump
+```go
+inFile := "test.wav"
+bufferSize := 512
+wavPump, err := wav.NewPump(inFile, bufferSize)
+```
+
+## Sink
+```go
+bitDepth := 24
+outFile := "out.wav"
+wavAudioFormat := 1
+wavSink := wav.NewSink(
+	outFile,
+	bitDepth,
+	wavAudioFormat,
+)
+```

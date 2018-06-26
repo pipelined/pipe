@@ -10,19 +10,12 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-# Project-local glide cache, RE: https://github.com/Masterminds/glide/issues/736
-.glide/
-
 # Golang project vendor packages which should be ignored
 vendor/
 
-### VisualStudioCode ###
-.vscode/*
-.vscode/settings.json
-.vscode/tasks.json
-.vscode/launch.json
-.vscode/extensions.json
-.history
-
 # Golang dep tool
 Gopkg.lock
+
+# Output files
+*.wav
+!in.wav
