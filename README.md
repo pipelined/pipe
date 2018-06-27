@@ -20,7 +20,7 @@ var tests = []struct {
 }{
 	{
 		BufferSize: 512,
-		inFile:     "_testdata/in.wav",
+		inFile:     "_testdata/in1.wav",
 		outFile:    "_testdata/out.wav",
 		messages:   uint64(646),
 		samples:    uint64(330534),
@@ -84,3 +84,5 @@ wavSink := wav.NewSink(
 	wavAudioFormat,
 )
 ```
+# Phono Mixer 
+Mixer implementation for phono pipeline
