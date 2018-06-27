@@ -63,11 +63,6 @@ type (
 	SampleRate int
 	// Tempo represents a tempo value
 	Tempo float32
-	// TimeSignature represents a time signature
-	TimeSignature struct {
-		NotesPerBar int // 3 in 3/4
-		NoteValue   int // 4 in 3/4
-	}
 	// SamplePosition represents a position in samples measure
 	SamplePosition int64
 )
