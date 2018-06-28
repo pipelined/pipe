@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/pipe"
@@ -29,6 +30,8 @@ type (
 		file           *os.File
 		decoder        *wav.Decoder
 		ib             *audio.IntBuffer
+		// Once for single-use
+		once sync.Once
 	}
 
 	// Sink sink saves audio to wav file
@@ -87,6 +90,9 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 func (p *Pump) RunPump(sourceID string) pipe.PumpRunner {
 	return &runner.Pump{
 		Pump: p,
+		Before: func() error {
+			return runner.SingleUse(&p.once)
+		},
 		After: func() error {
 			return p.file.Close()
 		},

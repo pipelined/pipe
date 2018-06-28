@@ -2,6 +2,8 @@ package runner
 
 import (
 	"context"
+	"errors"
+	"sync"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/pipe"
@@ -34,6 +36,11 @@ type Sink struct {
 
 // BeforeAfterFunc represents setup/clean up functions which are executed on Run start and finish
 type BeforeAfterFunc func() error
+
+var (
+	// ErrSingleUseReused is returned when object designed for single-use is being reused
+	ErrSingleUseReused = errors.New("Error reuse single-use object")
+)
 
 // Run the Pump runner
 func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
@@ -142,6 +149,15 @@ func (s *Sink) Run(in <-chan *phono.Message) (<-chan error, error) {
 	}()
 
 	return errc, nil
+}
+
+// SingleUse is designed to be used in runner-return functions to define a single-use pipe elements
+func SingleUse(once *sync.Once) (err error) {
+	err = ErrSingleUseReused
+	once.Do(func() {
+		err = nil
+	})
+	return
 }
 
 func (fn BeforeAfterFunc) call() error {
