@@ -37,14 +37,14 @@ var (
 			messages: 10,
 			samples:  100,
 		},
-		// {
-		// 	Limit:    1000,
-		// 	value1:   0.7,
-		// 	value2:   0.9,
-		// 	sum:      0.8,
-		// 	messages: 1000,
-		// 	samples:  10000,
-		// },
+		{
+			Limit:    10,
+			value1:   0.7,
+			value2:   0.9,
+			sum:      0.8,
+			messages: 10,
+			samples:  100,
+		},
 	}
 )
 
@@ -88,11 +88,11 @@ func TestMixer(t *testing.T) {
 			pump2.ValueParam(test.value2),
 		))
 
+		_, err = pipe.Begin(playback.Run)
+		assert.Nil(t, err)
 		_, err = pipe.Begin(track1.Run)
 		assert.Nil(t, err)
 		_, err = pipe.Begin(track2.Run)
-		assert.Nil(t, err)
-		_, err = pipe.Begin(playback.Run)
 		assert.Nil(t, err)
 
 		track1.Wait(pipe.Ready)

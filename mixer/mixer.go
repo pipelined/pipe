@@ -26,6 +26,7 @@ type Mixer struct {
 
 	sync.RWMutex
 	inputs map[string]*Input
+	done   map[string]*Input
 	*frame
 }
 
@@ -86,10 +87,9 @@ const (
 func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
 		Logger:      log.GetLogger(),
-		frame:       &frame{},
 		close:       make(chan string, defaultBufferLimit),
 		inputs:      make(map[string]*Input),
-		ready:       make(chan *frame, defaultBufferLimit),
+		done:        make(map[string]*Input),
 		numChannels: nc,
 		bufferSize:  bs,
 	}
@@ -100,6 +100,18 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 func (m *Mixer) RunPump(sourceID string) pipe.PumpRunner {
 	return &runner.Pump{
 		Pump: m,
+		Before: func() error {
+			for sourceID, input := range m.done {
+				input.frame = nil
+				input.received = 0
+				m.inputs[sourceID] = input
+				delete(m.done, sourceID)
+			}
+			m.frame = &frame{}
+			m.frame.expected = len(m.inputs)
+			m.ready = make(chan *frame, defaultBufferLimit)
+			return nil
+		},
 	}
 }
 
@@ -119,10 +131,10 @@ func (m *Mixer) Pump(msg *phono.Message) (*phono.Message, error) {
 					m.ready <- f
 				}
 			}
+			m.done[inputID] = input
 			delete(m.inputs, inputID)
 			if len(m.inputs) == 0 {
-				close(m.close)
-				m.close = nil
+				close(m.ready)
 			}
 			m.Unlock()
 		case f, ok := <-m.ready:
@@ -135,25 +147,21 @@ func (m *Mixer) Pump(msg *phono.Message) (*phono.Message, error) {
 			msg.Buffer = f.sum(m.numChannels, m.bufferSize)
 			m.sent++
 			return msg, nil
-		default:
-			m.RLock()
-			if len(m.inputs) == 0 {
-				m.RUnlock()
-				return nil, pipe.ErrEOP
-			}
-			m.RUnlock()
 		}
 	}
 }
 
 // RunSink returns initialized sink runner
 func (m *Mixer) RunSink(sourceID string) pipe.SinkRunner {
-	m.Lock()
-	m.inputs[sourceID] = &Input{frame: m.frame}
-	m.frame.expected = len(m.inputs)
-	m.Unlock()
 	return &runner.Sink{
 		Sink: m,
+		Before: func() error {
+			m.Lock()
+			m.inputs[sourceID] = &Input{frame: m.frame}
+			m.frame.expected = len(m.inputs)
+			m.Unlock()
+			return nil
+		},
 		After: func() error {
 			m.close <- sourceID
 			return nil
