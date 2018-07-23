@@ -8,7 +8,7 @@ import (
 )
 
 type (
-	// Sink represets portaudio sink which allows to play audio
+	// Sink represets portaudio sink which allows to play audio using default device
 	Sink struct {
 		phono.UID
 		buf    []float32
@@ -29,6 +29,8 @@ func NewSink(bs phono.BufferSize, sr phono.SampleRate, nc phono.NumChannels) *Si
 }
 
 // RunSink returns new sink runner with defined configuration
+// Before: initilize a portaudio api with default stream
+// After: flushe data and clean up portaudio api
 func (s *Sink) RunSink(sourceID string) pipe.SinkRunner {
 	return &runner.Sink{
 		Sink: s,
@@ -38,8 +40,7 @@ func (s *Sink) RunSink(sourceID string) pipe.SinkRunner {
 			if err != nil {
 				return
 			}
-			// fmt.Println(portaudio.DefaultOutputDevice())
-			s.stream, err = portaudio.OpenDefaultStream(0, 2, float64(s.sr), int(s.bs), &s.buf)
+			s.stream, err = portaudio.OpenDefaultStream(0, int(s.nc), float64(s.sr), int(s.bs), &s.buf)
 			if err != nil {
 				return
 			}
@@ -63,7 +64,7 @@ func (s *Sink) RunSink(sourceID string) pipe.SinkRunner {
 	}
 }
 
-// Sink implements Sink interface
+// Sink writes the buffer of data to portaudio stream
 func (s *Sink) Sink(m *phono.Message) error {
 	for i := range m.Buffer[0] {
 		for j := range m.Buffer {
