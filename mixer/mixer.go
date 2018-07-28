@@ -1,7 +1,7 @@
 package mixer
 
 import (
-	"sync"
+	"fmt"
 
 	"github.com/dudk/phono/pipe/runner"
 
@@ -17,42 +17,36 @@ type Mixer struct {
 	numChannels phono.NumChannels
 	bufferSize  phono.BufferSize
 
-	// channel to send signals about closing inputs
-	close chan string
+	// channel to send signals about new inputs
+	open chan string
+
 	// channel to send frames ready for mix
 	ready chan *frame
 
+	// channel to send new messages
+	in chan *phono.Message
+
 	sent int64
 
-	sync.RWMutex
-	inputs map[string]*Input
-	done   map[string]*Input
+	inputs map[string]*input
+	done   map[string]*input
 	*frame
 }
 
-// Input represents a mixer input and is getting created everytime Sink method is called
-type Input struct {
-	// pos buffers
+// input represents a mixer input and is getting created everytime Sink method is called
+type input struct {
 	*frame
 	received int64
 }
 
-// message is used to pass received message from sink goroutines to pump
-type message struct {
-	message *phono.Message
-	in      string
-	close   bool
-}
-
 // frame represents a slice of samples to mix
 type frame struct {
-	sync.Mutex
 	buffers  []phono.Buffer
 	expected int
 	next     *frame
 }
 
-func (f *frame) isFull() bool {
+func (f *frame) isReady() bool {
 	return f.expected == len(f.buffers)
 }
 
@@ -79,91 +73,35 @@ func (f *frame) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) 
 
 const (
 	defaultBufferLimit = 256
-	enabled            = true
-	disabled           = false
+	maxInputs          = 1024
 )
 
 // New returns a new mixer
 func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
 		Logger:      log.GetLogger(),
-		close:       make(chan string, defaultBufferLimit),
-		inputs:      make(map[string]*Input),
-		done:        make(map[string]*Input),
+		inputs:      make(map[string]*input),
+		done:        make(map[string]*input),
 		numChannels: nc,
 		bufferSize:  bs,
+		open:        make(chan string, maxInputs),
+		in:          make(chan *phono.Message, defaultBufferLimit),
 	}
 	return m
 }
 
-// RunPump returns initialized pump runner
-func (m *Mixer) RunPump(sourceID string) pipe.PumpRunner {
-	return &runner.Pump{
-		Pump: m,
-		Before: func() error {
-			for sourceID, input := range m.done {
-				input.frame = nil
-				input.received = 0
-				m.inputs[sourceID] = input
-				delete(m.done, sourceID)
-			}
-			m.frame = &frame{}
-			m.frame.expected = len(m.inputs)
-			m.ready = make(chan *frame, defaultBufferLimit)
-			return nil
-		},
-	}
-}
-
-// Pump returns a pump function which allows to read the out channel
-func (m *Mixer) Pump(msg *phono.Message) (*phono.Message, error) {
-	for {
-		select {
-		case inputID := <-m.close:
-			m.Lock()
-			input := m.inputs[inputID]
-			for f := input.frame; f != nil; f = f.next {
-				f.Lock()
-				f.expected--
-				ready := f.isFull() && f.expected > 0
-				f.Unlock()
-				if ready {
-					m.ready <- f
-				}
-			}
-			m.done[inputID] = input
-			delete(m.inputs, inputID)
-			if len(m.inputs) == 0 {
-				close(m.ready)
-			}
-			m.Unlock()
-		case f, ok := <-m.ready:
-			if !ok {
-				return nil, pipe.ErrEOP
-			}
-			m.Lock()
-			m.frame = f.next
-			m.Unlock()
-			msg.Buffer = f.sum(m.numChannels, m.bufferSize)
-			m.sent++
-			return msg, nil
-		}
-	}
-}
-
-// RunSink returns initialized sink runner
+// RunSink returns initialized sink runner and adds new input to mixer
+//
+// RunSink should be executed BEFORE RunPump, so when mixer starts to pump - the number of inputs is known
 func (m *Mixer) RunSink(sourceID string) pipe.SinkRunner {
 	return &runner.Sink{
 		Sink: m,
 		Before: func() error {
-			m.Lock()
-			m.inputs[sourceID] = &Input{frame: m.frame}
-			m.frame.expected = len(m.inputs)
-			m.Unlock()
+			m.open <- sourceID
 			return nil
 		},
 		After: func() error {
-			m.close <- sourceID
+			m.in <- &phono.Message{SourceID: sourceID}
 			return nil
 		},
 	}
@@ -171,29 +109,100 @@ func (m *Mixer) RunSink(sourceID string) pipe.SinkRunner {
 
 // Sink processes the single input
 func (m *Mixer) Sink(msg *phono.Message) error {
-	// get input info from mixer
-	m.RLock()
-	input := m.inputs[msg.SourceID]
-	input.received++
-	numInputs := len(m.inputs)
-	// first sink call
-	if input.frame == nil {
-		input.frame = m.frame
-	}
-	m.RUnlock()
-
-	input.frame.Lock()
-	input.frame.buffers = append(input.frame.buffers, msg.Buffer)
-	ready := input.frame.isFull()
-	if input.frame.next == nil {
-		input.frame.next = &frame{expected: numInputs}
-	}
-	input.frame.Unlock()
-
-	if ready {
-		m.ready <- input.frame
-	}
-
-	input.frame = input.frame.next
+	m.in <- msg
 	return nil
+}
+
+// RunPump returns initialized pump runner
+// start/stop goroutine here
+func (m *Mixer) RunPump(sourceID string) pipe.PumpRunner {
+	return &runner.Pump{
+		Pump: m,
+		Before: func() error {
+			// new frame
+			m.frame = &frame{}
+
+			// new out channel
+			m.ready = make(chan *frame, defaultBufferLimit)
+
+			// reset old inputs
+			for sourceID := range m.done {
+				delete(m.done, sourceID)
+				m.open <- sourceID
+			}
+
+			// this goroutine lives while pump works
+			go func() {
+				for {
+					select {
+					// first add all new inputs
+					case sourceID := <-m.open:
+						fmt.Println("NEW INPUT for ", sourceID)
+						m.inputs[sourceID] = &input{frame: m.frame}
+						m.frame.expected = len(m.inputs)
+						fmt.Printf("INPUTS: %+v\n", m.inputs)
+					// now start processing
+					default:
+						for msg := range m.in {
+							// buffer is nil only when input is closed
+							if msg.Buffer != nil {
+								input := m.inputs[msg.SourceID]
+								input.received++
+								// first sink call
+								// get frame from mixer
+								if input.frame == nil {
+									input.frame = m.frame
+								}
+
+								input.frame.buffers = append(input.frame.buffers, msg.Buffer)
+								if input.frame.next == nil {
+									input.frame.next = &frame{expected: len(m.inputs)}
+								}
+
+								if input.frame.isReady() {
+									m.sendFrame(input.frame)
+								}
+								// proceed input to next frame
+								input.frame = input.frame.next
+							} else {
+								input := m.inputs[msg.SourceID]
+								// lower expectations for each next frame
+								for f := input.frame; f != nil; f = f.next {
+									f.expected--
+									if f.expected > 0 && f.isReady() {
+										m.sendFrame(input.frame)
+									}
+								}
+								m.done[msg.SourceID] = input
+								delete(m.inputs, msg.SourceID)
+								if len(m.inputs) == 0 {
+									close(m.ready)
+									return
+								}
+							}
+						}
+					}
+				}
+			}()
+
+			return nil
+		},
+	}
+}
+
+// Pump returns a pump function which allows to read the out channel
+func (m *Mixer) Pump(msg *phono.Message) (*phono.Message, error) {
+	// receive new buffer
+	f, ok := <-m.ready
+	if !ok {
+		return nil, pipe.ErrEOP
+	}
+	msg.Buffer = f.sum(m.numChannels, m.bufferSize)
+	m.sent++
+	return msg, nil
+}
+
+func (m *Mixer) sendFrame(f *frame) {
+	m.frame = f
+	m.ready <- f
 }
