@@ -90,7 +90,7 @@ type stateFn func(p *Pipe) stateFn
 
 // actionFn is an action function which causes a pipe state change
 // chan error is closed when state is changed
-type actionFn func() (chan error, Signal)
+type actionFn func(p *Pipe) (chan error, Signal)
 
 // event is sent when user does some action
 type event int
@@ -208,7 +208,7 @@ func WithSinks(sinks ...Sink) Param {
 }
 
 // Run switches pipe into running state
-func (p *Pipe) Run() (chan error, Signal) {
+func Run(p *Pipe) (chan error, Signal) {
 	runEvent := eventMessage{
 		event: run,
 		done:  make(chan error),
@@ -218,7 +218,7 @@ func (p *Pipe) Run() (chan error, Signal) {
 }
 
 // Pause switches pipe into pausing state
-func (p *Pipe) Pause() (chan error, Signal) {
+func Pause(p *Pipe) (chan error, Signal) {
 	pauseEvent := eventMessage{
 		event: pause,
 		done:  make(chan error),
@@ -228,7 +228,7 @@ func (p *Pipe) Pause() (chan error, Signal) {
 }
 
 // Resume switches pipe into running state
-func (p *Pipe) Resume() (chan error, Signal) {
+func Resume(p *Pipe) (chan error, Signal) {
 	resumeEvent := eventMessage{
 		event: resume,
 		done:  make(chan error),
@@ -267,8 +267,8 @@ func (p *Pipe) Close() {
 }
 
 // Begin executes a passed action and waits till first error or till the passed function receive a done signal
-func Begin(fn actionFn) (Signal, error) {
-	errc, sig := fn()
+func (p *Pipe) Begin(fn actionFn) (Signal, error) {
+	errc, sig := fn(p)
 	if errc == nil {
 		return sig, nil
 	}
@@ -282,7 +282,7 @@ func Begin(fn actionFn) (Signal, error) {
 
 // Do begins an action and waits for returned signal
 func (p *Pipe) Do(fn actionFn) error {
-	sig, err := Begin(fn)
+	sig, err := p.Begin(fn)
 	if err != nil {
 		return err
 	}

@@ -27,6 +27,6 @@ func TestSink(t *testing.T) {
 		pipe.WithSinks(sink),
 	)
 
-	err = playback.Do(playback.Run)
+	err = playback.Do(pipe.Run)
 	assert.Nil(t, err)
 }
