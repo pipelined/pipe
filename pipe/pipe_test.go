@@ -34,12 +34,12 @@ func TestPipe(t *testing.T) {
 	)
 
 	// test wrong state for new pipe
-	sig, err := pipe.Begin(p.Pause)
+	sig, err := p.Begin(pipe.Pause)
 	assert.NotNil(t, err)
 	require.Equal(t, pipe.ErrInvalidState, err)
 
 	// test pipe run
-	sig, err = pipe.Begin(p.Run)
+	sig, err = p.Begin(pipe.Run)
 	require.Nil(t, err)
 	err = p.Wait(pipe.Running)
 	require.Nil(t, err)
@@ -50,13 +50,13 @@ func TestPipe(t *testing.T) {
 
 	// time.Sleep(time.Millisecond * 10)
 	// test pipe pause
-	sig, err = pipe.Begin(p.Pause)
+	sig, err = p.Begin(pipe.Pause)
 	require.Nil(t, err)
 	err = p.Wait(sig)
 	require.Nil(t, err)
 
 	// test pipe resume
-	sig, err = pipe.Begin(p.Resume)
+	sig, err = p.Begin(pipe.Resume)
 	require.Nil(t, err)
 	err = p.Wait(pipe.Running)
 	err = p.Wait(pipe.Ready)
@@ -64,7 +64,7 @@ func TestPipe(t *testing.T) {
 	// test rerun
 	p.Push(op)
 	assert.Nil(t, err)
-	sig, err = pipe.Begin(p.Run)
+	sig, err = p.Begin(pipe.Run)
 	require.Nil(t, err)
 	err = p.Wait(sig)
 	require.Nil(t, err)

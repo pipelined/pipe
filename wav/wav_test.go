@@ -56,13 +56,13 @@ func TestWavPipe(t *testing.T) {
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),
 		)
-		err = p.Do(p.Run)
+		err = p.Do(pipe.Run)
 		assert.Nil(t, err)
 		messageCount, sampleCount := processor.Count()
 		assert.Equal(t, test.messages, messageCount)
 		assert.Equal(t, test.samples, sampleCount)
 
-		err = p.Do(p.Run)
+		err = p.Do(pipe.Run)
 		assert.Equal(t, runner.ErrSingleUseReused, err)
 	}
 }
