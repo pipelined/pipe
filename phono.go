@@ -179,6 +179,26 @@ func (b Buffer) Append(source Buffer) Buffer {
 	return b
 }
 
+// Slice creates a new copy of asset from start with defined legth
+// if asset doesn't have enough samples - shorten block is returned
+func (b Buffer) Slice(start int64, length int) (result Buffer) {
+	if b == nil {
+		return
+	}
+	end := BufferSize(start + int64(length))
+	// if end > b.Size() {
+	// 	end = b.Size()
+	// }
+	result = Buffer(make([][]float64, b.NumChannels()))
+	for i := range b {
+		if end > b.Size() {
+			end = b.Size()
+		}
+		result[i] = append(result[i], b[i][start:end]...)
+	}
+	return
+}
+
 // EmptyBuffer returns an empty buffer of specified length
 func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
 	result := Buffer(make([][]float64, numChannels))

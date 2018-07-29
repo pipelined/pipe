@@ -8,6 +8,44 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var sliceTests = []struct {
+	in       phono.Buffer
+	start    int64
+	len      int
+	expected phono.Buffer
+}{
+	{
+		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+		start:    1,
+		len:      2,
+		expected: phono.Buffer([][]float64{[]float64{1, 2}, []float64{1, 2}}),
+	},
+	{
+		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+		start:    5,
+		len:      2,
+		expected: phono.Buffer([][]float64{[]float64{5, 6}, []float64{5, 6}}),
+	},
+	{
+		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+		start:    7,
+		len:      4,
+		expected: phono.Buffer([][]float64{[]float64{7, 8, 9}, []float64{7, 8, 9}}),
+	},
+	{
+		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+		start:    9,
+		len:      1,
+		expected: phono.Buffer([][]float64{[]float64{9}}),
+	},
+	{
+		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+		start:    10,
+		len:      1,
+		expected: nil,
+	},
+}
+
 func TestSimpleParams(t *testing.T) {
 	p := &mock.Pump{}
 	interval := mock.Interval(10)
@@ -50,4 +88,15 @@ func TestBuffer(t *testing.T) {
 	s2[0] = make([]float64, 1024)
 	s = s.Append(s2)
 	assert.Equal(t, phono.BufferSize(2048), s.Size())
+}
+
+func TestSliceBuffer(t *testing.T) {
+	for _, test := range sliceTests {
+		result := test.in.Slice(test.start, test.len)
+		for i, ch := range result {
+			for j := 0; j < len(ch); j++ {
+				assert.Equal(t, test.expected[i][j], result[i][j])
+			}
+		}
+	}
 }
