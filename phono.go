@@ -10,6 +10,17 @@ type (
 	// Buffer represent a sample data sliced per channel
 	Buffer [][]float64
 
+	// Frame represents a segment of buffer
+	// Start is a start position of segment
+	// Len is a length of segment
+	//
+	// Frame is not a copy of a buffer
+	Frame struct {
+		Buffer
+		Start int64
+		Len   int
+	}
+
 	// Message is a main structure for pipe transport
 	Message struct {
 		// Buffer of message
@@ -179,16 +190,13 @@ func (b Buffer) Append(source Buffer) Buffer {
 	return b
 }
 
-// Slice creates a new copy of asset from start with defined legth
-// if asset doesn't have enough samples - shorten block is returned
+// Slice creates a new copy of buffer from start position with defined legth
+// if buffer doesn't have enough samples - shorten block is returned
 func (b Buffer) Slice(start int64, length int) (result Buffer) {
 	if b == nil {
 		return
 	}
 	end := BufferSize(start + int64(length))
-	// if end > b.Size() {
-	// 	end = b.Size()
-	// }
 	result = Buffer(make([][]float64, b.NumChannels()))
 	for i := range b {
 		if end > b.Size() {
@@ -206,4 +214,13 @@ func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
 		result[i] = make([]float64, bufferSize)
 	}
 	return result
+}
+
+// Frame creates a new clip from asset with defined start and length
+func (b Buffer) Frame(start int64, len int) *Frame {
+	return &Frame{
+		Buffer: b,
+		Start:  start,
+		Len:    len,
+	}
 }
