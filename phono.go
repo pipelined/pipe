@@ -207,15 +207,6 @@ func (b Buffer) Slice(start int64, length int) (result Buffer) {
 	return
 }
 
-// EmptyBuffer returns an empty buffer of specified length
-func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
-	result := Buffer(make([][]float64, numChannels))
-	for i := range result {
-		result[i] = make([]float64, bufferSize)
-	}
-	return result
-}
-
 // Frame creates a new clip from asset with defined start and length
 func (b Buffer) Frame(start int64, len int) *Frame {
 	return &Frame{
@@ -223,4 +214,13 @@ func (b Buffer) Frame(start int64, len int) *Frame {
 		Start:  start,
 		Len:    len,
 	}
+}
+
+// EmptyBuffer returns an empty buffer of specified length
+func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
+	result := Buffer(make([][]float64, numChannels))
+	for i := range result {
+		result[i] = make([]float64, bufferSize)
+	}
+	return result
 }
