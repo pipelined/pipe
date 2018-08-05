@@ -66,7 +66,8 @@ func TestPipe(t *testing.T) {
 	assert.Nil(t, err)
 	sig, err = p.Begin(pipe.Run)
 	require.Nil(t, err)
-	err = p.Wait(sig)
+	done := p.WaitAsync(sig)
+	err = <-done
 	require.Nil(t, err)
 	p.Close()
 }
