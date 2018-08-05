@@ -119,6 +119,8 @@ const (
 	Running
 	// Paused signal is sent when pipe goes to paused state
 	Paused
+	// Pausing signal is sent when pipe goes to pausing
+	Pausing
 )
 
 var (
@@ -237,7 +239,7 @@ func Resume(p *Pipe) (chan error, Signal) {
 	return resumeEvent.done, Ready
 }
 
-// Wait for signal or first error
+// Wait for signal or first error to occur
 func (p *Pipe) Wait(s Signal) error {
 	for msg := range p.signalc {
 		if msg.err != nil {
@@ -250,6 +252,20 @@ func (p *Pipe) Wait(s Signal) error {
 		}
 	}
 	return nil
+}
+
+// WaitAsync allows to wait for signal or first error occurance through the returned channel
+func (p *Pipe) WaitAsync(s Signal) <-chan error {
+	errc := make(chan error)
+	go func() {
+		err := p.Wait(s)
+		if err != nil {
+			errc <- err
+		} else {
+			close(errc)
+		}
+	}()
+	return errc
 }
 
 // Push new params into pipe
@@ -282,9 +298,14 @@ func (p *Pipe) Begin(fn actionFn) (Signal, error) {
 
 // Do begins an action and waits for returned signal
 func (p *Pipe) Do(fn actionFn) error {
-	sig, err := p.Begin(fn)
-	if err != nil {
-		return err
+	errc, sig := fn(p)
+	if errc == nil {
+		return p.Wait(sig)
+	}
+	for err := range errc {
+		if err != nil {
+			return err
+		}
 	}
 	return p.Wait(sig)
 }
@@ -505,12 +526,14 @@ func pausing(p *Pipe) stateFn {
 			wg.Wait()
 			return paused
 		case err := <-p.errc:
+			// if nil error is received, it means that pipe finished before pause got finished
 			if err != nil {
-				p.signalc <- signalMessage{Running, err}
+				p.signalc <- signalMessage{Pausing, err}
 				p.cancelFn()
+			} else {
+				// because pipe is finished, we need send this signal to stop waiting
+				p.signalc <- signalMessage{Paused, nil}
 			}
-			// send to cancel Do(Pause)
-			p.signalc <- signalMessage{Paused, nil}
 			return ready
 		}
 	}
@@ -571,6 +594,8 @@ func (s Signal) String() string {
 		return "running"
 	case Paused:
 		return "paused"
+	case Pausing:
+		return "pausing"
 	}
 	return "unknown"
 }
