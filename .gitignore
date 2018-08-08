@@ -18,5 +18,5 @@ Gopkg.lock
 
 # Output files
 *.wav
-!in1.wav
-!in2.wav
+!sample1.wav
+!sample2.wav

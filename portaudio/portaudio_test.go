@@ -13,7 +13,7 @@ import (
 
 var (
 	bufferSize = phono.BufferSize(512)
-	inFile     = "../_testdata/in1.wav"
+	inFile     = "../_testdata/sample1.wav"
 )
 
 func TestSink(t *testing.T) {

@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	wavPath1 = "../_testdata/in1.wav"
-	wavPath2 = "../_testdata/in2.wav"
-	outPath  = "../_testdata/mixer_test1.wav"
+	wavPath1 = "../_testdata/sample1.wav"
+	wavPath2 = "../_testdata/sample2.wav"
+	outPath  = "../_testdata/out/mixer1.wav"
 )
 
 var (

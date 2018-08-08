@@ -29,15 +29,15 @@ var tests = []struct {
 }{
 	{
 		BufferSize: 512,
-		inFile:     "../_testdata/in1.wav",
-		outFile:    "../_testdata/wav_test1.wav",
+		inFile:     "../_testdata/sample1.wav",
+		outFile:    "../_testdata/out/wav1.wav",
 		messages:   646,
 		samples:    330534,
 	},
 	{
 		BufferSize: 512,
-		inFile:     "../_testdata/wav_test1.wav",
-		outFile:    "../_testdata/wav_test2.wav",
+		inFile:     "../_testdata/out/wav1.wav",
+		outFile:    "../_testdata/out/wav2.wav",
 		messages:   646,
 		samples:    330534,
 	},
