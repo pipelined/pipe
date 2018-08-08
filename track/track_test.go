@@ -19,8 +19,8 @@ var (
 	bufferSize  = phono.BufferSize(512)
 	sampleRate  = phono.SampleRate(44100)
 	numChannels = phono.NumChannels(1)
-	inFile      = "../_testdata/in1.wav"
-	outFile     = "../_testdata/track_test1.wav"
+	inFile      = "../_testdata/sample1.wav"
+	outFile     = "../_testdata/out/track1.wav"
 
 	asset1 = &asset.Asset{
 		Buffer: [][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}},
