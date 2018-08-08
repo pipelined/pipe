@@ -49,16 +49,17 @@ type (
 		value string
 	}
 
-	// ParamFunc represents a function which applies the param
+	// ParamFunc represents a function which mutates the pipe element (e.g. Pump, Processor or Sink)
 	ParamFunc func()
 
 	// Param is a structure for delayed parameters apply
+	// used as return type in functions which enable Params support for different packages
 	Param struct {
 		ID    string
 		Apply ParamFunc
 	}
 
-	// Params represents current track attributes: time signature, bpm e.t.c.
+	// Params represent a set of parameters mapped to ID of their receivers
 	Params struct {
 		private map[string][]ParamFunc
 	}
