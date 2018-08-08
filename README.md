@@ -1,15 +1,106 @@
-# Phono
-Golang audio pipe line
+# phono
+**phono** is a framework for floating point signal processing. It utilizes [pipeline](https://blog.golang.org/pipelines) pattern to build fast, asynchronomous and easy-to-extend pipes to process sound. Each pipe consists of one Pump, zero or multiple Processors and one or more Sinks. Phono also offers a friendly API for new pipe components implementations.
 
-### Mock package
-The purpose of this package is to provide useful pipe mocks to test pumps, processors and sinks.
+## Example
 
-#### mock.Pump example
+Read wav file, process its content with vst2 plugin, save result into new wav file and also play it with audio device.
 
-TBD
+To accomplish this we can build a pipe which will have wav.Pump, vst2.Processor and wav.Sink with portaudio.Sink as of final stage:
 
-#### mock.Processor example
-[Wav package](https://github.com/dudk/phono/wav) contains Pump and Sink which allows to read/write wav files respectively. To test both components next tests structure were defined:
+_Note:_ to build vst2 package, please follow the [instruction](https://github.com/dudk/vst2) from ```dudk/vst2``` package
+
+```go
+package example
+
+import (
+	"github.com/dudk/phono"
+	"github.com/dudk/phono/pipe"
+	"github.com/dudk/phono/portaudio"
+	"github.com/dudk/phono/vst2"
+	"github.com/dudk/phono/wav"
+	vst2sdk "github.com/dudk/vst2"
+)
+
+// Example:
+//		Read .wav file
+//		Process it with VST2 plugin
+// 		Save result into new .wav file
+//		Play result with portaudio
+func example() {
+	// init wav Pump
+	inPath := "_testdata/sample1.wav"
+	bufferSize := phono.BufferSize(512)
+	wavPump, err := wav.NewPump(
+		inPath,
+		bufferSize,
+	)
+	check(err)
+
+	// open vst2 library
+	vst2path := "_testdata/Krush.vst"
+	vst2lib, err := vst2sdk.Open(vst2path)
+	check(err)
+	defer vst2lib.Close()
+
+	// instantiate vst2 plugin
+	vst2plugin, err := vst2lib.Open()
+	check(err)
+	defer vst2plugin.Close()
+
+	// init vst2 Processor
+	vst2processor := vst2.NewProcessor(
+		vst2plugin,
+		bufferSize,
+		wavPump.WavSampleRate(),
+		wavPump.WavNumChannels(),
+	)
+
+	// init wav Sink
+	outPath := "_testdata/example2_out.wav"
+	wavSink, err := wav.NewSink(
+		outPath,
+		wavPump.WavSampleRate(),
+		wavPump.WavNumChannels(),
+		wavPump.WavBitDepth(),
+		wavPump.WavAudioFormat(),
+	)
+	check(err)
+
+	// init portaudio Sink
+	paSink := portaudio.NewSink(bufferSize, wavPump.WavSampleRate(), wavPump.WavNumChannels())
+
+	// build the pipe
+	p := pipe.New(
+		pipe.WithPump(wavPump),
+		pipe.WithProcessors(vst2processor),
+		pipe.WithSinks(paSink),
+	)
+	defer p.Close()
+
+	// run the pipe
+	err = p.Do(pipe.Run)
+	check(err)
+}
+```
+
+Find more examples in [phono/example](https://github.com/dudk/phono/example) package. 
+
+## Implemented packages
+
+Please, note that since **phono** is in active development stage, all packages are in experimental state. One of the main focus points is the stability of all listed and future packages.
+1. phono/wav - Pump and Sink to read/write files
+2. phono/vst2 - Processor to utilize plugins
+3. phono/mixer - simple mixer without balance and volume settings, Sink for inputs and Pump for output
+4. phono/asset - structures to reuse Buffers
+5. phono/track - Sink for sequential reads of asset and its slices
+6. phono/portaudio - Sink for playback
+
+### Testing
+To test custom Pumps, Processors and Sinks - [phono/mock](https://github.com/dudk/phono/mock) package can be utilized. The purpose of this package is to provide useful pipe mocks to test pumps, processors and sinks.
+
+#### Example
+[phono/wav](https://github.com/dudk/phono/wav) package contains Pump and Sink which allows to read/write wav files respectively. To test both components next tests structure were defined:
+
 ```go
 var tests = []struct {
 	phono.BufferSize
@@ -20,7 +111,7 @@ var tests = []struct {
 }{
 	{
 		BufferSize: 512,
-		inFile:     "_testdata/in1.wav",
+		inFile:     "_testdata/sample1.wav",
 		outFile:    "_testdata/out.wav",
 		messages:   uint64(646),
 		samples:    uint64(330534),
@@ -58,31 +149,3 @@ func TestWavPipe(t *testing.T) {
 	}
 }
 ```
-#### mock.Sink example
-
-TBD
-
-# WAV phono implementation
-WAV pump and sink
-
-# Usage
-## Pump
-```go
-inFile := "test.wav"
-bufferSize := 512
-wavPump, err := wav.NewPump(inFile, bufferSize)
-```
-
-## Sink
-```go
-bitDepth := 24
-outFile := "out.wav"
-wavAudioFormat := 1
-wavSink := wav.NewSink(
-	outFile,
-	bitDepth,
-	wavAudioFormat,
-)
-```
-# Phono Mixer 
-Mixer implementation for phono pipeline
