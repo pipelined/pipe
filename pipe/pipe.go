@@ -64,8 +64,6 @@ type Pipe struct {
 	sinks      []SinkRunner
 
 	cachedParams *phono.Params
-	// params channel
-	paramc chan *phono.Params
 	// errors channel
 	errc chan error
 	// event channel
@@ -97,7 +95,8 @@ type event int
 
 type eventMessage struct {
 	event
-	done chan error
+	done   chan error
+	params *phono.Params
 }
 
 // Signal is sent when pipe changes the state
@@ -112,6 +111,7 @@ const (
 	run event = iota
 	pause
 	resume
+	params
 
 	// Ready signal is sent when pipe goes to ready state
 	Ready Signal = iota
@@ -136,7 +136,6 @@ func New(params ...Param) *Pipe {
 	p := &Pipe{
 		processors: make([]ProcessRunner, 0),
 		sinks:      make([]SinkRunner, 0),
-		paramc:     make(chan *phono.Params),
 		eventc:     make(chan eventMessage),
 		signalc:    make(chan signalMessage, 100),
 		log:        log.GetLogger(),
@@ -269,8 +268,11 @@ func (p *Pipe) WaitAsync(s Signal) <-chan error {
 }
 
 // Push new params into pipe
-func (p *Pipe) Push(o *phono.Params) {
-	p.paramc <- o
+func (p *Pipe) Push(newParams *phono.Params) {
+	p.eventc <- eventMessage{
+		event:  params,
+		params: newParams,
+	}
 }
 
 // Close must be called to clean up pipe's resources
@@ -278,7 +280,6 @@ func (p *Pipe) Close() {
 	if p.cancelFn != nil {
 		p.cancelFn()
 	}
-	close(p.paramc)
 	close(p.eventc)
 }
 
@@ -400,18 +401,15 @@ func ready(p *Pipe) stateFn {
 	p.signalc <- signalMessage{Ready, nil}
 	for {
 		select {
-		case newParams, ok := <-p.paramc:
-			if !ok {
-				return nil
-			}
-			newParams.ApplyTo(p)
-			p.cachedParams = p.cachedParams.Merge(newParams)
 		case e, ok := <-p.eventc:
 			if !ok {
 				return nil
 			}
 			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
 			switch e.event {
+			case params:
+				e.params.ApplyTo(p)
+				p.cachedParams = p.cachedParams.Merge(e.params)
 			case run:
 				ctx, cancelFn := context.WithCancel(context.Background())
 				p.cancelFn = cancelFn
@@ -464,12 +462,6 @@ func running(p *Pipe) stateFn {
 	p.signalc <- signalMessage{Running, nil}
 	for {
 		select {
-		case newParams, ok := <-p.paramc:
-			if !ok {
-				return nil
-			}
-			newParams.ApplyTo(p)
-			p.cachedParams = p.cachedParams.Merge(newParams)
 		case <-p.message.ask:
 			message := new(phono.Message)
 			if !p.cachedParams.Empty() {
@@ -489,6 +481,9 @@ func running(p *Pipe) stateFn {
 			}
 			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
 			switch e.event {
+			case params:
+				e.params.ApplyTo(p)
+				p.cachedParams = p.cachedParams.Merge(e.params)
 			case pause:
 				close(e.done)
 				return pausing
@@ -504,12 +499,6 @@ func pausing(p *Pipe) stateFn {
 	p.log.Debug(fmt.Sprintf("%v is pausing", p))
 	for {
 		select {
-		case newParams, ok := <-p.paramc:
-			if !ok {
-				return nil
-			}
-			newParams.ApplyTo(p)
-			p.cachedParams = p.cachedParams.Merge(newParams)
 		case <-p.message.ask:
 			message := new(phono.Message)
 			if !p.cachedParams.Empty() {
@@ -535,6 +524,18 @@ func pausing(p *Pipe) stateFn {
 				p.signalc <- signalMessage{Paused, nil}
 			}
 			return ready
+		case e, ok := <-p.eventc:
+			if !ok {
+				return nil
+			}
+			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
+			switch e.event {
+			case params:
+				e.params.ApplyTo(p)
+				p.cachedParams = p.cachedParams.Merge(e.params)
+			default:
+				e.done <- ErrInvalidState
+			}
 		}
 	}
 }
@@ -544,18 +545,15 @@ func paused(p *Pipe) stateFn {
 	p.signalc <- signalMessage{Paused, nil}
 	for {
 		select {
-		case newParams, ok := <-p.paramc:
-			if !ok {
-				return nil
-			}
-			newParams.ApplyTo(p)
-			p.cachedParams = p.cachedParams.Merge(newParams)
 		case e, ok := <-p.eventc:
 			if !ok {
 				return nil
 			}
 			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
 			switch e.event {
+			case params:
+				e.params.ApplyTo(p)
+				p.cachedParams = p.cachedParams.Merge(e.params)
 			case resume:
 				close(e.done)
 				return running
@@ -581,6 +579,8 @@ func (e event) String() string {
 		return "pause"
 	case resume:
 		return "resume"
+	case params:
+		return "params"
 	}
 	return "unknown"
 }
