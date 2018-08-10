@@ -15,11 +15,12 @@ var (
 	bufferSize = 512
 )
 
-func TestPipe(t *testing.T) {
+func TestPipeActions(t *testing.T) {
 
 	pump := &mock.Pump{
-		Limit:    1000,
-		Interval: 0,
+		Limit:       1000,
+		Interval:    0,
+		NumChannels: 1,
 	}
 
 	proc := &mock.Processor{}
@@ -70,4 +71,41 @@ func TestPipe(t *testing.T) {
 	err = <-done
 	require.Nil(t, err)
 	p.Close()
+}
+
+func TestPipe(t *testing.T) {
+	messages := int64(1000)
+	samples := int64(10)
+	pump := &mock.Pump{
+		Limit:       mock.Limit(messages),
+		Interval:    0,
+		BufferSize:  phono.BufferSize(samples),
+		NumChannels: 1,
+	}
+
+	proc1 := &mock.Processor{}
+	proc2 := &mock.Processor{}
+	sink1 := &mock.Sink{}
+	sink2 := &mock.Sink{}
+	// new pipe
+	p := pipe.New(
+		pipe.WithName("Pipe"),
+		pipe.WithPump(pump),
+		pipe.WithProcessors(proc1, proc2),
+		pipe.WithSinks(sink1, sink2),
+	)
+	err := p.Do(pipe.Run)
+	assert.Nil(t, err)
+
+	messageCount, samplesCount := pump.Count()
+	assert.Equal(t, messages, messageCount)
+	assert.Equal(t, samples*messages, samplesCount)
+
+	messageCount, samplesCount = proc1.Count()
+	assert.Equal(t, messages, messageCount)
+	assert.Equal(t, samples*messages, samplesCount)
+
+	messageCount, samplesCount = sink1.Count()
+	assert.Equal(t, messages, messageCount)
+	assert.Equal(t, samples*messages, samplesCount)
 }
