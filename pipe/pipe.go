@@ -363,15 +363,9 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 				close(broadcasts[i])
 			}
 		}()
-		for in != nil {
-			select {
-			case buf, ok := <-in:
-				if !ok {
-					return
-				}
-				for i := range broadcasts {
-					broadcasts[i] <- buf
-				}
+		for buf := range in {
+			for i := range broadcasts {
+				broadcasts[i] <- buf
 			}
 		}
 	}()
