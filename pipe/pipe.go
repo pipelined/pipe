@@ -84,7 +84,7 @@ type Pipe struct {
 type Param func(p *Pipe) phono.ParamFunc
 
 // stateFn is the state function for pipe state machine
-type stateFn func(p *Pipe) stateFn
+type stateFn func(p *Pipe) State
 
 // actionFn is an action function which causes a pipe state change
 // chan error is closed when state is changed
@@ -112,15 +112,20 @@ const (
 	pause
 	resume
 	params
+)
 
-	// Ready state is sent when pipe goes to ready state
-	Ready State = iota
-	// Running state is sent when pipe goes to running state
+const (
+	initial State = iota
+	// Ready state means that pipe can be started
+	Ready
+	// Running state means that pipe is executing at the moment
 	Running
-	// Paused state is sent when pipe goes to paused state
+	// Paused state means that pipe is paused and can be resumed
 	Paused
-	// Pausing state is sent when pipe goes to pausing
+	// Pausing state means that signal for pause was sent, but still not reached all sinks
 	Pausing
+	// closed state means that pipe execution was finished and it cannot be used anymore
+	closed
 )
 
 var (
@@ -144,12 +149,18 @@ func New(params ...Param) *Pipe {
 	for _, param := range params {
 		param(p)()
 	}
-	state := stateFn(ready)
+	state := initial
+	newState := Ready
 	go func() {
-		for state != nil {
-			state = state(p)
+		defer p.stop()
+		for {
+			p.log.Debug(fmt.Sprintf("Current state: %v New State: %v\n", state, newState))
+			state = state.transit(newState, p)
+			if state == closed {
+				return
+			}
+			newState = state.fn()(p)
 		}
-		p.stop()
 	}()
 	p.Wait(Ready)
 	return p
@@ -390,70 +401,25 @@ func (p *Pipe) soure() phono.NewMessageFunc {
 
 // ready state defines that pipe can:
 // 	run - start processing
-func ready(p *Pipe) stateFn {
+func ready(p *Pipe) State {
 	p.log.Debug(fmt.Sprintf("%v is ready", p))
-	p.transitionc <- transitionMessage{Ready, nil}
+	// p.transitionc <- transitionMessage{Ready, nil}
 	for {
 		select {
 		case e, ok := <-p.eventc:
 			if !ok {
-				return nil
+				return closed
 			}
-			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
-			switch e.event {
-			case params:
-				e.params.ApplyTo(p)
-				p.cachedParams = p.cachedParams.Merge(e.params)
-			case run:
-				ctx, cancelFn := context.WithCancel(context.Background())
-				p.cancelFn = cancelFn
-				errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
-
-				// start pump
-				// pumpRunner := p.pump.RunPump(p.ID())
-				out, errc, err := p.pump.Run(ctx, p.soure())
-				if err != nil {
-					p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
-					e.done <- err
-					p.cancelFn()
-					return ready
-				}
-				errcList = append(errcList, errc)
-
-				// start chained processesing
-				for _, proc := range p.processors {
-					out, errc, err = proc.Run(out)
-					if err != nil {
-						p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
-						e.done <- err
-						p.cancelFn()
-						return ready
-					}
-					errcList = append(errcList, errc)
-				}
-
-				sinkErrcList, err := p.broadcastToSinks(out)
-				if err != nil {
-					e.done <- err
-					p.cancelFn()
-					return ready
-				}
-				errcList = append(errcList, sinkErrcList...)
-				p.errc = mergeErrors(errcList...)
-				close(e.done)
-				return running
-			default:
-				e.done <- ErrInvalidState
-			}
+			return Ready.handle(e, p)
 		}
 	}
 }
 
 // running state defines that pipe can be:
 //	paused - pause the processing
-func running(p *Pipe) stateFn {
+func running(p *Pipe) State {
 	p.log.Debug(fmt.Sprintf("%v is running", p))
-	p.transitionc <- transitionMessage{Running, nil}
+	// p.transitionc <- transitionMessage{Running, nil}
 	for {
 		select {
 		case <-p.message.ask:
@@ -468,28 +434,18 @@ func running(p *Pipe) stateFn {
 				p.transitionc <- transitionMessage{Running, err}
 				p.cancelFn()
 			}
-			return ready
+			return Ready
 		case e, ok := <-p.eventc:
 			if !ok {
-				return nil
+				return closed
 			}
-			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
-			switch e.event {
-			case params:
-				e.params.ApplyTo(p)
-				p.cachedParams = p.cachedParams.Merge(e.params)
-			case pause:
-				close(e.done)
-				return pausing
-			default:
-				e.done <- ErrInvalidState
-			}
+			return Running.handle(e, p)
 		}
 	}
 }
 
 // pausing defines a state when pipe accepted a pause command and pushed message with confirmation
-func pausing(p *Pipe) stateFn {
+func pausing(p *Pipe) State {
 	p.log.Debug(fmt.Sprintf("%v is pausing", p))
 	for {
 		select {
@@ -507,7 +463,7 @@ func pausing(p *Pipe) stateFn {
 			}
 			p.message.take <- message
 			wg.Wait()
-			return paused
+			return Paused
 		case err := <-p.errc:
 			// if nil error is received, it means that pipe finished before pause got finished
 			if err != nil {
@@ -517,55 +473,117 @@ func pausing(p *Pipe) stateFn {
 				// because pipe is finished, we need send this signal to stop waiting
 				p.transitionc <- transitionMessage{Paused, nil}
 			}
-			return ready
+			return Ready
 		case e, ok := <-p.eventc:
 			if !ok {
-				return nil
+				return closed
 			}
-			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
-			switch e.event {
-			case params:
-				e.params.ApplyTo(p)
-				p.cachedParams = p.cachedParams.Merge(e.params)
-			default:
-				e.done <- ErrInvalidState
-			}
+			return Pausing.handle(e, p)
 		}
 	}
 }
 
-func paused(p *Pipe) stateFn {
+func paused(p *Pipe) State {
 	p.log.Debug(fmt.Sprintf("%v is paused", p))
-	p.transitionc <- transitionMessage{Paused, nil}
+	// p.transitionc <- transitionMessage{Paused, nil}
 	for {
 		select {
 		case e, ok := <-p.eventc:
 			if !ok {
-				return nil
+				return closed
 			}
 			p.log.Debug(fmt.Sprintf("%v got new event: %v", p, e))
-			switch e.event {
-			case params:
-				e.params.ApplyTo(p)
-				p.cachedParams = p.cachedParams.Merge(e.params)
-			case resume:
-				close(e.done)
-				return running
-			default:
-				e.done <- ErrInvalidState
-			}
+			return Paused.handle(e, p)
 		}
 	}
 }
 
-func (s State) handle(e eventMessage) {
+func (s State) fn() stateFn {
 	switch s {
-
+	case Ready:
+		return ready
+	case Pausing:
+		return pausing
+	case Paused:
+		return paused
+	case Running:
+		return running
 	}
+	return nil
+}
+
+func (s State) transit(newState State, p *Pipe) State {
+	if s != newState {
+		p.transitionc <- transitionMessage{newState, nil}
+	}
+	return newState
+}
+
+func (s State) handle(e eventMessage, p *Pipe) State {
+	switch e.event {
+	case params:
+		e.params.ApplyTo(p)
+		p.cachedParams = p.cachedParams.Merge(e.params)
+		return s
+	case run:
+		if s == Ready {
+			ctx, cancelFn := context.WithCancel(context.Background())
+			p.cancelFn = cancelFn
+			errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
+
+			// start pump
+			// pumpRunner := p.pump.RunPump(p.ID())
+			out, errc, err := p.pump.Run(ctx, p.soure())
+			if err != nil {
+				p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
+				e.done <- err
+				p.cancelFn()
+				return Ready
+			}
+			errcList = append(errcList, errc)
+
+			// start chained processesing
+			for _, proc := range p.processors {
+				out, errc, err = proc.Run(out)
+				if err != nil {
+					p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
+					e.done <- err
+					p.cancelFn()
+					return Ready
+				}
+				errcList = append(errcList, errc)
+			}
+
+			sinkErrcList, err := p.broadcastToSinks(out)
+			if err != nil {
+				e.done <- err
+				p.cancelFn()
+				return Ready
+			}
+			errcList = append(errcList, sinkErrcList...)
+			p.errc = mergeErrors(errcList...)
+			close(e.done)
+			return Running
+		}
+	case pause:
+		if s == Running {
+			close(e.done)
+			return Pausing
+		}
+	case resume:
+		if s == Paused {
+			close(e.done)
+			return Running
+		}
+	}
+	e.done <- ErrInvalidState
+	return s
 }
 
 // stop the pipe and clean up resources
 func (p *Pipe) stop() {
+	p.log.Debug("Stop is called!")
+
 	close(p.message.ask)
 	close(p.message.take)
 }
@@ -588,6 +606,8 @@ func (e event) String() string {
 // Convert the event to a string
 func (s State) String() string {
 	switch s {
+	case initial:
+		return "initial"
 	case Ready:
 		return "ready"
 	case Running:
@@ -596,6 +616,8 @@ func (s State) String() string {
 		return "paused"
 	case Pausing:
 		return "pausing"
+	case closed:
+		return "closed"
 	}
 	return "unknown"
 }
