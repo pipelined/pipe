@@ -538,7 +538,7 @@ func (s State) handle(e eventMessage, p *Pipe) State {
 				p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 				e.done <- err
 				p.cancelFn()
-				return Ready
+				return s
 			}
 			errcList = append(errcList, errc)
 
@@ -549,7 +549,7 @@ func (s State) handle(e eventMessage, p *Pipe) State {
 					p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 					e.done <- err
 					p.cancelFn()
-					return Ready
+					return s
 				}
 				errcList = append(errcList, errc)
 			}
@@ -558,7 +558,7 @@ func (s State) handle(e eventMessage, p *Pipe) State {
 			if err != nil {
 				e.done <- err
 				p.cancelFn()
-				return Ready
+				return s
 			}
 			errcList = append(errcList, sinkErrcList...)
 			p.errc = mergeErrors(errcList...)
