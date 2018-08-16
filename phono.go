@@ -1,7 +1,6 @@
 package phono
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -153,12 +152,11 @@ func (i *UID) SetID(id string) {
 	i.value = id
 }
 
-// ReceivedBy returns channel which is closed when param received
+// ReceivedBy returns channel which is closed when param received by identified entity
 func ReceivedBy(wg *sync.WaitGroup, id Identifiable) Param {
 	return Param{
 		ID: id.ID(),
 		Apply: func() {
-			fmt.Printf("recieved by %v\n", id.ID())
 			wg.Done()
 		},
 	}
