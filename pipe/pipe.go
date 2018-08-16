@@ -138,7 +138,7 @@ func New(params ...Param) *Pipe {
 	p := &Pipe{
 		processors:  make([]ProcessRunner, 0),
 		sinks:       make([]SinkRunner, 0),
-		eventc:      make(chan eventMessage),
+		eventc:      make(chan eventMessage, 100),
 		transitionc: make(chan transitionMessage, 100),
 		log:         log.GetLogger(),
 	}
@@ -147,17 +147,11 @@ func New(params ...Param) *Pipe {
 		param(p)()
 	}
 	go func() {
-		var state, newState State
-		newState = Ready
-		for newState != nil {
-			if state != newState {
-				p.transitionc <- transitionMessage{newState, nil}
-			}
-			state = newState
-			newState = state.listen(p)()
+		var state State = Ready
+		for state != nil {
+			state = state.listen(p)()
 		}
 	}()
-	p.Wait(Ready)
 	return p
 }
 
@@ -441,13 +435,18 @@ type listenFn func() State
 // TODO: WRITE FUNCTION TO RETURN ONLY WHEN STATE HAS CHANGED
 func (p *Pipe) listenIdle(s idleState) listenFn {
 	return func() State {
+		var newState State
 		for {
 			select {
 			case e, ok := <-p.eventc:
 				if !ok {
 					return nil
 				}
-				return s.transition(p, e)
+				newState = s.transition(p, e)
+			}
+			if s != newState {
+				p.transitionc <- transitionMessage{newState, nil}
+				return newState
 			}
 		}
 	}
@@ -457,17 +456,22 @@ func (p *Pipe) listenIdle(s idleState) listenFn {
 // TODO: WRITE FUNCTION TO RETURN ONLY WHEN STATE HAS CHANGED
 func (p *Pipe) listenActive(s activeState) listenFn {
 	return func() State {
+		var newState State
 		for {
 			select {
 			case e, ok := <-p.eventc:
 				if !ok {
 					return nil
 				}
-				return s.transition(p, e)
+				newState = s.transition(p, e)
 			case <-p.message.ask:
-				return s.sendMessage(p)
+				newState = s.sendMessage(p)
 			case err := <-p.errc:
-				return s.handleError(p, err)
+				newState = s.handleError(p, err)
+			}
+			if s != newState {
+				p.transitionc <- transitionMessage{newState, nil}
+				return newState
 			}
 		}
 	}
