@@ -108,4 +108,6 @@ func TestPipe(t *testing.T) {
 	messageCount, samplesCount = sink1.Count()
 	assert.Equal(t, messages, messageCount)
 	assert.Equal(t, samples*messages, samplesCount)
+	p.Close()
+	p.Close()
 }
