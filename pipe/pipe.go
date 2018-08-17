@@ -83,46 +83,75 @@ type Pipe struct {
 // returns phono.ParamFunc, which can be executed later
 type Param func(p *Pipe) phono.ParamFunc
 
-// stateFn is the state function for pipe state machine
-type stateFn func(p *Pipe) State
+type listenFn func() State
+
+// State identifies one of the possible states pipe can be in
+type State interface {
+	listen(*Pipe) listenFn
+	transition(*Pipe, eventMessage) State
+}
+
+// idleState identifies that the pipe is ONLY waiting for user to send an event
+type idleState interface {
+	State
+}
+
+// activeState identifies that the pipe is processing signals and also is waiting for user to send an event
+type activeState interface {
+	State
+	sendMessage(*Pipe) State
+	handleError(*Pipe, error) State
+}
+
+// states
+type (
+	ready   struct{}
+	running struct{}
+	pausing struct{}
+	paused  struct{}
+)
+
+// states variables
+var (
+	// Ready [idle] state means that pipe can be started
+	Ready ready
+
+	// Running [active] state means that pipe is executing at the moment
+	Running running
+
+	// Paused [idle] state means that pipe is paused and can be resumed
+	Paused paused
+
+	// Pausing [active] state means that pause event was sent, but still not reached all sinks
+	Pausing pausing
+)
 
 // actionFn is an action function which causes a pipe state change
 // chan error is closed when state is changed
 type actionFn func(p *Pipe) (State, chan error)
 
-// event is sent when user does some action
+// event identifies the type of event
 type event int
 
+// eventMessage is passed into pipe's event channel when user does some action
 type eventMessage struct {
 	event
 	done   chan error
 	params *phono.Params
 }
 
+// transitionMessage is sent when pipe changes the state
 type transitionMessage struct {
 	State
 	err error
 }
 
+// types of events
 const (
 	run event = iota
 	pause
 	resume
 	params
-)
-
-var (
-	// Ready state means that pipe can be started
-	Ready ready
-
-	// Running state means that pipe is executing at the moment
-	Running running
-
-	// Paused state means that pipe is paused and can be resumed
-	Paused paused
-
-	// Pausing state means that pause event was sent, but still not reached all sinks
-	Pausing pausing
 )
 
 var (
@@ -208,7 +237,7 @@ func WithSinks(sinks ...Sink) Param {
 	}
 }
 
-// Run switches pipe into running state
+// Run sends a run event into pipe
 func Run(p *Pipe) (State, chan error) {
 	runEvent := eventMessage{
 		event: run,
@@ -218,7 +247,7 @@ func Run(p *Pipe) (State, chan error) {
 	return Ready, runEvent.done
 }
 
-// Pause switches pipe into pausing state
+// Pause sends a pause event into pipe
 func Pause(p *Pipe) (State, chan error) {
 	pauseEvent := eventMessage{
 		event: pause,
@@ -228,7 +257,7 @@ func Pause(p *Pipe) (State, chan error) {
 	return Paused, pauseEvent.done
 }
 
-// Resume switches pipe into running state
+// Resume sends a resume event into pipe
 func Resume(p *Pipe) (State, chan error) {
 	resumeEvent := eventMessage{
 		event: resume,
@@ -277,10 +306,9 @@ func (p *Pipe) Push(newParams *phono.Params) {
 
 // Close must be called to clean up pipe's resources
 func (p *Pipe) Close() {
-	// TODO: implement as event
-	if p.cancelFn != nil {
-		p.cancelFn()
-	}
+	defer func() {
+		recover()
+	}()
 	close(p.eventc)
 }
 
@@ -338,6 +366,7 @@ func mergeErrors(errcList ...<-chan error) chan error {
 	return out
 }
 
+// broadcastToSinks passes messages to all sinks
 func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
@@ -374,13 +403,23 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 	return errcList, nil
 }
 
-// soure returns a default message producer which caches params
+// newMessage creates a new message with cached params
 // if new params are pushed into pipe - next message will contain them
-// if pipe paused this call will block
+func (p *Pipe) newMessage() *phono.Message {
+	m := new(phono.Message)
+	if !p.cachedParams.Empty() {
+		m.Params = p.cachedParams
+		p.cachedParams = new(phono.Params)
+	}
+	return m
+}
+
+// soure returns a default message producer which will be sent to pump
 func (p *Pipe) soure() phono.NewMessageFunc {
 	p.message.ask = make(chan struct{})
 	p.message.take = make(chan *phono.Message)
 	var do struct{}
+	// if pipe paused this call will block
 	return func() *phono.Message {
 		p.message.ask <- do
 		msg := <-p.message.take
@@ -390,11 +429,12 @@ func (p *Pipe) soure() phono.NewMessageFunc {
 }
 
 // stop the pipe and clean up resources
-func (p *Pipe) stop() {
-	p.log.Debug("Stop is called!")
-
-	close(p.message.ask)
-	close(p.message.take)
+// consequent calls do nothing
+func (p *Pipe) cancel() {
+	p.log.Debug("Cancel is called!")
+	if p.cancelFn != nil {
+		p.cancelFn()
+	}
 }
 
 // Convert the event to a string
@@ -420,19 +460,7 @@ func (p *Pipe) String() string {
 	return fmt.Sprintf("%v %v", p.name, p.ID())
 }
 
-func (p *Pipe) newMessage() *phono.Message {
-	m := new(phono.Message)
-	if !p.cachedParams.Empty() {
-		m.Params = p.cachedParams
-		p.cachedParams = &phono.Params{}
-	}
-	return m
-}
-
-type listenFn func() State
-
-// ADD HERE
-// TODO: WRITE FUNCTION TO RETURN ONLY WHEN STATE HAS CHANGED
+// listenIdle is used to listen to pipe's channels which are relevant for idle state
 func (p *Pipe) listenIdle(s idleState) listenFn {
 	return func() State {
 		var newState State
@@ -440,6 +468,7 @@ func (p *Pipe) listenIdle(s idleState) listenFn {
 			select {
 			case e, ok := <-p.eventc:
 				if !ok {
+					p.cancel()
 					return nil
 				}
 				newState = s.transition(p, e)
@@ -452,8 +481,7 @@ func (p *Pipe) listenIdle(s idleState) listenFn {
 	}
 }
 
-// ADD HERE
-// TODO: WRITE FUNCTION TO RETURN ONLY WHEN STATE HAS CHANGED
+// listenActive is used to listen to pipe's channels which are relevant for active state
 func (p *Pipe) listenActive(s activeState) listenFn {
 	return func() State {
 		var newState State
@@ -461,6 +489,7 @@ func (p *Pipe) listenActive(s activeState) listenFn {
 			select {
 			case e, ok := <-p.eventc:
 				if !ok {
+					p.cancel()
 					return nil
 				}
 				newState = s.transition(p, e)
@@ -476,29 +505,6 @@ func (p *Pipe) listenActive(s activeState) listenFn {
 		}
 	}
 }
-
-// State is sent when pipe changes the state
-type State interface {
-	listen(*Pipe) listenFn
-	transition(*Pipe, eventMessage) State
-}
-
-type idleState interface {
-	State
-}
-
-type activeState interface {
-	State
-	sendMessage(*Pipe) State
-	handleError(*Pipe, error) State
-}
-
-type (
-	ready   struct{}
-	running struct{}
-	pausing struct{}
-	paused  struct{}
-)
 
 func (s ready) listen(p *Pipe) listenFn {
 	return p.listenIdle(s)
