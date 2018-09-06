@@ -430,8 +430,7 @@ func (p *Pipe) soure() phono.NewMessageFunc {
 
 // stop the pipe and clean up resources
 // consequent calls do nothing
-func (p *Pipe) cancel() {
-	p.log.Debug("Cancel is called!")
+func (p *Pipe) close() {
 	if p.cancelFn != nil {
 		p.cancelFn()
 	}
@@ -468,7 +467,7 @@ func (p *Pipe) listenIdle(s idleState) listenFn {
 			select {
 			case e, ok := <-p.eventc:
 				if !ok {
-					p.cancel()
+					p.close()
 					return nil
 				}
 				newState = s.transition(p, e)
@@ -489,7 +488,7 @@ func (p *Pipe) listenActive(s activeState) listenFn {
 			select {
 			case e, ok := <-p.eventc:
 				if !ok {
-					p.cancel()
+					p.close()
 					return nil
 				}
 				newState = s.transition(p, e)
