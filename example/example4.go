@@ -21,7 +21,7 @@ func four() {
 
 	wavPump, err := wav.NewPump(inPath, bufferSize)
 	check(err)
-	asset := &asset.Asset{
+	asset := &asset.Sink{
 		SampleRate: wavPump.WavSampleRate(),
 	}
 	importAsset := pipe.New(
