@@ -47,7 +47,7 @@ func TestPipe(t *testing.T) {
 	processor := &mock.Processor{}
 
 	for _, test := range tests {
-		sink := &asset.Asset{}
+		sink := &asset.Sink{}
 		p := pipe.New(
 			pipe.WithName("Mock"),
 			pipe.WithPump(pump),
