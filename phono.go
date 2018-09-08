@@ -179,9 +179,13 @@ func (b Buffer) Size() BufferSize {
 }
 
 // Append buffers set to existing one one
+// new buffer is returned if b is nil
 func (b Buffer) Append(source Buffer) Buffer {
-	if b.NumChannels() == 0 {
-		return source
+	if b == nil {
+		b = make([][]float64, source.NumChannels())
+		for i := range b {
+			b[i] = make([]float64, 0, source.Size())
+		}
 	}
 	for i := range source {
 		b[i] = append(b[i], source[i]...)
