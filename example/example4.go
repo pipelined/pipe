@@ -9,7 +9,7 @@ import (
 	"github.com/dudk/phono/wav"
 )
 
-// Example 4:
+// Example:
 //		Read .wav file
 // 		Split it to samples
 // 		Put samples to track
@@ -19,24 +19,34 @@ func four() {
 	inPath := "../_testdata/sample1.wav"
 	outPath := "../_testdata/out/example4.wav"
 
+	// wav pump
 	wavPump, err := wav.NewPump(inPath, bufferSize)
 	check(err)
+
+	// asset sink
 	asset := &asset.Sink{
 		SampleRate: wavPump.WavSampleRate(),
 	}
+
+	// import pipe
 	importAsset := pipe.New(
 		pipe.WithPump(wavPump),
 		pipe.WithSinks(asset),
 	)
+	defer importAsset.Close()
+
 	err = importAsset.Do(pipe.Run)
 	check(err)
 
+	// track pump
 	track := track.New(bufferSize, asset.NumChannels())
 
+	// add samples
 	track.AddFrame(198450, asset.Frame(0, 44100))
 	track.AddFrame(66150, asset.Frame(44100, 44100))
 	track.AddFrame(132300, asset.Frame(0, 44100))
 
+	// wav sink
 	wavSink, err := wav.NewSink(
 		outPath,
 		wavPump.WavSampleRate(),
@@ -44,12 +54,14 @@ func four() {
 		wavPump.WavBitDepth(),
 		wavPump.WavAudioFormat(),
 	)
+	// portaudio sink
 	paSink := portaudio.NewSink(
 		bufferSize,
 		wavPump.WavSampleRate(),
 		wavPump.WavNumChannels(),
 	)
 
+	// final pipe
 	p := pipe.New(
 		pipe.WithPump(track),
 		pipe.WithSinks(wavSink, paSink),

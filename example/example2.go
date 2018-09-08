@@ -8,7 +8,7 @@ import (
 	vst2sdk "github.com/dudk/vst2"
 )
 
-// Example 2:
+// Example:
 //		Read .wav file
 //		Process it with VST2 plugin
 // 		Save result into new .wav file

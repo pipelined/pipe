@@ -19,3 +19,7 @@ func TestThree(t *testing.T) {
 func TestFour(t *testing.T) {
 	four()
 }
+
+func TestFive(t *testing.T) {
+	five()
+}
