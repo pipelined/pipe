@@ -168,12 +168,6 @@ type Sink struct {
 
 // Sink implementation for runner
 func (s *Sink) Sink(m *phono.Message) error {
-	if s.Buffer == nil {
-		s.Buffer = make([][]float64, m.Buffer.NumChannels())
-		for i := range s.Buffer {
-			s.Buffer[i] = make([]float64, 0, m.Buffer.Size())
-		}
-	}
 	s.Buffer = s.Buffer.Append(m.Buffer)
 	s.Counter.advance(m.Buffer)
 	return nil
