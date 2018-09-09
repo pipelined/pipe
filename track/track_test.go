@@ -22,10 +22,10 @@ var (
 	inFile      = "../_testdata/sample1.wav"
 	outFile     = "../_testdata/out/track1.wav"
 
-	asset1 = &asset.Sink{
+	asset1 = &asset.Asset{
 		Buffer: [][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}},
 	}
-	asset2 = &asset.Sink{
+	asset2 = &asset.Asset{
 		Buffer: [][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}},
 	}
 	overlapTests = []struct {
@@ -147,7 +147,7 @@ var (
 func TestTrackWavSlices(t *testing.T) {
 	wavPump, err := wav.NewPump(inFile, bufferSize)
 	assert.Nil(t, err)
-	asset := &asset.Sink{
+	asset := &asset.Asset{
 		SampleRate: sampleRate,
 	}
 
