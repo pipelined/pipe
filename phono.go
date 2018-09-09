@@ -74,8 +74,6 @@ type (
 	SampleRate int
 	// Tempo represents a tempo value
 	Tempo float32
-	// SamplePosition represents a position in samples measure
-	SamplePosition int64
 )
 
 // NewParams returns a new params instance with initialised map inside
@@ -210,7 +208,7 @@ func (b Buffer) Slice(start int64, length int) (result Buffer) {
 	return
 }
 
-// Cli creates a new clip from asset with defined start and length
+// Clip creates a new clip from asset with defined start and length
 func (b Buffer) Clip(start int64, len int) *Clip {
 	return &Clip{
 		Buffer: b,
