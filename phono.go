@@ -9,12 +9,12 @@ type (
 	// Buffer represent a sample data sliced per channel
 	Buffer [][]float64
 
-	// Frame represents a segment of buffer
+	// Clip represents a segment of buffer
 	// Start is a start position of segment
 	// Len is a length of segment
 	//
-	// Frame is not a copy of a buffer
-	Frame struct {
+	// Clip is not a copy of a buffer
+	Clip struct {
 		Buffer
 		Start int64
 		Len   int
@@ -210,9 +210,9 @@ func (b Buffer) Slice(start int64, length int) (result Buffer) {
 	return
 }
 
-// Frame creates a new clip from asset with defined start and length
-func (b Buffer) Frame(start int64, len int) *Frame {
-	return &Frame{
+// Cli creates a new clip from asset with defined start and length
+func (b Buffer) Clip(start int64, len int) *Clip {
+	return &Clip{
 		Buffer: b,
 		Start:  start,
 		Len:    len,

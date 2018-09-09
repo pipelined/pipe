@@ -42,9 +42,9 @@ func four() {
 	track := track.New(bufferSize, asset.NumChannels())
 
 	// add samples
-	track.AddFrame(198450, asset.Frame(0, 44100))
-	track.AddFrame(66150, asset.Frame(44100, 44100))
-	track.AddFrame(132300, asset.Frame(0, 44100))
+	track.AddClip(198450, asset.Clip(0, 44100))
+	track.AddClip(66150, asset.Clip(44100, 44100))
+	track.AddClip(132300, asset.Clip(0, 44100))
 
 	// wav sink
 	wavSink, err := wav.NewSink(
