@@ -24,7 +24,7 @@ func four() {
 	check(err)
 
 	// asset sink
-	asset := &asset.Sink{
+	asset := &asset.Asset{
 		SampleRate: wavPump.WavSampleRate(),
 	}
 
