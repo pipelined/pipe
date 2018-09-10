@@ -93,8 +93,10 @@ func TestBuffer(t *testing.T) {
 func TestSliceBuffer(t *testing.T) {
 	for _, test := range sliceTests {
 		result := test.in.Slice(test.start, test.len)
-		for i, ch := range result {
-			for j := 0; j < len(ch); j++ {
+		assert.Equal(t, test.expected.Size(), result.Size())
+		assert.Equal(t, test.expected.NumChannels(), result.NumChannels())
+		for i := range test.expected {
+			for j := 0; j < len(test.expected[i]); j++ {
 				assert.Equal(t, test.expected[i][j], result[i][j])
 			}
 		}

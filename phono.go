@@ -194,7 +194,7 @@ func (b Buffer) Append(source Buffer) Buffer {
 // Slice creates a new copy of buffer from start position with defined legth
 // if buffer doesn't have enough samples - shorten block is returned
 func (b Buffer) Slice(start int64, length int) (result Buffer) {
-	if b == nil {
+	if b == nil || BufferSize(start) >= b.Size() {
 		return
 	}
 	end := BufferSize(start + int64(length))
