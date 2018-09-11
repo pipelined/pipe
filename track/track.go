@@ -235,6 +235,3 @@ func (t *Track) alignPrevClip(c *clip) {
 		}
 	}
 }
-
-// Option of a session
-type Option func(s *Track) phono.ParamFunc
