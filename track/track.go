@@ -14,9 +14,9 @@ type Track struct {
 	bs phono.BufferSize
 	phono.NumChannels
 
-	start   *Clip
-	end     *Clip
-	current *Clip
+	start   *clip
+	end     *clip
+	current *clip
 
 	// newIndex is a channel to receive new index
 	newIndex chan int64
@@ -24,16 +24,17 @@ type Track struct {
 	nextIndex int64
 }
 
-// Clip represents an asset frame in context of track
-type Clip struct {
+// Clip is a phono.Clip in track.
+// It uses double-linked list structure
+type clip struct {
 	At int64
-	*phono.Frame
-	Next *Clip
-	Prev *Clip
+	*phono.Clip
+	Next *clip
+	Prev *clip
 }
 
 // End returns an end index of Clip
-func (c *Clip) End() int64 {
+func (c *clip) End() int64 {
 	if c == nil {
 		return -1
 	}
@@ -130,7 +131,7 @@ func (t *Track) bufferAt(index int64) (result phono.Buffer) {
 
 // clipAfter searches for a first clip after passed index
 // returns start position of clip and index in clip
-func (t *Track) clipAfter(index int64) *Clip {
+func (t *Track) clipAfter(index int64) *clip {
 	slice := t.start
 	for slice != nil {
 		if slice.At >= index {
@@ -149,13 +150,16 @@ func (t *Track) clipsEnd() int64 {
 	return t.end.At + int64(t.end.Len)
 }
 
-// AddFrame assigns a frame to a track
+// AddClip assigns a frame to a track
 // currently works only if clips are passed in order of processing
-func (t *Track) AddFrame(at int64, f *phono.Frame) {
+func (t *Track) AddClip(at int64, f *phono.Clip) {
+	if f == nil {
+		return
+	}
 	t.current = nil
-	c := &Clip{
-		At:    at,
-		Frame: f,
+	c := &clip{
+		At:   at,
+		Clip: f,
 	}
 
 	if t.start == nil {
@@ -164,7 +168,7 @@ func (t *Track) AddFrame(at int64, f *phono.Frame) {
 		return
 	}
 
-	var next, prev *Clip
+	var next, prev *clip
 	if next = t.clipAfter(at); next != nil {
 		prev = next.Prev
 		next.Prev = c
@@ -185,12 +189,12 @@ func (t *Track) AddFrame(at int64, f *phono.Frame) {
 }
 
 // resolveOverlaps resolves overlaps
-func (t *Track) resolveOverlaps(c *Clip) {
+func (t *Track) resolveOverlaps(c *clip) {
 	t.alignNextClip(c)
 	t.alignPrevClip(c)
 }
 
-func (t *Track) alignNextClip(c *Clip) {
+func (t *Track) alignNextClip(c *clip) {
 	next := c.Next
 	if next == nil {
 		return
@@ -215,7 +219,7 @@ func (t *Track) alignNextClip(c *Clip) {
 	}
 }
 
-func (t *Track) alignPrevClip(c *Clip) {
+func (t *Track) alignPrevClip(c *clip) {
 	prev := c.Prev
 	if prev == nil {
 		return
@@ -227,10 +231,7 @@ func (t *Track) alignPrevClip(c *Clip) {
 			at := c.At + int64(c.Len)
 			start := int64(overlap+c.Len) + c.At - prev.At
 			len := overlap - c.Len
-			t.AddFrame(at, prev.Buffer.Frame(start, len))
+			t.AddClip(at, prev.Buffer.Clip(start, len))
 		}
 	}
 }
-
-// Option of a session
-type Option func(s *Track) phono.ParamFunc
