@@ -193,23 +193,38 @@ func (b Buffer) Append(source Buffer) Buffer {
 
 // Slice creates a new copy of buffer from start position with defined legth
 // if buffer doesn't have enough samples - shorten block is returned
-func (b Buffer) Slice(start int64, length int) (result Buffer) {
-	if b == nil || BufferSize(start) >= b.Size() {
-		return
+//
+// if start >= buffer size, nil is returned
+// if start + len >= buffer size, len is decreased till the end of slice
+// if start < 0, nil is returned
+func (b Buffer) Slice(start int64, len int) Buffer {
+	if b == nil || BufferSize(start) >= b.Size() || start < 0 {
+		return nil
 	}
-	end := BufferSize(start + int64(length))
-	result = Buffer(make([][]float64, b.NumChannels()))
+	end := BufferSize(start + int64(len))
+	result := Buffer(make([][]float64, b.NumChannels()))
 	for i := range b {
 		if end > b.Size() {
 			end = b.Size()
 		}
 		result[i] = append(result[i], b[i][start:end]...)
 	}
-	return
+	return result
 }
 
 // Clip creates a new clip from asset with defined start and length
+//
+// if start >= buffer size, nil is returned
+// if start + len >= buffer size, len is decreased till the end of slice
+// if start < 0, nil is returned
 func (b Buffer) Clip(start int64, len int) *Clip {
+	if b == nil || BufferSize(start) >= b.Size() || start < 0 {
+		return nil
+	}
+	end := BufferSize(start + int64(len))
+	if end >= b.Size() {
+		len = int(b.Size()) - int(start)
+	}
 	return &Clip{
 		Buffer: b,
 		Start:  start,

@@ -153,6 +153,9 @@ func (t *Track) clipsEnd() int64 {
 // AddClip assigns a frame to a track
 // currently works only if clips are passed in order of processing
 func (t *Track) AddClip(at int64, f *phono.Clip) {
+	if f == nil {
+		return
+	}
 	t.current = nil
 	c := &clip{
 		At:   at,
