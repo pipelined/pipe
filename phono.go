@@ -9,12 +9,12 @@ type (
 	// Buffer represent a sample data sliced per channel
 	Buffer [][]float64
 
-	// Frame represents a segment of buffer
+	// Clip represents a segment of buffer
 	// Start is a start position of segment
 	// Len is a length of segment
 	//
-	// Frame is not a copy of a buffer
-	Frame struct {
+	// Clip is not a copy of a buffer
+	Clip struct {
 		Buffer
 		Start int64
 		Len   int
@@ -74,8 +74,6 @@ type (
 	SampleRate int
 	// Tempo represents a tempo value
 	Tempo float32
-	// SamplePosition represents a position in samples measure
-	SamplePosition int64
 )
 
 // NewParams returns a new params instance with initialised map inside
@@ -195,24 +193,39 @@ func (b Buffer) Append(source Buffer) Buffer {
 
 // Slice creates a new copy of buffer from start position with defined legth
 // if buffer doesn't have enough samples - shorten block is returned
-func (b Buffer) Slice(start int64, length int) (result Buffer) {
-	if b == nil {
-		return
+//
+// if start >= buffer size, nil is returned
+// if start + len >= buffer size, len is decreased till the end of slice
+// if start < 0, nil is returned
+func (b Buffer) Slice(start int64, len int) Buffer {
+	if b == nil || BufferSize(start) >= b.Size() || start < 0 {
+		return nil
 	}
-	end := BufferSize(start + int64(length))
-	result = Buffer(make([][]float64, b.NumChannels()))
+	end := BufferSize(start + int64(len))
+	result := Buffer(make([][]float64, b.NumChannels()))
 	for i := range b {
 		if end > b.Size() {
 			end = b.Size()
 		}
 		result[i] = append(result[i], b[i][start:end]...)
 	}
-	return
+	return result
 }
 
-// Frame creates a new clip from asset with defined start and length
-func (b Buffer) Frame(start int64, len int) *Frame {
-	return &Frame{
+// Clip creates a new clip from asset with defined start and length
+//
+// if start >= buffer size, nil is returned
+// if start + len >= buffer size, len is decreased till the end of slice
+// if start < 0, nil is returned
+func (b Buffer) Clip(start int64, len int) *Clip {
+	if b == nil || BufferSize(start) >= b.Size() || start < 0 {
+		return nil
+	}
+	end := BufferSize(start + int64(len))
+	if end >= b.Size() {
+		len = int(b.Size()) - int(start)
+	}
+	return &Clip{
 		Buffer: b,
 		Start:  start,
 		Len:    len,

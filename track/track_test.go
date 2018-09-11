@@ -22,24 +22,24 @@ var (
 	inFile      = "../_testdata/sample1.wav"
 	outFile     = "../_testdata/out/track1.wav"
 
-	asset1 = &asset.Sink{
+	asset1 = &asset.Asset{
 		Buffer: [][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}},
 	}
-	asset2 = &asset.Sink{
+	asset2 = &asset.Asset{
 		Buffer: [][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}},
 	}
 	overlapTests = []struct {
 		phono.BufferSize
-		clips   []*phono.Frame
+		clips   []*phono.Clip
 		clipsAt []int64
 		result  []float64
 		msg     string
 	}{
 		{
 			BufferSize: 2,
-			clips: []*phono.Frame{
-				asset1.Frame(3, 1),
-				asset2.Frame(5, 3),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 1),
+				asset2.Clip(5, 3),
 			},
 			clipsAt: []int64{3, 4},
 			result:  []float64{0, 0, 0, 1, 2, 2, 2, 0},
@@ -47,9 +47,9 @@ var (
 		},
 		{
 			BufferSize: 3,
-			clips: []*phono.Frame{
-				asset1.Frame(3, 1),
-				asset2.Frame(5, 3),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 1),
+				asset2.Clip(5, 3),
 			},
 			clipsAt: []int64{3, 4},
 			result:  []float64{0, 0, 0, 1, 2, 2, 2, 0, 0},
@@ -57,9 +57,9 @@ var (
 		},
 		{
 			BufferSize: 2,
-			clips: []*phono.Frame{
-				asset1.Frame(3, 1),
-				asset2.Frame(5, 3),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 1),
+				asset2.Clip(5, 3),
 			},
 			clipsAt: []int64{2, 3},
 			result:  []float64{0, 0, 1, 2, 2, 2},
@@ -67,75 +67,75 @@ var (
 		},
 		{
 			BufferSize: 2,
-			clips: []*phono.Frame{
-				asset1.Frame(3, 1),
-				asset2.Frame(5, 3),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 1),
+				asset2.Clip(5, 3),
 			},
 			clipsAt: []int64{2, 4},
 			result:  []float64{0, 0, 1, 0, 2, 2, 2, 0},
 			msg:     "Sequence with interval",
 		},
 		{
-			clips: []*phono.Frame{
-				asset1.Frame(3, 3),
-				asset2.Frame(5, 2),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 3),
+				asset2.Clip(5, 2),
 			},
 			clipsAt: []int64{3, 2},
 			result:  []float64{0, 0, 2, 2, 1, 1},
 			msg:     "Overlap previous",
 		},
 		{
-			clips: []*phono.Frame{
-				asset1.Frame(3, 3),
-				asset2.Frame(5, 2),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 3),
+				asset2.Clip(5, 2),
 			},
 			clipsAt: []int64{2, 4},
 			result:  []float64{0, 0, 1, 1, 2, 2},
 			msg:     "Overlap next",
 		},
 		{
-			clips: []*phono.Frame{
-				asset1.Frame(3, 5),
-				asset2.Frame(5, 2),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 5),
+				asset2.Clip(5, 2),
 			},
 			clipsAt: []int64{2, 4},
 			result:  []float64{0, 0, 1, 1, 2, 2, 1, 0},
 			msg:     "Overlap single in the middle",
 		},
 		{
-			clips: []*phono.Frame{
-				asset1.Frame(3, 2),
-				asset1.Frame(3, 2),
-				asset2.Frame(5, 2),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 2),
+				asset1.Clip(3, 2),
+				asset2.Clip(5, 2),
 			},
 			clipsAt: []int64{2, 5, 4},
 			result:  []float64{0, 0, 1, 1, 2, 2, 1, 0},
 			msg:     "Overlap two in the middle",
 		},
 		{
-			clips: []*phono.Frame{
-				asset1.Frame(3, 2),
-				asset1.Frame(5, 2),
-				asset2.Frame(3, 2),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 2),
+				asset1.Clip(5, 2),
+				asset2.Clip(3, 2),
 			},
 			clipsAt: []int64{2, 5, 3},
 			result:  []float64{0, 0, 1, 2, 2, 1, 1, 0},
 			msg:     "Overlap two in the middle shifted",
 		},
 		{
-			clips: []*phono.Frame{
-				asset1.Frame(3, 2),
-				asset2.Frame(3, 5),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 2),
+				asset2.Clip(3, 5),
 			},
 			clipsAt: []int64{2, 2},
 			result:  []float64{0, 0, 2, 2, 2, 2, 2, 0},
 			msg:     "Overlap single completely",
 		},
 		{
-			clips: []*phono.Frame{
-				asset1.Frame(3, 2),
-				asset1.Frame(5, 2),
-				asset2.Frame(1, 8),
+			clips: []*phono.Clip{
+				asset1.Clip(3, 2),
+				asset1.Clip(5, 2),
+				asset2.Clip(1, 8),
 			},
 			clipsAt: []int64{2, 5, 1},
 			result:  []float64{0, 2, 2, 2, 2, 2, 2, 2, 2, 0},
@@ -147,7 +147,7 @@ var (
 func TestTrackWavSlices(t *testing.T) {
 	wavPump, err := wav.NewPump(inFile, bufferSize)
 	assert.Nil(t, err)
-	asset := &asset.Sink{
+	asset := &asset.Asset{
 		SampleRate: sampleRate,
 	}
 
@@ -166,9 +166,9 @@ func TestTrackWavSlices(t *testing.T) {
 	)
 	track := track.New(bufferSize, asset.NumChannels())
 
-	track.AddFrame(198450, asset.Frame(0, 44100))
-	track.AddFrame(66150, asset.Frame(44100, 44100))
-	track.AddFrame(132300, asset.Frame(0, 44100))
+	track.AddClip(198450, asset.Clip(0, 44100))
+	track.AddClip(66150, asset.Clip(44100, 44100))
+	track.AddClip(132300, asset.Clip(0, 44100))
 
 	p2 := pipe.New(
 		pipe.WithPump(track),
@@ -186,7 +186,7 @@ func TestSliceOverlaps(t *testing.T) {
 		track.Reset()
 
 		for i, clip := range test.clips {
-			track.AddFrame(test.clipsAt[i], clip)
+			track.AddClip(test.clipsAt[i], clip)
 		}
 
 		p := pipe.New(
