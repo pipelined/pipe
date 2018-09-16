@@ -25,6 +25,8 @@ before_install:
   - chmod 600 vstsdk_rsa
   - eval $(ssh-agent -s)
   - ssh-add vstsdk_rsa
+  # dependencies
   - git clone ssh://git@github.com/dudk/vst2sdk.git
+  - brew install portaudio
 
 script: env CGO_CFLAGS=-I$(pwd)/vst2sdk go test ./...   
