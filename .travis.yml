@@ -9,6 +9,10 @@ install: true
 env:
   - GO111MODULE=on
 
+addons:
+  ssh_known_hosts:
+  - github.com
+  - ssh.github.com
 
 before_install:
   - >-
