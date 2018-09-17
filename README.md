@@ -1,5 +1,8 @@
-# phono
-**phono** is a framework for floating point signal processing. It utilizes [pipeline](https://blog.golang.org/pipelines) pattern to build fast, asynchronomous and easy-to-extend pipes to process sound. Each pipe consists of one Pump, zero or multiple Processors and one or more Sinks. Phono also offers a friendly API for new pipe components implementations.
+# `phono`
+[![Build Status](https://travis-ci.org/dudk/phono.svg?branch=master)](https://travis-ci.org/dudk/phono)
+[![GoDoc](https://godoc.org/github.com/dudk/phono?status.svg)](https://godoc.org/github.com/dudk/phono)
+
+`phono` is a framework for floating point signal processing. It utilizes [pipeline](https://blog.golang.org/pipelines) pattern to build fast, asynchronomous and easy-to-extend pipes to process sound. Each pipe consists of one Pump, zero or multiple Processors and one or more Sinks. Phono also offers a friendly API for new pipe components implementations.
 
 ## Example
 
@@ -87,16 +90,16 @@ Find more examples in [phono/example](https://github.com/dudk/phono/example) pac
 
 ## Implemented packages
 
-Please, note that since **phono** is in active development stage, all packages are in experimental state. One of the main focus points is the stability of all listed and future packages.
-1. phono/wav - Pump and Sink to read/write files
-2. phono/vst2 - Processor to utilize plugins
-3. phono/mixer - simple mixer without balance and volume settings, Sink for inputs and Pump for output
-4. phono/asset - structures to reuse Buffers
-5. phono/track - Sink for sequential reads of asset and its slices
-6. phono/portaudio - Sink for playback
+Please, note that since `phono` is in active development stage, all packages are in experimental state. One of the main focus points is the stability of all listed and future packages.
+1. `phono/wav` - Pump and Sink to read/write files
+2. `phono/vst2` - Processor to utilize plugins
+3. `phono/mixer` - simple mixer without balance and volume settings, Sink for inputs and Pump for output
+4. `phono/asset` - structures to reuse Buffers
+5. `phono/track` - Sink for sequential reads of asset and its slices
+6. `phono/portaudio` - Sink for playback
 
 ### Testing
-To test custom Pumps, Processors and Sinks - [phono/mock](https://github.com/dudk/phono/mock) package can be utilized. The purpose of this package is to provide useful pipe mocks to test pumps, processors and sinks.
+To test custom Pumps, Processors and Sinks - [`phono/mock`](https://github.com/dudk/phono/mock) package can be utilized. The purpose of this package is to provide useful pipe mocks to test pumps, processors and sinks.
 
 #### Example
 [phono/wav](https://github.com/dudk/phono/wav) package contains Pump and Sink which allows to read/write wav files respectively. To test both components next tests structure were defined:
