@@ -1,4 +1,4 @@
-# `phono`
+# phono
 [![GoDoc](https://godoc.org/github.com/dudk/phono?status.svg)](https://godoc.org/github.com/dudk/phono)
 [![Build Status](https://travis-ci.org/dudk/phono.svg?branch=master)](https://travis-ci.org/dudk/phono)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dudk/phono)](https://goreportcard.com/report/github.com/dudk/phono)
