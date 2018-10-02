@@ -56,7 +56,8 @@ type SinkRunner interface {
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
-	name string
+	name       string
+	sampleRate phono.SampleRate
 	phono.UID
 	cancelFn   context.CancelFunc
 	pump       PumpRunner
@@ -163,8 +164,9 @@ var (
 
 // New creates a new pipe and applies provided params
 // returned pipe is in ready state
-func New(params ...Param) *Pipe {
+func New(sampleRate phono.SampleRate, params ...Param) *Pipe {
 	p := &Pipe{
+		sampleRate:  sampleRate,
 		processors:  make([]ProcessRunner, 0),
 		sinks:       make([]SinkRunner, 0),
 		eventc:      make(chan eventMessage, 100),

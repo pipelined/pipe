@@ -19,6 +19,8 @@ func one() {
 		bufferSize,
 	)
 	check(err)
+	// take wav's sample rate as base
+	sampleRate := wavPump.WavSampleRate()
 
 	// portaudio sink
 	paSink := portaudio.NewSink(
@@ -29,6 +31,7 @@ func one() {
 
 	// build pipe
 	p := pipe.New(
+		sampleRate,
 		pipe.WithPump(wavPump),
 		pipe.WithSinks(paSink),
 	)

@@ -2,6 +2,7 @@ package phono
 
 import (
 	"sync"
+	"time"
 )
 
 // Pipe transport types
@@ -54,8 +55,10 @@ type (
 	// Param is a structure for delayed parameters apply
 	// used as return type in functions which enable Params support for different packages
 	Param struct {
-		ID    string
-		Apply ParamFunc
+		ID     string
+		Apply  ParamFunc
+		at     int64
+		atTime time.Duration
 	}
 
 	// Params represent a set of parameters mapped to ID of their receivers
@@ -75,6 +78,22 @@ type (
 	// Tempo represents a tempo value
 	Tempo float32
 )
+
+// At assignes param to sample position
+func (p *Param) At(s int64) *Param {
+	if p != nil {
+		p.at = s
+	}
+	return p
+}
+
+// AtTime assignes param to time position
+func (p *Param) AtTime(d time.Duration) *Param {
+	if p != nil {
+		p.atTime = d
+	}
+	return p
+}
 
 // NewParams returns a new params instance with initialised map inside
 func NewParams(params ...Param) (result *Params) {

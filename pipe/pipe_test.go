@@ -11,8 +11,9 @@ import (
 	"github.com/dudk/phono/pipe"
 )
 
-var (
+const (
 	bufferSize = 512
+	sampleRate = 44100
 )
 
 func TestPipeActions(t *testing.T) {
@@ -28,6 +29,7 @@ func TestPipeActions(t *testing.T) {
 
 	// new pipe
 	p := pipe.New(
+		sampleRate,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc),
@@ -89,6 +91,7 @@ func TestPipe(t *testing.T) {
 	sink2 := &mock.Sink{}
 	// new pipe
 	p := pipe.New(
+		sampleRate,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
