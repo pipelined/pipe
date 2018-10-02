@@ -43,7 +43,7 @@ var (
 )
 
 // Run the Pump runner
-func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
+func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -81,7 +81,7 @@ func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan
 }
 
 // Run the Processor runner
-func (r *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
+func (r *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
 	err := r.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -118,7 +118,7 @@ func (r *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan e
 }
 
 // Run the sink runner
-func (s *Sink) Run(in <-chan *phono.Message) (<-chan error, error) {
+func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan error, error) {
 	err := s.Before.call()
 	if err != nil {
 		return nil, err
