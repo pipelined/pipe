@@ -2,6 +2,7 @@ package phono_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/mock"
@@ -101,4 +102,11 @@ func TestSliceBuffer(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestSampleRate(t *testing.T) {
+	sampleRate := phono.SampleRate(44100)
+	expected := 500 * time.Millisecond
+	result := sampleRate.DurationOf(22050)
+	assert.Equal(t, expected, result)
 }
