@@ -45,10 +45,12 @@ func TestPipe(t *testing.T) {
 		BufferSize: bufferSize,
 	}
 	processor := &mock.Processor{}
+	sampleRate := phono.SampleRate(44100)
 
 	for _, test := range tests {
 		sink := &asset.Asset{}
 		p := pipe.New(
+			sampleRate,
 			pipe.WithName("Mock"),
 			pipe.WithPump(pump),
 			pipe.WithProcessors(processor),

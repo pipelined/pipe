@@ -31,17 +31,20 @@ func five() {
 	wavPump2, err := wav.NewPump(inPath2, bs)
 	check(err)
 
+	sampleRate := wavPump1.WavSampleRate()
 	// mixer
 	mixer := mixer.New(bs, wavPump1.WavNumChannels())
 
 	// track 1
 	track1 := pipe.New(
+		sampleRate,
 		pipe.WithPump(wavPump1),
 		pipe.WithSinks(mixer),
 	)
 	defer track1.Close()
 	// track 2
 	track2 := pipe.New(
+		sampleRate,
 		pipe.WithPump(wavPump2),
 		pipe.WithSinks(mixer),
 	)
@@ -76,6 +79,7 @@ func five() {
 
 	// out pipe
 	out := pipe.New(
+		sampleRate,
 		pipe.WithPump(mixer),
 		pipe.WithProcessors(vst2processor),
 		pipe.WithSinks(wavSink),

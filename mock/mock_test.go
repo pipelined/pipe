@@ -35,6 +35,7 @@ var (
 		},
 	}
 	bufferSize = phono.BufferSize(10)
+	sampleRate = phono.SampleRate(10)
 )
 
 func TestPipe(t *testing.T) {
@@ -45,6 +46,7 @@ func TestPipe(t *testing.T) {
 	processor := &mock.Processor{}
 	sink := &mock.Sink{}
 	p := pipe.New(
+		sampleRate,
 		pipe.WithName("Mock"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(processor),
