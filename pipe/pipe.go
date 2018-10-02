@@ -35,19 +35,19 @@ type Sink interface {
 // PumpRunner is a pump runner
 type PumpRunner interface {
 	phono.Identifiable
-	Run(context.Context, phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error)
+	Run(context.Context, phono.SampleRate, phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error)
 }
 
 // ProcessRunner is a processor runner
 type ProcessRunner interface {
 	phono.Identifiable
-	Run(<-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
+	Run(phono.SampleRate, <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
 }
 
 // SinkRunner is a sink runner
 type SinkRunner interface {
 	phono.Identifiable
-	Run(in <-chan *phono.Message) (errc <-chan error, err error)
+	Run(phono.SampleRate, <-chan *phono.Message) (<-chan error, error)
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence
@@ -380,7 +380,7 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Run(broadcasts[i])
+		errc, err := s.Run(p.sampleRate, broadcasts[i])
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
 			return nil, err
@@ -524,7 +524,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 
 		// start pump
 		// pumpRunner := p.pump.RunPump(p.ID())
-		out, errc, err := p.pump.Run(ctx, p.soure())
+		out, errc, err := p.pump.Run(ctx, p.sampleRate, p.soure())
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 			e.done <- err
@@ -535,7 +535,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 
 		// start chained processesing
 		for _, proc := range p.processors {
-			out, errc, err = proc.Run(out)
+			out, errc, err = proc.Run(p.sampleRate, out)
 			if err != nil {
 				p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 				e.done <- err
