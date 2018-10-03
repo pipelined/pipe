@@ -12,26 +12,29 @@ import (
 // Pump represents pump's runner
 type Pump struct {
 	pipe.Pump
-	Before BeforeAfterFunc
-	After  BeforeAfterFunc
-	out    chan *phono.Message
+	Before  BeforeAfterFunc
+	After   BeforeAfterFunc
+	out     chan *phono.Message
+	counter phono.Counter
 }
 
 // Process represents processor's runner
 type Process struct {
 	pipe.Processor
-	Before BeforeAfterFunc
-	After  BeforeAfterFunc
-	in     <-chan *phono.Message
-	out    chan *phono.Message
+	Before  BeforeAfterFunc
+	After   BeforeAfterFunc
+	in      <-chan *phono.Message
+	out     chan *phono.Message
+	counter phono.Counter
 }
 
 // Sink represents sink's runner
 type Sink struct {
 	pipe.Sink
-	Before BeforeAfterFunc
-	After  BeforeAfterFunc
-	in     <-chan *phono.Message
+	Before  BeforeAfterFunc
+	After   BeforeAfterFunc
+	in      <-chan *phono.Message
+	counter phono.Counter
 }
 
 // BeforeAfterFunc represents setup/clean up functions which are executed on Run start and finish
@@ -44,6 +47,7 @@ var (
 
 // Run the Pump runner
 func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
+	p.counter.Reset()
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -69,6 +73,7 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 				}
 				return
 			}
+			p.counter.Advance(m.Buffer)
 			select {
 			case <-ctx.Done():
 				return
@@ -81,19 +86,20 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 }
 
 // Run the Processor runner
-func (r *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
-	err := r.Before.call()
+func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
+	p.counter.Reset()
+	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
 	}
 	errc := make(chan error, 1)
-	r.in = in
-	r.out = make(chan *phono.Message)
+	p.in = in
+	p.out = make(chan *phono.Message)
 	go func() {
-		defer close(r.out)
+		defer close(p.out)
 		defer close(errc)
 		defer func() {
-			err := r.After.call()
+			err := p.After.call()
 			if err != nil {
 				errc <- err
 			}
@@ -104,21 +110,23 @@ func (r *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-
 				if !ok {
 					return
 				}
-				m.ApplyTo(r.Processor)
-				m, err = r.Process(m)
+				p.counter.Advance(m.Buffer)
+				m.ApplyTo(p.Processor)
+				m, err = p.Process(m)
 				if err != nil {
 					errc <- err
 					return
 				}
-				r.out <- m
+				p.out <- m
 			}
 		}
 	}()
-	return r.out, errc, nil
+	return p.out, errc, nil
 }
 
 // Run the sink runner
 func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan error, error) {
+	s.counter.Reset()
 	err := s.Before.call()
 	if err != nil {
 		return nil, err
@@ -138,6 +146,7 @@ func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-cha
 				if !ok {
 					return
 				}
+				s.counter.Advance(m.Buffer)
 				m.Params.ApplyTo(s.Sink)
 				err = s.Sink.Sink(m)
 				if err != nil {
