@@ -40,7 +40,7 @@ type (
 // Pump mocks a pipe.Pump interface
 type Pump struct {
 	phono.UID
-	phono.Counter
+	pipe.Counter
 	Interval
 	Limit
 	Value float64
@@ -121,7 +121,7 @@ func (p *Pump) RunPump(sourceID string) pipe.PumpRunner {
 // Processor mocks a pipe.Processor interface
 type Processor struct {
 	phono.UID
-	phono.Counter
+	pipe.Counter
 }
 
 // Process implementation for runner
@@ -145,7 +145,7 @@ func (p *Processor) RunProcess(sourceID string) pipe.ProcessRunner {
 // Buffer is not thread-safe, so should not be checked while pipe is running
 type Sink struct {
 	phono.UID
-	phono.Counter
+	pipe.Counter
 	phono.Buffer
 }
 

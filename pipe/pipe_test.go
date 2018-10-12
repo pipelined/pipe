@@ -48,7 +48,7 @@ func TestPipeActions(t *testing.T) {
 	require.Nil(t, err)
 
 	// test push new opptions
-	op := phono.NewParams(pump.LimitParam(100))
+	op := phono.NewParams(pump.LimitParam(200))
 	p.Push(op)
 
 	// time.Sleep(time.Millisecond * 10)
