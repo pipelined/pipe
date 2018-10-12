@@ -15,7 +15,7 @@ type Pump struct {
 	Before  BeforeAfterFunc
 	After   BeforeAfterFunc
 	out     chan *phono.Message
-	counter phono.Counter
+	counter pipe.Counter
 }
 
 // Process represents processor's runner
@@ -25,7 +25,7 @@ type Process struct {
 	After   BeforeAfterFunc
 	in      <-chan *phono.Message
 	out     chan *phono.Message
-	counter phono.Counter
+	counter pipe.Counter
 }
 
 // Sink represents sink's runner
@@ -34,7 +34,7 @@ type Sink struct {
 	Before  BeforeAfterFunc
 	After   BeforeAfterFunc
 	in      <-chan *phono.Message
-	counter phono.Counter
+	counter pipe.Counter
 }
 
 // BeforeAfterFunc represents setup/clean up functions which are executed on Run start and finish
