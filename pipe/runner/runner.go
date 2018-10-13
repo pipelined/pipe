@@ -12,29 +12,29 @@ import (
 // Pump represents pump's runner
 type Pump struct {
 	pipe.Pump
-	Before  BeforeAfterFunc
-	After   BeforeAfterFunc
-	out     chan *phono.Message
-	counter pipe.Counter
+	Before BeforeAfterFunc
+	After  BeforeAfterFunc
+	out    chan *phono.Message
+	metric *pipe.Metric
 }
 
 // Process represents processor's runner
 type Process struct {
 	pipe.Processor
-	Before  BeforeAfterFunc
-	After   BeforeAfterFunc
-	in      <-chan *phono.Message
-	out     chan *phono.Message
-	counter pipe.Counter
+	Before BeforeAfterFunc
+	After  BeforeAfterFunc
+	in     <-chan *phono.Message
+	out    chan *phono.Message
+	metric *pipe.Metric
 }
 
 // Sink represents sink's runner
 type Sink struct {
 	pipe.Sink
-	Before  BeforeAfterFunc
-	After   BeforeAfterFunc
-	in      <-chan *phono.Message
-	counter pipe.Counter
+	Before BeforeAfterFunc
+	After  BeforeAfterFunc
+	in     <-chan *phono.Message
+	metric *pipe.Metric
 }
 
 // BeforeAfterFunc represents setup/clean up functions which are executed on Run start and finish
@@ -45,9 +45,15 @@ var (
 	ErrSingleUseReused = errors.New("Error reuse single-use object")
 )
 
+const (
+	// OutputMetric is a key for output metric
+	// ouput metric calculates regular output for component
+	OutputMetric = "Output"
+)
+
 // Run the Pump runner
 func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
-	p.counter.Reset()
+	p.metric = pipe.NewMetric(sampleRate, OutputMetric)
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -63,6 +69,7 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 				errc <- err
 			}
 		}()
+		defer p.metric.Stop()
 		for {
 			m := newMessage()
 			m.ApplyTo(p.Pump)
@@ -73,7 +80,7 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 				}
 				return
 			}
-			p.counter.Advance(m.Buffer)
+			p.metric.Measures[OutputMetric].Advance(m.Buffer)
 			select {
 			case <-ctx.Done():
 				return
@@ -87,7 +94,7 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 
 // Run the Processor runner
 func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
-	p.counter.Reset()
+	p.metric = pipe.NewMetric(sampleRate, OutputMetric)
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -104,13 +111,14 @@ func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-
 				errc <- err
 			}
 		}()
+		defer p.metric.Stop()
 		for in != nil {
 			select {
 			case m, ok := <-in:
 				if !ok {
 					return
 				}
-				p.counter.Advance(m.Buffer)
+				p.metric.Measures[OutputMetric].Advance(m.Buffer)
 				m.ApplyTo(p.Processor)
 				m, err = p.Process(m)
 				if err != nil {
@@ -126,7 +134,7 @@ func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-
 
 // Run the sink runner
 func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan error, error) {
-	s.counter.Reset()
+	s.metric = pipe.NewMetric(sampleRate, OutputMetric)
 	err := s.Before.call()
 	if err != nil {
 		return nil, err
@@ -140,13 +148,14 @@ func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-cha
 				errc <- err
 			}
 		}()
+		defer s.metric.Stop()
 		for in != nil {
 			select {
 			case m, ok := <-in:
 				if !ok {
 					return
 				}
-				s.counter.Advance(m.Buffer)
+				s.metric.Measures[OutputMetric].Advance(m.Buffer)
 				m.Params.ApplyTo(s.Sink)
 				err = s.Sink.Sink(m)
 				if err != nil {
