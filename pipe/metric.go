@@ -15,16 +15,18 @@ type (
 		FinishMeasure()
 		AddCounters(...string)
 		Counter(string) *Counter
+		Latency()
 	}
 
 	// Metric represents measures of pipe components.
 	Metric struct {
 		ID string
 		phono.SampleRate
-		Counters map[string]*Counter
-		start    time.Time
-		elapsed  time.Duration
-		latency  time.Duration
+		Counters       map[string]*Counter
+		start          time.Time
+		elapsed        time.Duration
+		latencyMeasure time.Time
+		latency        time.Duration
 	}
 
 	// Measure represents Metric values at certain moment of time.
@@ -48,10 +50,11 @@ type (
 // NewMetric creates new metric with requested measures.
 func NewMetric(id string, sampleRate phono.SampleRate, keys ...string) *Metric {
 	m := &Metric{
-		ID:         id,
-		SampleRate: sampleRate,
-		Counters:   make(map[string]*Counter),
-		start:      time.Now(),
+		ID:             id,
+		SampleRate:     sampleRate,
+		Counters:       make(map[string]*Counter),
+		start:          time.Now(),
+		latencyMeasure: time.Now(),
 	}
 	m.AddCounters(keys...)
 	return m
@@ -74,9 +77,14 @@ func (m *Metric) AddCounters(keys ...string) {
 	}
 }
 
+// Latency sets latency since last latency measure
+func (m *Metric) Latency() {
+	m.latency = time.Since(m.latencyMeasure)
+}
+
 // String returns string representation of Metrics.
 func (m Measure) String() string {
-	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed: %v", m.SampleRate, m.start, m.elapsed)
+	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed: %v Latency: %v", m.SampleRate, m.start, m.elapsed, m.latency)
 }
 
 // Measure returns latest measures of Metric.
