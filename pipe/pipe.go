@@ -143,9 +143,9 @@ type event int
 // eventMessage is passed into pipe's event channel when user does some action
 type eventMessage struct {
 	event
-	done     chan error
-	params   *phono.Params
-	metricID string
+	done      chan error
+	params    *phono.Params
+	metricIDs []string
 }
 
 // transitionMessage is sent when pipe changes the state
@@ -321,26 +321,39 @@ func (p *Pipe) Push(newParams *phono.Params) {
 // Measure returns a buffered channel of Measure.
 // Event is pushed into pipe to retrieve metrics. Metric measure is returned immediately if
 // state is idle, otherwise it's returned once it's reached destination within pipe.
-//
-// Try to pass it along with params
-func (p *Pipe) Measure(id string) <-chan Measure {
-	m, ok := p.metrics[id]
-	if !ok {
+// Result channel has buffer sized to found components.
+func (p *Pipe) Measure(ids ...string) <-chan Measure {
+	if len(ids) == 0 {
 		return nil
 	}
-	result := make(chan Measure, 1)
-	param := phono.Param{
-		ID: id,
-		Apply: func() {
-			result <- m.Measure()
-		},
+	em := eventMessage{
+		event:     metrics,
+		metricIDs: make([]string, 0, len(ids)),
 	}
-	p.eventc <- eventMessage{
-		event:    metrics,
-		metricID: id,
-		params:   phono.NewParams(param),
+	// check if passed ids are part of the pipe
+	for _, id := range ids {
+		_, ok := p.metrics[id]
+		if ok {
+			em.metricIDs = append(em.metricIDs, id)
+		}
 	}
-	return result
+	// no components found
+	if len(em.metricIDs) == 0 {
+		return nil
+	}
+	mc := make(chan Measure, len(em.metricIDs))
+	for _, id := range em.metricIDs {
+		m := p.metrics[id]
+		param := phono.Param{
+			ID: id,
+			Apply: func() {
+				mc <- m.Measure()
+			},
+		}
+		em.params = em.params.Add(param)
+	}
+	p.eventc <- em
+	return mc
 }
 
 // Close must be called to clean up pipe's resources
@@ -417,7 +430,7 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Run(NewMetric(p.sampleRate), broadcasts[i])
+		errc, err := s.Run(NewMetric(s.ID(), p.sampleRate), broadcasts[i])
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
 			return nil, err
@@ -555,7 +568,9 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		p.cachedParams = p.cachedParams.Merge(e.params)
 		return s
 	case metrics:
-		e.params.ApplyTo(e.metricID)
+		for _, id := range e.metricIDs {
+			e.params.ApplyTo(id)
+		}
 		return s
 	case run:
 		ctx, cancelFn := context.WithCancel(context.Background())
@@ -563,7 +578,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 		// start pump
-		out, errc, err := p.pump.Run(ctx, NewMetric(p.sampleRate), p.soure())
+		out, errc, err := p.pump.Run(ctx, NewMetric(p.pump.ID(), p.sampleRate), p.soure())
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 			e.done <- err
@@ -574,7 +589,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 
 		// start chained processesing
 		for _, proc := range p.processors {
-			out, errc, err = proc.Run(NewMetric(p.sampleRate), out)
+			out, errc, err = proc.Run(NewMetric(proc.ID(), p.sampleRate), out)
 			if err != nil {
 				p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 				e.done <- err
@@ -685,7 +700,9 @@ func (s paused) transition(p *Pipe, e eventMessage) State {
 		p.cachedParams = p.cachedParams.Merge(e.params)
 		return s
 	case metrics:
-		e.params.ApplyTo(e.metricID)
+		for _, id := range e.metricIDs {
+			e.params.ApplyTo(id)
+		}
 		return s
 	case resume:
 		close(e.done)

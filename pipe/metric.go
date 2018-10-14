@@ -19,6 +19,7 @@ type (
 
 	// Metric represents measures of pipe components.
 	Metric struct {
+		ID string
 		phono.SampleRate
 		Counters map[string]*Counter
 		start    time.Time
@@ -29,6 +30,7 @@ type (
 	// Measure represents Metric values at certain moment of time.
 	// It should be used to transfer metrics values through pipe and avoid data races with counters.
 	Measure struct {
+		ID string
 		phono.SampleRate
 		Counters map[string]Counter
 		start    time.Time
@@ -44,8 +46,9 @@ type (
 )
 
 // NewMetric creates new metric with requested measures.
-func NewMetric(sampleRate phono.SampleRate, keys ...string) *Metric {
+func NewMetric(id string, sampleRate phono.SampleRate, keys ...string) *Metric {
 	m := &Metric{
+		ID:         id,
 		SampleRate: sampleRate,
 		Counters:   make(map[string]*Counter),
 		start:      time.Now(),
@@ -86,6 +89,7 @@ func (m *Metric) Measure() Measure {
 		elapsed = time.Since(m.start)
 	}
 	measure := Measure{
+		ID:         m.ID,
 		SampleRate: m.SampleRate,
 		start:      m.start,
 		elapsed:    elapsed,
