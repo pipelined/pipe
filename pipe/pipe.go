@@ -67,6 +67,9 @@ type Pipe struct {
 	processors []ProcessRunner
 	sinks      []SinkRunner
 
+	// metrics holds all references to measurable components
+	metrics map[string]Measurable
+
 	cachedParams *phono.Params
 	// errors channel
 	errc chan error
@@ -140,8 +143,9 @@ type event int
 // eventMessage is passed into pipe's event channel when user does some action
 type eventMessage struct {
 	event
-	done   chan error
-	params *phono.Params
+	done     chan error
+	params   *phono.Params
+	metricID string
 }
 
 // transitionMessage is sent when pipe changes the state
@@ -176,6 +180,7 @@ func New(sampleRate phono.SampleRate, params ...Param) *Pipe {
 		eventc:      make(chan eventMessage, 100),
 		transitionc: make(chan transitionMessage, 100),
 		log:         log.GetLogger(),
+		metrics:     make(map[string]Measurable),
 	}
 	p.SetID(xid.New().String())
 	for _, param := range params {
@@ -207,6 +212,7 @@ func WithPump(pump Pump) Param {
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			p.pump = pump.RunPump(p.ID())
+			p.metrics[p.pump.ID()] = p.pump
 		}
 	}
 }
@@ -222,6 +228,7 @@ func WithProcessors(processors ...Processor) Param {
 		return func() {
 			for i := range processors {
 				p.processors = append(p.processors, processors[i].RunProcess(p.ID()))
+				p.metrics[processors[i].ID()] = p.processors[len(p.processors)-1]
 			}
 		}
 	}
@@ -238,6 +245,7 @@ func WithSinks(sinks ...Sink) Param {
 		return func() {
 			for i := range sinks {
 				p.sinks = append(p.sinks, sinks[i].RunSink(p.ID()))
+				p.metrics[sinks[i].ID()] = p.sinks[len(p.sinks)-1]
 			}
 		}
 	}
@@ -310,23 +318,27 @@ func (p *Pipe) Push(newParams *phono.Params) {
 	}
 }
 
-// Metrics returns a buffered channel of metrics.
-// Event is pushed into pipe to retrieve metrics. Metric is returned immediately if
+// Measure returns a buffered channel of Measure.
+// Event is pushed into pipe to retrieve metrics. Metric measure is returned immediately if
 // state is idle, otherwise it's returned once it's reached destination within pipe.
 //
 // Try to pass it along with params
-func (p *Pipe) Metrics(i phono.Identifiable) <-chan Metric {
-	// TODO: get component by id
-	result := make(chan Metric, 1)
+func (p *Pipe) Measure(id string) <-chan Measure {
+	m, ok := p.metrics[id]
+	if !ok {
+		return nil
+	}
+	result := make(chan Measure, 1)
 	param := phono.Param{
-		ID: i.ID(),
+		ID: id,
 		Apply: func() {
-			// result <- p.pump.Metric()
+			result <- m.Measure()
 		},
 	}
 	p.eventc <- eventMessage{
-		event:  metrics,
-		params: phono.NewParams(param),
+		event:    metrics,
+		metricID: id,
+		params:   phono.NewParams(param),
 	}
 	return result
 }
@@ -539,8 +551,11 @@ func (s ready) listen(p *Pipe) listenFn {
 func (s ready) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case params:
-		e.params.ApplyTo(p)
+		e.params.ApplyTo(p.ID())
 		p.cachedParams = p.cachedParams.Merge(e.params)
+		return s
+	case metrics:
+		e.params.ApplyTo(e.metricID)
 		return s
 	case run:
 		ctx, cancelFn := context.WithCancel(context.Background())
@@ -591,8 +606,10 @@ func (s running) listen(p *Pipe) listenFn {
 
 func (s running) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
+	case metrics:
+		fallthrough
 	case params:
-		e.params.ApplyTo(p)
+		e.params.ApplyTo(p.ID())
 		p.cachedParams = p.cachedParams.Merge(e.params)
 		return s
 	case pause:
@@ -622,8 +639,10 @@ func (s pausing) listen(p *Pipe) listenFn {
 
 func (s pausing) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
+	case metrics:
+		fallthrough
 	case params:
-		e.params.ApplyTo(p)
+		e.params.ApplyTo(p.ID())
 		p.cachedParams = p.cachedParams.Merge(e.params)
 		return s
 	}
@@ -663,8 +682,11 @@ func (s paused) listen(p *Pipe) listenFn {
 func (s paused) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case params:
-		e.params.ApplyTo(p)
+		e.params.ApplyTo(p.ID())
 		p.cachedParams = p.cachedParams.Merge(e.params)
+		return s
+	case metrics:
+		e.params.ApplyTo(e.metricID)
 		return s
 	case resume:
 		close(e.done)

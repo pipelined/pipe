@@ -58,6 +58,10 @@ func TestPipeActions(t *testing.T) {
 	err = p.Wait(sig)
 	require.Nil(t, err)
 
+	mc := p.Measure(pump.ID())
+	measure := <-mc
+	assert.NotNil(t, measure)
+
 	// test pipe resume
 	sig, err = p.Begin(pipe.Resume)
 	require.Nil(t, err)
@@ -111,6 +115,9 @@ func TestPipe(t *testing.T) {
 	messageCount, samplesCount = sink1.Count()
 	assert.Equal(t, messages, messageCount)
 	assert.Equal(t, samples*messages, samplesCount)
+	mc := p.Measure(pump.ID())
+	measure := <-mc
+	assert.NotNil(t, measure)
 	p.Close()
 	p.Close()
 }

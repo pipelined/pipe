@@ -51,7 +51,7 @@ func TestSimpleParams(t *testing.T) {
 	p := &mock.Pump{}
 	interval := mock.Interval(10)
 	params := phono.NewParams(p.IntervalParam(interval))
-	params.ApplyTo(p)
+	params.ApplyTo(p.ID())
 
 	assert.Equal(t, interval, p.Interval)
 }
@@ -63,13 +63,13 @@ func TestMergeParams(t *testing.T) {
 	interval := mock.Interval(10)
 	newParams := phono.NewParams(p.IntervalParam(interval))
 	params = params.Merge(newParams)
-	params.ApplyTo(p)
+	params.ApplyTo(p.ID())
 	assert.Equal(t, interval, p.Interval)
 
 	newInterval := mock.Interval(20)
 	newParams = phono.NewParams(p.IntervalParam(newInterval))
 	params = params.Merge(newParams)
-	params.ApplyTo(p)
+	params.ApplyTo(p.ID())
 	assert.Equal(t, newInterval, p.Interval)
 }
 
