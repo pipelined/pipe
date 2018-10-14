@@ -8,10 +8,25 @@ import (
 )
 
 type (
+	// Measurable identifies an entity with measurable metrics.
+	Measurable interface {
+		Measure() Measure
+	}
+
 	// Metric represents measures of pipe components.
 	Metric struct {
 		phono.SampleRate
 		Counters map[string]*Counter
+		start    time.Time
+		elapsed  time.Duration
+		latency  time.Duration
+	}
+
+	// Measure represents Metric values at certain moment of time.
+	// It should be used to transfer metrics values through pipe and avoid data races with counters.
+	Measure struct {
+		phono.SampleRate
+		Counters map[string]Counter
 		start    time.Time
 		elapsed  time.Duration
 		latency  time.Duration
@@ -45,6 +60,28 @@ func (m *Metric) Stop() {
 // String returns string representation of Metrics
 func (m *Metric) String() string {
 	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed:%v", m.SampleRate, m.start, m.elapsed)
+}
+
+// Measure returns latest measures of Metric
+func (m *Metric) Measure() Measure {
+	if m == nil {
+		return Measure{}
+	}
+	elapsed := m.elapsed
+	if elapsed == 0 {
+		elapsed = time.Since(m.start)
+	}
+	measure := Measure{
+		SampleRate: m.SampleRate,
+		start:      m.start,
+		elapsed:    elapsed,
+		latency:    m.latency,
+		Counters:   make(map[string]Counter),
+	}
+	for key, counter := range m.Counters {
+		measure.Counters[key] = *counter
+	}
+	return measure
 }
 
 // Advance counter's metrics.
