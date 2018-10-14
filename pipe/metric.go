@@ -9,8 +9,11 @@ import (
 
 type (
 	// Measurable identifies an entity with measurable metrics.
+	// Each measurable can have multiple counters.
 	Measurable interface {
 		Measure() Measure
+		FinishMeasure()
+		Counter(string) *Counter
 	}
 
 	// Metric represents measures of pipe components.
@@ -39,7 +42,7 @@ type (
 	}
 )
 
-// NewMetric creates new metric with requested measures
+// NewMetric creates new metric with requested measures.
 func NewMetric(sampleRate phono.SampleRate, measures ...string) *Metric {
 	m := &Metric{
 		SampleRate: sampleRate,
@@ -52,17 +55,22 @@ func NewMetric(sampleRate phono.SampleRate, measures ...string) *Metric {
 	return m
 }
 
-// Stop the metrics measures
-func (m *Metric) Stop() {
+// FinishMeasure finalizes metric values.
+func (m *Metric) FinishMeasure() {
 	m.elapsed = time.Since(m.start)
 }
 
-// String returns string representation of Metrics
-func (m *Metric) String() string {
-	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed:%v", m.SampleRate, m.start, m.elapsed)
+// Counter returns counter for specified key.
+func (m *Metric) Counter(key string) *Counter {
+	return m.Counters[key]
 }
 
-// Measure returns latest measures of Metric
+// String returns string representation of Metrics.
+func (m Measure) String() string {
+	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed: %v", m.SampleRate, m.start, m.elapsed)
+}
+
+// Measure returns latest measures of Metric.
 func (m *Metric) Measure() Measure {
 	if m == nil {
 		return Measure{}

@@ -12,29 +12,29 @@ import (
 // Pump represents pump's runner
 type Pump struct {
 	pipe.Pump
+	pipe.Measurable
 	Before BeforeAfterFunc
 	After  BeforeAfterFunc
 	out    chan *phono.Message
-	*pipe.Metric
 }
 
 // Process represents processor's runner
 type Process struct {
 	pipe.Processor
+	pipe.Measurable
 	Before BeforeAfterFunc
 	After  BeforeAfterFunc
 	in     <-chan *phono.Message
 	out    chan *phono.Message
-	*pipe.Metric
 }
 
 // Sink represents sink's runner
 type Sink struct {
 	pipe.Sink
+	pipe.Measurable
 	Before BeforeAfterFunc
 	After  BeforeAfterFunc
 	in     <-chan *phono.Message
-	*pipe.Metric
 }
 
 // BeforeAfterFunc represents setup/clean up functions which are executed on Run start and finish
@@ -53,7 +53,7 @@ const (
 
 // Run the Pump runner
 func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
-	p.Metric = pipe.NewMetric(sampleRate, OutputCounter)
+	p.Measurable = pipe.NewMetric(sampleRate, OutputCounter)
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -69,10 +69,10 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 				errc <- err
 			}
 		}()
-		defer p.Stop()
+		defer p.FinishMeasure()
 		for {
 			m := newMessage()
-			m.ApplyTo(p.Pump)
+			m.ApplyTo(p.Pump.ID())
 			m, err := p.Pump.Pump(m)
 			if err != nil {
 				if err != pipe.ErrEOP {
@@ -80,7 +80,7 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 				}
 				return
 			}
-			p.Counters[OutputCounter].Advance(m.Buffer)
+			p.Counter(OutputCounter).Advance(m.Buffer)
 			select {
 			case <-ctx.Done():
 				return
@@ -94,7 +94,7 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 
 // Run the Processor runner
 func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
-	p.Metric = pipe.NewMetric(sampleRate, OutputCounter)
+	p.Measurable = pipe.NewMetric(sampleRate, OutputCounter)
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -111,15 +111,15 @@ func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-
 				errc <- err
 			}
 		}()
-		defer p.Stop()
+		defer p.FinishMeasure()
 		for in != nil {
 			select {
 			case m, ok := <-in:
 				if !ok {
 					return
 				}
-				p.Counters[OutputCounter].Advance(m.Buffer)
-				m.ApplyTo(p.Processor)
+				p.Counter(OutputCounter).Advance(m.Buffer)
+				m.ApplyTo(p.Processor.ID())
 				m, err = p.Process(m)
 				if err != nil {
 					errc <- err
@@ -134,7 +134,7 @@ func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-
 
 // Run the sink runner
 func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan error, error) {
-	s.Metric = pipe.NewMetric(sampleRate, OutputCounter)
+	s.Measurable = pipe.NewMetric(sampleRate, OutputCounter)
 	err := s.Before.call()
 	if err != nil {
 		return nil, err
@@ -148,15 +148,15 @@ func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-cha
 				errc <- err
 			}
 		}()
-		defer s.Stop()
+		defer s.FinishMeasure()
 		for in != nil {
 			select {
 			case m, ok := <-in:
 				if !ok {
 					return
 				}
-				s.Counters[OutputCounter].Advance(m.Buffer)
-				m.Params.ApplyTo(s.Sink)
+				s.Counter(OutputCounter).Advance(m.Buffer)
+				m.Params.ApplyTo(s.Sink.ID())
 				err = s.Sink.Sink(m)
 				if err != nil {
 					errc <- err

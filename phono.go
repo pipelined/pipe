@@ -124,15 +124,15 @@ func (p *Params) Add(params ...Param) *Params {
 }
 
 // ApplyTo consumes params defined for consumer in this param set
-func (p *Params) ApplyTo(consumer Identifiable) {
+func (p *Params) ApplyTo(id string) {
 	if p == nil {
 		return
 	}
-	if params, ok := p.private[consumer.ID()]; ok {
+	if params, ok := p.private[id]; ok {
 		for _, param := range params {
 			param()
 		}
-		delete(p.private, consumer.ID())
+		delete(p.private, id)
 	}
 }
 
