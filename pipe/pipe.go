@@ -34,18 +34,21 @@ type Sink interface {
 
 // PumpRunner is a pump runner
 type PumpRunner interface {
+	Measurable
 	phono.Identifiable
 	Run(context.Context, phono.SampleRate, phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error)
 }
 
 // ProcessRunner is a processor runner
 type ProcessRunner interface {
+	Measurable
 	phono.Identifiable
 	Run(phono.SampleRate, <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
 }
 
 // SinkRunner is a sink runner
 type SinkRunner interface {
+	Measurable
 	phono.Identifiable
 	Run(phono.SampleRate, <-chan *phono.Message) (<-chan error, error)
 }
