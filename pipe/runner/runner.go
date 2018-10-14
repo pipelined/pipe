@@ -71,6 +71,7 @@ func (p *Pump) Run(ctx context.Context, metric pipe.Measurable, newMessage phono
 			}
 		}()
 		defer p.FinishMeasure()
+		p.Latency()
 		for {
 			m := newMessage()
 			m.ApplyTo(p.Pump.ID())
@@ -88,6 +89,7 @@ func (p *Pump) Run(ctx context.Context, metric pipe.Measurable, newMessage phono
 			default:
 				out <- m
 			}
+			p.Latency()
 		}
 	}()
 	return out, errc, nil
@@ -114,6 +116,7 @@ func (p *Process) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan 
 			}
 		}()
 		defer p.FinishMeasure()
+		p.Latency()
 		for in != nil {
 			select {
 			case m, ok := <-in:
@@ -129,6 +132,7 @@ func (p *Process) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan 
 				}
 				p.out <- m
 			}
+			p.Latency()
 		}
 	}()
 	return p.out, errc, nil
@@ -152,6 +156,7 @@ func (s *Sink) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan err
 			}
 		}()
 		defer s.FinishMeasure()
+		s.Latency()
 		for in != nil {
 			select {
 			case m, ok := <-in:
@@ -166,6 +171,7 @@ func (s *Sink) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan err
 					return
 				}
 			}
+			s.Latency()
 		}
 	}()
 
