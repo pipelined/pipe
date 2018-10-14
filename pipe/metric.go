@@ -80,6 +80,7 @@ func (m *Metric) AddCounters(keys ...string) {
 // Latency sets latency since last latency measure
 func (m *Metric) Latency() {
 	m.latency = time.Since(m.latencyMeasure)
+	m.latencyMeasure = time.Now()
 }
 
 // String returns string representation of Metrics.
