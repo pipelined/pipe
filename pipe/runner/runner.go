@@ -46,14 +46,14 @@ var (
 )
 
 const (
-	// OutputMetric is a key for output metric
-	// ouput metric calculates regular output for component
-	OutputMetric = "Output"
+	// OutputCounter is a key for output counter within metric.
+	// It calculates regular total output per component.
+	OutputCounter = "Output"
 )
 
 // Run the Pump runner
 func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
-	p.metric = pipe.NewMetric(sampleRate, OutputMetric)
+	p.metric = pipe.NewMetric(sampleRate, OutputCounter)
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -80,7 +80,7 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 				}
 				return
 			}
-			p.metric.Measures[OutputMetric].Advance(m.Buffer)
+			p.metric.Counters[OutputCounter].Advance(m.Buffer)
 			select {
 			case <-ctx.Done():
 				return
@@ -94,7 +94,7 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 
 // Run the Processor runner
 func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
-	p.metric = pipe.NewMetric(sampleRate, OutputMetric)
+	p.metric = pipe.NewMetric(sampleRate, OutputCounter)
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -118,7 +118,7 @@ func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-
 				if !ok {
 					return
 				}
-				p.metric.Measures[OutputMetric].Advance(m.Buffer)
+				p.metric.Counters[OutputCounter].Advance(m.Buffer)
 				m.ApplyTo(p.Processor)
 				m, err = p.Process(m)
 				if err != nil {
@@ -134,7 +134,7 @@ func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-
 
 // Run the sink runner
 func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan error, error) {
-	s.metric = pipe.NewMetric(sampleRate, OutputMetric)
+	s.metric = pipe.NewMetric(sampleRate, OutputCounter)
 	err := s.Before.call()
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-cha
 				if !ok {
 					return
 				}
-				s.metric.Measures[OutputMetric].Advance(m.Buffer)
+				s.metric.Counters[OutputCounter].Advance(m.Buffer)
 				m.Params.ApplyTo(s.Sink)
 				err = s.Sink.Sink(m)
 				if err != nil {

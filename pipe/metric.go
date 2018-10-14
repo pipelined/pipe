@@ -8,16 +8,16 @@ import (
 )
 
 type (
-	// Metric represents stats of runner
+	// Metric represents measures of pipe components.
 	Metric struct {
 		phono.SampleRate
-		Measures map[string]*Counter
+		Counters map[string]*Counter
 		start    time.Time
 		elapsed  time.Duration
 		latency  time.Duration
 	}
 
-	// Counter can be used to measure passthrough
+	// Counter counts messages and samples.
 	Counter struct {
 		messages int64
 		samples  int64
@@ -28,11 +28,11 @@ type (
 func NewMetric(sampleRate phono.SampleRate, measures ...string) *Metric {
 	m := &Metric{
 		SampleRate: sampleRate,
-		Measures:   make(map[string]*Counter),
+		Counters:   make(map[string]*Counter),
 		start:      time.Now(),
 	}
 	for _, measure := range measures {
-		m.Measures[measure] = &Counter{}
+		m.Counters[measure] = &Counter{}
 	}
 	return m
 }

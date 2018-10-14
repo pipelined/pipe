@@ -153,6 +153,7 @@ const (
 	pause
 	resume
 	params
+	metrics
 )
 
 var (
@@ -304,6 +305,27 @@ func (p *Pipe) Push(newParams *phono.Params) {
 		event:  params,
 		params: newParams,
 	}
+}
+
+// Metrics returns a buffered channel of metrics.
+// Event is pushed into pipe to retrieve metrics. Metric is returned immediately if
+// state is idle, otherwise it's returned once it's reached destination within pipe.
+//
+// Try to pass it along with params
+func (p *Pipe) Metrics(i phono.Identifiable) <-chan Metric {
+	// TODO: get component by id
+	result := make(chan Metric, 1)
+	param := phono.Param{
+		ID: i.ID(),
+		Apply: func() {
+			// result <- p.pump.Metric()
+		},
+	}
+	p.eventc <- eventMessage{
+		event:  metrics,
+		params: phono.NewParams(param),
+	}
+	return result
 }
 
 // Close must be called to clean up pipe's resources
