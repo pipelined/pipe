@@ -13,6 +13,7 @@ type (
 	Measurable interface {
 		Measure() Measure
 		FinishMeasure()
+		AddCounters(...string)
 		Counter(string) *Counter
 	}
 
@@ -43,15 +44,13 @@ type (
 )
 
 // NewMetric creates new metric with requested measures.
-func NewMetric(sampleRate phono.SampleRate, measures ...string) *Metric {
+func NewMetric(sampleRate phono.SampleRate, keys ...string) *Metric {
 	m := &Metric{
 		SampleRate: sampleRate,
 		Counters:   make(map[string]*Counter),
 		start:      time.Now(),
 	}
-	for _, measure := range measures {
-		m.Counters[measure] = &Counter{}
-	}
+	m.AddCounters(keys...)
 	return m
 }
 
@@ -63,6 +62,13 @@ func (m *Metric) FinishMeasure() {
 // Counter returns counter for specified key.
 func (m *Metric) Counter(key string) *Counter {
 	return m.Counters[key]
+}
+
+// AddCounters to metric with defined keys
+func (m *Metric) AddCounters(keys ...string) {
+	for _, measure := range keys {
+		m.Counters[measure] = &Counter{}
+	}
 }
 
 // String returns string representation of Metrics.

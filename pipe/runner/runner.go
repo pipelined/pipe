@@ -52,8 +52,9 @@ const (
 )
 
 // Run the Pump runner
-func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
-	p.Measurable = pipe.NewMetric(sampleRate, OutputCounter)
+func (p *Pump) Run(ctx context.Context, metric pipe.Measurable, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
+	p.Measurable = metric
+	p.Measurable.AddCounters(OutputCounter)
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -93,8 +94,9 @@ func (p *Pump) Run(ctx context.Context, sampleRate phono.SampleRate, newMessage 
 }
 
 // Run the Processor runner
-func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
-	p.Measurable = pipe.NewMetric(sampleRate, OutputCounter)
+func (p *Process) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
+	p.Measurable = metric
+	p.Measurable.AddCounters(OutputCounter)
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -133,8 +135,9 @@ func (p *Process) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-
 }
 
 // Run the sink runner
-func (s *Sink) Run(sampleRate phono.SampleRate, in <-chan *phono.Message) (<-chan error, error) {
-	s.Measurable = pipe.NewMetric(sampleRate, OutputCounter)
+func (s *Sink) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan error, error) {
+	s.Measurable = metric
+	s.Measurable.AddCounters(OutputCounter)
 	err := s.Before.call()
 	if err != nil {
 		return nil, err

@@ -36,21 +36,21 @@ type Sink interface {
 type PumpRunner interface {
 	Measurable
 	phono.Identifiable
-	Run(context.Context, phono.SampleRate, phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error)
+	Run(context.Context, Measurable, phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error)
 }
 
 // ProcessRunner is a processor runner
 type ProcessRunner interface {
 	Measurable
 	phono.Identifiable
-	Run(phono.SampleRate, <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
+	Run(Measurable, <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
 }
 
 // SinkRunner is a sink runner
 type SinkRunner interface {
 	Measurable
 	phono.Identifiable
-	Run(phono.SampleRate, <-chan *phono.Message) (<-chan error, error)
+	Run(Measurable, <-chan *phono.Message) (<-chan error, error)
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence
@@ -417,7 +417,7 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Run(p.sampleRate, broadcasts[i])
+		errc, err := s.Run(NewMetric(p.sampleRate), broadcasts[i])
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
 			return nil, err
@@ -563,8 +563,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 		// start pump
-		// pumpRunner := p.pump.RunPump(p.ID())
-		out, errc, err := p.pump.Run(ctx, p.sampleRate, p.soure())
+		out, errc, err := p.pump.Run(ctx, NewMetric(p.sampleRate), p.soure())
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 			e.done <- err
@@ -575,7 +574,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 
 		// start chained processesing
 		for _, proc := range p.processors {
-			out, errc, err = proc.Run(p.sampleRate, out)
+			out, errc, err = proc.Run(NewMetric(p.sampleRate), out)
 			if err != nil {
 				p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 				e.done <- err
