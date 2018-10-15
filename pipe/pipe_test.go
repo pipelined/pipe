@@ -1,6 +1,7 @@
 package pipe_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -120,4 +121,44 @@ func TestPipe(t *testing.T) {
 	assert.NotNil(t, measure)
 	p.Close()
 	p.Close()
+}
+
+func TestMetrics(t *testing.T) {
+	limit := 10
+	bufferSize := 10
+	interval := 100
+	numChannels := 1
+
+	pump := &mock.Pump{
+		Limit:       mock.Limit(limit),
+		Interval:    mock.Interval(interval),
+		BufferSize:  phono.BufferSize(bufferSize),
+		NumChannels: phono.NumChannels(numChannels),
+	}
+	proc := &mock.Processor{}
+	sink := &mock.Sink{}
+
+	p := pipe.New(
+		sampleRate,
+		pipe.WithName("Test Metrics"),
+		pipe.WithPump(pump),
+		pipe.WithProcessors(proc),
+		pipe.WithSinks(sink),
+	)
+
+	var mc <-chan pipe.Measure
+	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
+	for m := range mc {
+		switch m.ID {
+		case pump.ID():
+			fmt.Printf("Pump measure: %v\n", m)
+		case proc.ID():
+			fmt.Printf("Proc measure: %v\n", m)
+		case sink.ID():
+			fmt.Printf("Sink measure: %v\n", m)
+		}
+	}
+
+	err := p.Do(pipe.Run)
+	assert.Nil(t, err)
 }

@@ -52,9 +52,8 @@ const (
 )
 
 // Run the Pump runner
-func (p *Pump) Run(ctx context.Context, metric pipe.Measurable, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
-	p.Measurable = metric
-	p.Measurable.AddCounters(OutputCounter)
+func (p *Pump) Run(ctx context.Context, newMessage phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error) {
+	p.Measurable.Reset()
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -95,10 +94,15 @@ func (p *Pump) Run(ctx context.Context, metric pipe.Measurable, newMessage phono
 	return out, errc, nil
 }
 
-// Run the Processor runner
-func (p *Process) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
-	p.Measurable = metric
+// SetMetric assigns new metrics and sets up the counters
+func (p *Pump) SetMetric(m pipe.Measurable) {
+	p.Measurable = m
 	p.Measurable.AddCounters(OutputCounter)
+}
+
+// Run the Processor runner
+func (p *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan error, error) {
+	p.Measurable.Reset()
 	err := p.Before.call()
 	if err != nil {
 		return nil, nil, err
@@ -138,10 +142,15 @@ func (p *Process) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan 
 	return p.out, errc, nil
 }
 
+// SetMetric assigns new metrics and sets up the counters
+func (p *Process) SetMetric(m pipe.Measurable) {
+	p.Measurable = m
+	p.Measurable.AddCounters(OutputCounter)
+}
+
 // Run the sink runner
-func (s *Sink) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan error, error) {
-	s.Measurable = metric
-	s.Measurable.AddCounters(OutputCounter)
+func (s *Sink) Run(in <-chan *phono.Message) (<-chan error, error) {
+	s.Measurable.Reset()
 	err := s.Before.call()
 	if err != nil {
 		return nil, err
@@ -176,6 +185,12 @@ func (s *Sink) Run(metric pipe.Measurable, in <-chan *phono.Message) (<-chan err
 	}()
 
 	return errc, nil
+}
+
+// SetMetric assigns new metrics and sets up the counters
+func (s *Sink) SetMetric(m pipe.Measurable) {
+	s.Measurable = m
+	s.Measurable.AddCounters(OutputCounter)
 }
 
 // SingleUse is designed to be used in runner-return functions to define a single-use pipe elements

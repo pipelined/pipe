@@ -11,6 +11,7 @@ type (
 	// Measurable identifies an entity with measurable metrics.
 	// Each measurable can have multiple counters.
 	Measurable interface {
+		Reset()
 		Measure() Measure
 		FinishMeasure()
 		AddCounters(...string)
@@ -58,6 +59,15 @@ func NewMetric(id string, sampleRate phono.SampleRate, keys ...string) *Metric {
 	}
 	m.AddCounters(keys...)
 	return m
+}
+
+// Reset metrics values
+func (m *Metric) Reset() {
+	m.start = time.Now()
+	m.latencyMeasure = time.Now()
+	for key := range m.Counters {
+		m.Counters[key].Reset()
+	}
 }
 
 // FinishMeasure finalizes metric values.
