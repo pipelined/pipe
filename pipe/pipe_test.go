@@ -3,6 +3,7 @@ package pipe_test
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -126,12 +127,12 @@ func TestPipe(t *testing.T) {
 func TestMetrics(t *testing.T) {
 	limit := 10
 	bufferSize := 10
-	interval := 100
+	interval := 100 * time.Millisecond
 	numChannels := 1
 
 	pump := &mock.Pump{
 		Limit:       mock.Limit(limit),
-		Interval:    mock.Interval(interval),
+		Interval:    interval,
 		BufferSize:  phono.BufferSize(bufferSize),
 		NumChannels: phono.NumChannels(numChannels),
 	}
@@ -149,13 +150,14 @@ func TestMetrics(t *testing.T) {
 	var mc <-chan pipe.Measure
 	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
 	for m := range mc {
+		assert.NotNil(t, m)
 		switch m.ID {
 		case pump.ID():
-			fmt.Printf("Pump measure: %v\n", m)
+			assert.Equal(t, pump.ID(), m.ID)
 		case proc.ID():
-			fmt.Printf("Proc measure: %v\n", m)
+			assert.Equal(t, proc.ID(), m.ID)
 		case sink.ID():
-			fmt.Printf("Sink measure: %v\n", m)
+			assert.Equal(t, sink.ID(), m.ID)
 		}
 	}
 

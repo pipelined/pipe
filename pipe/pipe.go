@@ -330,7 +330,8 @@ func (p *Pipe) Push(newParams *phono.Params) {
 // Measure returns a buffered channel of Measure.
 // Event is pushed into pipe to retrieve metrics. Metric measure is returned immediately if
 // state is idle, otherwise it's returned once it's reached destination within pipe.
-// Result channel has buffer sized to found components.
+// Result channel has buffer sized to found components. Order of measures can differ from
+// requested order due to pipeline configuration.
 func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	if len(ids) == 0 {
 		return nil

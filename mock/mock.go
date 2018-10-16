@@ -31,8 +31,6 @@ func init() {
 
 // Param types
 type (
-	// Interval between messages in ms
-	Interval int
 	// Limit messages
 	Limit int
 )
@@ -41,7 +39,7 @@ type (
 type Pump struct {
 	phono.UID
 	pipe.Counter
-	Interval
+	Interval time.Duration
 	Limit
 	Value float64
 	phono.BufferSize
@@ -50,7 +48,7 @@ type Pump struct {
 }
 
 // IntervalParam pushes new interval value for pump
-func (p *Pump) IntervalParam(i Interval) phono.Param {
+func (p *Pump) IntervalParam(i time.Duration) phono.Param {
 	return phono.Param{
 		ID: p.ID(),
 		Apply: func() {
@@ -94,7 +92,7 @@ func (p *Pump) Pump(m *phono.Message) (*phono.Message, error) {
 	if Limit(p.Counter.Messages()) >= p.Limit {
 		return nil, pipe.ErrEOP
 	}
-	time.Sleep(time.Millisecond * time.Duration(p.Interval))
+	time.Sleep(p.Interval)
 
 	m.Buffer = phono.Buffer(make([][]float64, p.NumChannels))
 	for i := range m.Buffer {
