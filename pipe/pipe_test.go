@@ -161,4 +161,15 @@ func TestMetrics(t *testing.T) {
 
 	err := p.Do(pipe.Run)
 	assert.Nil(t, err)
+	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
+	for m := range mc {
+		switch m.ID {
+		case pump.ID():
+			fmt.Printf("Pump measure: %v\n", m)
+		case proc.ID():
+			fmt.Printf("Proc measure: %v\n", m)
+		case sink.ID():
+			fmt.Printf("Sink measure: %v\n", m)
+		}
+	}
 }
