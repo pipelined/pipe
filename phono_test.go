@@ -49,7 +49,7 @@ var sliceTests = []struct {
 
 func TestSimpleParams(t *testing.T) {
 	p := &mock.Pump{}
-	interval := mock.Interval(10)
+	interval := 10 * time.Millisecond
 	params := phono.NewParams(p.IntervalParam(interval))
 	params.ApplyTo(p.ID())
 
@@ -60,13 +60,13 @@ func TestMergeParams(t *testing.T) {
 	var params *phono.Params
 	p := &mock.Pump{}
 
-	interval := mock.Interval(10)
+	interval := 10 * time.Millisecond
 	newParams := phono.NewParams(p.IntervalParam(interval))
 	params = params.Merge(newParams)
 	params.ApplyTo(p.ID())
 	assert.Equal(t, interval, p.Interval)
 
-	newInterval := mock.Interval(20)
+	newInterval := 20 * time.Millisecond
 	newParams = phono.NewParams(p.IntervalParam(newInterval))
 	params = params.Merge(newParams)
 	params.ApplyTo(p.ID())
