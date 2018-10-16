@@ -51,11 +51,9 @@ type (
 // NewMetric creates new metric with requested measures.
 func NewMetric(id string, sampleRate phono.SampleRate, keys ...string) *Metric {
 	m := &Metric{
-		ID:             id,
-		SampleRate:     sampleRate,
-		Counters:       make(map[string]*Counter),
-		start:          time.Now(),
-		latencyMeasure: time.Now(),
+		ID:         id,
+		SampleRate: sampleRate,
+		Counters:   make(map[string]*Counter),
 	}
 	m.AddCounters(keys...)
 	return m
@@ -104,7 +102,7 @@ func (m *Metric) Measure() Measure {
 		return Measure{}
 	}
 	elapsed := m.elapsed
-	if elapsed == 0 {
+	if !m.start.IsZero() && elapsed == 0 {
 		elapsed = time.Since(m.start)
 	}
 	measure := Measure{
