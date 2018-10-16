@@ -42,9 +42,11 @@ type (
 	}
 
 	// Counter counts messages and samples.
+	// Duration is not zero only in context of measure.
 	Counter struct {
 		messages int64
 		samples  int64
+		duration time.Duration
 	}
 )
 
@@ -78,14 +80,14 @@ func (m *Metric) Counter(key string) *Counter {
 	return m.Counters[key]
 }
 
-// AddCounters to metric with defined keys
+// AddCounters to metric with defined keys.
 func (m *Metric) AddCounters(keys ...string) {
 	for _, measure := range keys {
 		m.Counters[measure] = &Counter{}
 	}
 }
 
-// Latency sets latency since last latency measure
+// Latency sets latency since last latency measure.
 func (m *Metric) Latency() {
 	m.latency = time.Since(m.latencyMeasure)
 	m.latencyMeasure = time.Now()
@@ -93,7 +95,7 @@ func (m *Metric) Latency() {
 
 // String returns string representation of Metrics.
 func (m Measure) String() string {
-	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed: %v Latency: %v", m.SampleRate, m.start, m.elapsed, m.latency)
+	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed: %v Latency: %v Counters: %v", m.SampleRate, m.start, m.elapsed, m.latency, m.Counters)
 }
 
 // Measure returns latest measures of Metric.
@@ -114,7 +116,9 @@ func (m *Metric) Measure() Measure {
 		Counters:   make(map[string]Counter),
 	}
 	for key, counter := range m.Counters {
-		measure.Counters[key] = *counter
+		c := *counter
+		c.duration = m.SampleRate.DurationOf(counter.samples)
+		measure.Counters[key] = c
 	}
 	return measure
 }
@@ -143,4 +147,14 @@ func (c *Counter) Messages() int64 {
 // Samples returns samples metrics.
 func (c *Counter) Samples() int64 {
 	return c.samples
+}
+
+// Duration returns duration of counted samples.
+func (c *Counter) Duration() time.Duration {
+	return c.duration
+}
+
+// String representation of Counter.
+func (c Counter) String() string {
+	return fmt.Sprintf("Messages: %v Samples: %v Duration: %v", c.messages, c.samples, c.duration)
 }
