@@ -73,7 +73,7 @@ type Pipe struct {
 	// metrics holds all references to measurable components
 	metrics map[string]Measurable
 
-	cachedParams *phono.Params
+	params *phono.Params
 	// errors channel
 	errc chan error
 	// event channel
@@ -148,7 +148,7 @@ type eventMessage struct {
 	event
 	done      chan error
 	params    *phono.Params
-	metricIDs []string
+	callbacks []string
 }
 
 // transitionMessage is sent when pipe changes the state
@@ -163,7 +163,7 @@ const (
 	pause
 	resume
 	params
-	metrics
+	measure
 )
 
 var (
@@ -337,26 +337,26 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 		return nil
 	}
 	em := eventMessage{
-		event:     metrics,
-		metricIDs: make([]string, 0, len(ids)),
+		event:     measure,
+		callbacks: make([]string, 0, len(ids)),
 	}
 	// check if passed ids are part of the pipe
 	for _, id := range ids {
 		_, ok := p.metrics[id]
 		if ok {
-			em.metricIDs = append(em.metricIDs, id)
+			em.callbacks = append(em.callbacks, id)
 		}
 	}
 	// no components found
-	if len(em.metricIDs) == 0 {
+	if len(em.callbacks) == 0 {
 		return nil
 	}
 	// waitgroup to close metrics channel
 	var wg sync.WaitGroup
-	wg.Add(len(em.metricIDs))
-	// metrics channel
-	mc := make(chan Measure, len(em.metricIDs))
-	for _, id := range em.metricIDs {
+	wg.Add(len(em.callbacks))
+	// measures channel
+	mc := make(chan Measure, len(em.callbacks))
+	for _, id := range em.callbacks {
 		m := p.metrics[id]
 		param := phono.Param{
 			ID: id,
@@ -479,9 +479,9 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 // if new params are pushed into pipe - next message will contain them
 func (p *Pipe) newMessage() *phono.Message {
 	m := new(phono.Message)
-	if !p.cachedParams.Empty() {
-		m.Params = p.cachedParams
-		p.cachedParams = new(phono.Params)
+	if !p.params.Empty() {
+		m.Params = p.params
+		p.params = new(phono.Params)
 	}
 	return m
 }
@@ -585,10 +585,10 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case params:
 		e.params.ApplyTo(p.ID())
-		p.cachedParams = p.cachedParams.Merge(e.params)
+		p.params = p.params.Merge(e.params)
 		return s
-	case metrics:
-		for _, id := range e.metricIDs {
+	case measure:
+		for _, id := range e.callbacks {
 			e.params.ApplyTo(id)
 		}
 		return s
@@ -640,11 +640,11 @@ func (s running) listen(p *Pipe) listenFn {
 
 func (s running) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
-	case metrics:
+	case measure:
 		fallthrough
 	case params:
 		e.params.ApplyTo(p.ID())
-		p.cachedParams = p.cachedParams.Merge(e.params)
+		p.params = p.params.Merge(e.params)
 		return s
 	case pause:
 		close(e.done)
@@ -673,11 +673,11 @@ func (s pausing) listen(p *Pipe) listenFn {
 
 func (s pausing) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
-	case metrics:
+	case measure:
 		fallthrough
 	case params:
 		e.params.ApplyTo(p.ID())
-		p.cachedParams = p.cachedParams.Merge(e.params)
+		p.params = p.params.Merge(e.params)
 		return s
 	}
 	e.done <- ErrInvalidState
@@ -717,10 +717,10 @@ func (s paused) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case params:
 		e.params.ApplyTo(p.ID())
-		p.cachedParams = p.cachedParams.Merge(e.params)
+		p.params = p.params.Merge(e.params)
 		return s
-	case metrics:
-		for _, id := range e.metricIDs {
+	case measure:
+		for _, id := range e.callbacks {
 			e.params.ApplyTo(id)
 		}
 		return s

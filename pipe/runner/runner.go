@@ -127,13 +127,13 @@ func (p *Process) Run(in <-chan *phono.Message) (<-chan *phono.Message, <-chan e
 				if !ok {
 					return
 				}
-				p.Counter(OutputCounter).Advance(m.Buffer)
 				m.ApplyTo(p.Processor.ID())
 				m, err = p.Process(m)
 				if err != nil {
 					errc <- err
 					return
 				}
+				p.Counter(OutputCounter).Advance(m.Buffer)
 				p.out <- m
 			}
 			p.Latency()
@@ -172,13 +172,13 @@ func (s *Sink) Run(in <-chan *phono.Message) (<-chan error, error) {
 				if !ok {
 					return
 				}
-				s.Counter(OutputCounter).Advance(m.Buffer)
 				m.Params.ApplyTo(s.Sink.ID())
 				err = s.Sink.Sink(m)
 				if err != nil {
 					errc <- err
 					return
 				}
+				s.Counter(OutputCounter).Advance(m.Buffer)
 			}
 			s.Latency()
 		}
