@@ -36,9 +36,9 @@ type (
 		ID string
 		phono.SampleRate
 		Counters map[string]Counter
-		start    time.Time
-		elapsed  time.Duration
-		latency  time.Duration
+		Start    time.Time
+		Elapsed  time.Duration
+		Latency  time.Duration
 	}
 
 	// Counter counts messages and samples.
@@ -95,7 +95,7 @@ func (m *Metric) Latency() {
 
 // String returns string representation of Metrics.
 func (m Measure) String() string {
-	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed: %v Latency: %v Counters: %v", m.SampleRate, m.start, m.elapsed, m.latency, m.Counters)
+	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed: %v Latency: %v Counters: %v", m.SampleRate, m.Start, m.Elapsed, m.Latency, m.Counters)
 }
 
 // Measure returns latest measures of Metric.
@@ -110,9 +110,9 @@ func (m *Metric) Measure() Measure {
 	measure := Measure{
 		ID:         m.ID,
 		SampleRate: m.SampleRate,
-		start:      m.start,
-		elapsed:    elapsed,
-		latency:    m.latency,
+		Start:      m.start,
+		Elapsed:    elapsed,
+		Latency:    m.latency,
 		Counters:   make(map[string]Counter),
 	}
 	for key, counter := range m.Counters {
