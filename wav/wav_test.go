@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var (
-	bufferSize = phono.BufferSize(512)
+const (
+	bufferSize = 512
 )
 
 var tests = []struct {
@@ -47,11 +47,13 @@ func TestWavPipe(t *testing.T) {
 	for _, test := range tests {
 		pump, err := wav.NewPump(test.inFile, bufferSize)
 		assert.Nil(t, err)
+		sampleRate := pump.WavSampleRate()
 		sink, err := wav.NewSink(test.outFile, pump.WavSampleRate(), pump.WavNumChannels(), pump.WavBitDepth(), pump.WavAudioFormat())
 		assert.Nil(t, err)
 
 		processor := &mock.Processor{}
 		p := pipe.New(
+			sampleRate,
 			pipe.WithPump(pump),
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),

@@ -21,6 +21,7 @@ func two() {
 		bufferSize,
 	)
 	check(err)
+	sampleRate := wavPump.WavSampleRate()
 
 	vst2path := "../_testdata/Krush.vst"
 	vst2lib, err := vst2sdk.Open(vst2path)
@@ -45,6 +46,7 @@ func two() {
 	)
 	check(err)
 	p := pipe.New(
+		sampleRate,
 		pipe.WithPump(wavPump),
 		pipe.WithProcessors(vst2processor),
 		pipe.WithSinks(wavSink),

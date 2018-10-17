@@ -59,19 +59,23 @@ func TestMixer(t *testing.T) {
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
 	}
+	sampleRate := phono.SampleRate(44100)
 	mix := mixer.New(bufferSize, numChannels)
 	sink := &mock.Sink{}
 	playback := pipe.New(
+		sampleRate,
 		pipe.WithName("Playback"),
 		pipe.WithPump(mix),
 		pipe.WithSinks(sink),
 	)
 	track1 := pipe.New(
+		sampleRate,
 		pipe.WithName("Track 1"),
 		pipe.WithPump(pump1),
 		pipe.WithSinks(mix),
 	)
 	track2 := pipe.New(
+		sampleRate,
 		pipe.WithName("Track 2"),
 		pipe.WithPump(pump2),
 		pipe.WithSinks(mix),
@@ -118,21 +122,25 @@ func TestWavMixer(t *testing.T) {
 
 	p1, _ := wav.NewPump(wavPath1, bs)
 	p2, _ := wav.NewPump(wavPath2, bs)
+	sampleRate := p1.WavSampleRate()
 
 	s, _ := wav.NewSink(outPath, p1.WavSampleRate(), p1.WavNumChannels(), p1.WavBitDepth(), p1.WavAudioFormat())
 
 	m := mixer.New(bs, p1.WavNumChannels())
 
 	track1 := pipe.New(
+		sampleRate,
 		pipe.WithPump(p1),
 		pipe.WithSinks(m),
 	)
 	track2 := pipe.New(
+		sampleRate,
 		pipe.WithPump(p2),
 		pipe.WithSinks(m),
 	)
 
 	playback := pipe.New(
+		sampleRate,
 		pipe.WithPump(m),
 		pipe.WithSinks(s),
 	)
