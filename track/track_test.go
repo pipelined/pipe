@@ -152,6 +152,7 @@ func TestTrackWavSlices(t *testing.T) {
 	}
 
 	p1 := pipe.New(
+		sampleRate,
 		pipe.WithPump(wavPump),
 		pipe.WithSinks(asset),
 	)
@@ -171,6 +172,7 @@ func TestTrackWavSlices(t *testing.T) {
 	track.AddClip(132300, asset.Clip(0, 44100))
 
 	p2 := pipe.New(
+		sampleRate,
 		pipe.WithPump(track),
 		pipe.WithSinks(wavSink),
 	)
@@ -190,6 +192,7 @@ func TestSliceOverlaps(t *testing.T) {
 		}
 
 		p := pipe.New(
+			sampleRate,
 			pipe.WithPump(track),
 			pipe.WithSinks(sink),
 		)

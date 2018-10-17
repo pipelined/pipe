@@ -24,6 +24,7 @@ func three() {
 	check(err)
 	wavPump2, err := wav.NewPump(inPath2, bs)
 	check(err)
+	sampleRate := wavPump1.WavSampleRate()
 
 	wavSink, err := wav.NewSink(
 		outPath,
@@ -36,16 +37,19 @@ func three() {
 	mixer := mixer.New(bs, wavPump1.WavNumChannels())
 
 	track1 := pipe.New(
+		sampleRate,
 		pipe.WithPump(wavPump1),
 		pipe.WithSinks(mixer),
 	)
 	defer track1.Close()
 	track2 := pipe.New(
+		sampleRate,
 		pipe.WithPump(wavPump2),
 		pipe.WithSinks(mixer),
 	)
 	defer track2.Close()
 	out := pipe.New(
+		sampleRate,
 		pipe.WithPump(mixer),
 		pipe.WithSinks(wavSink),
 	)

@@ -2,6 +2,7 @@ package phono
 
 import (
 	"sync"
+	"time"
 )
 
 // Pipe transport types
@@ -35,7 +36,7 @@ type (
 	NewMessageFunc func() *Message
 )
 
-// Params support types
+// Param-related types
 type (
 	// Identifiable defines a unique component
 	Identifiable interface {
@@ -54,8 +55,10 @@ type (
 	// Param is a structure for delayed parameters apply
 	// used as return type in functions which enable Params support for different packages
 	Param struct {
-		ID    string
-		Apply ParamFunc
+		ID     string
+		Apply  ParamFunc
+		at     int64
+		atTime time.Duration
 	}
 
 	// Params represent a set of parameters mapped to ID of their receivers
@@ -64,7 +67,7 @@ type (
 	}
 )
 
-// Small types for common params
+// Generic types
 type (
 	// BufferSize represents a buffer size value
 	BufferSize int
@@ -75,6 +78,22 @@ type (
 	// Tempo represents a tempo value
 	Tempo float32
 )
+
+// At assignes param to sample position
+func (p *Param) At(s int64) *Param {
+	if p != nil {
+		p.at = s
+	}
+	return p
+}
+
+// AtTime assignes param to time position
+func (p *Param) AtTime(d time.Duration) *Param {
+	if p != nil {
+		p.atTime = d
+	}
+	return p
+}
 
 // NewParams returns a new params instance with initialised map inside
 func NewParams(params ...Param) (result *Params) {
@@ -105,15 +124,15 @@ func (p *Params) Add(params ...Param) *Params {
 }
 
 // ApplyTo consumes params defined for consumer in this param set
-func (p *Params) ApplyTo(consumer Identifiable) {
+func (p *Params) ApplyTo(id string) {
 	if p == nil {
 		return
 	}
-	if params, ok := p.private[consumer.ID()]; ok {
+	if params, ok := p.private[id]; ok {
 		for _, param := range params {
 			param()
 		}
-		delete(p.private, consumer.ID())
+		delete(p.private, id)
 	}
 }
 
@@ -239,4 +258,9 @@ func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
 		result[i] = make([]float64, bufferSize)
 	}
 	return result
+}
+
+// DurationOf returns time duration of passed samples for this sample rate.
+func (s SampleRate) DurationOf(v int64) time.Duration {
+	return time.Duration(float64(v) / float64(s) * float64(time.Second))
 }
