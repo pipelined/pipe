@@ -3,8 +3,6 @@ package asset_test
 import (
 	"testing"
 
-	"github.com/dudk/phono/pipe/runner"
-
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/asset"
 	"github.com/dudk/phono/mock"
@@ -83,6 +81,6 @@ func TestPipe(t *testing.T) {
 		}
 		err = p.Do(pipe.Run)
 		assert.NotNil(t, err)
-		assert.Equal(t, runner.ErrSingleUseReused, err)
+		assert.Equal(t, pipe.ErrSingleUseReused, err)
 	}
 }

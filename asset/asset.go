@@ -5,11 +5,10 @@ import (
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/pipe"
-	"github.com/dudk/phono/pipe/runner"
 )
 
-// Asset is a sink which uses a regular buffer as underlying storage
-// it can be used as processing input and always should be copied
+// Asset is a sink which uses a regular buffer as underlying storage.
+// It can be used as processing input and always should be copied.
 type Asset struct {
 	phono.UID
 	phono.SampleRate
@@ -18,18 +17,14 @@ type Asset struct {
 	once sync.Once
 }
 
-// RunSink returns initialised runner for asset sink
-func (a *Asset) RunSink(string) pipe.SinkRunner {
-	return &runner.Sink{
-		Sink: a,
-		Before: func() error {
-			return runner.SingleUse(&a.once)
-		},
+// Sink appends buffers to asset.
+func (a *Asset) Sink(string) (phono.SinkFunc, error) {
+	err := pipe.SingleUse(&a.once)
+	if err != nil {
+		return nil, err
 	}
-}
-
-// Sink appends buffers to asset
-func (a *Asset) Sink(m *phono.Message) error {
-	a.Buffer = a.Buffer.Append(m.Buffer)
-	return nil
+	return func(b phono.Buffer) error {
+		a.Buffer = a.Buffer.Append(b)
+		return nil
+	}, nil
 }

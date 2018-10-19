@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	bufferSize = 512
-	sampleRate = 44100
+	bufferSize                  = 512
+	sampleRate phono.SampleRate = 44100
 )
 
 func TestPipeActions(t *testing.T) {
@@ -148,9 +148,18 @@ func TestMetrics(t *testing.T) {
 	)
 
 	var mc <-chan pipe.Measure
+
+	// zero measures
 	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
 	for m := range mc {
 		assert.NotNil(t, m)
+		assert.Equal(t, time.Time{}, m.Start)
+		assert.Equal(t, time.Duration(0), m.Elapsed)
+		for _, c := range m.Counters {
+			assert.Equal(t, int64(0), c.Messages())
+			assert.Equal(t, int64(0), c.Samples())
+			assert.Equal(t, time.Duration(0), c.Duration())
+		}
 		switch m.ID {
 		case pump.ID():
 			assert.Equal(t, pump.ID(), m.ID)
@@ -161,7 +170,33 @@ func TestMetrics(t *testing.T) {
 		}
 	}
 
-	err := p.Do(pipe.Run)
+	beforeRun := time.Now()
+
+	_, err := p.Begin(pipe.Run)
+	// time.Sleep(interval)
+	// zero measures
+	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
+	for m := range mc {
+		assert.NotNil(t, m)
+		assert.True(t, beforeRun.Before(m.Start))
+		assert.True(t, interval < m.Elapsed)
+		for _, c := range m.Counters {
+			assert.Equal(t, int64(1), c.Messages())
+			assert.Equal(t, int64(bufferSize), c.Samples())
+			assert.Equal(t, sampleRate.DurationOf(int64(bufferSize)), c.Duration())
+		}
+		switch m.ID {
+		case pump.ID():
+			assert.Equal(t, pump.ID(), m.ID)
+		case proc.ID():
+			assert.Equal(t, proc.ID(), m.ID)
+		case sink.ID():
+			assert.Equal(t, sink.ID(), m.ID)
+		}
+	}
+
+	err = p.Do(pipe.Pause)
+
 	assert.Nil(t, err)
 	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
 	for m := range mc {

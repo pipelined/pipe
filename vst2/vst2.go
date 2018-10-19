@@ -7,8 +7,6 @@ import (
 	"unsafe"
 
 	"github.com/dudk/phono"
-	"github.com/dudk/phono/pipe"
-	"github.com/dudk/phono/pipe/runner"
 	"github.com/dudk/vst2"
 )
 
@@ -26,7 +24,7 @@ type Processor struct {
 	currentPosition int64
 }
 
-// NewProcessor creates new vst2 processor
+// NewProcessor creates new vst2 processor.
 func NewProcessor(plugin *vst2.Plugin, bufferSize phono.BufferSize, sampleRate phono.SampleRate, numChannels phono.NumChannels) *Processor {
 	return &Processor{
 		plugin:          plugin,
@@ -37,33 +35,27 @@ func NewProcessor(plugin *vst2.Plugin, bufferSize phono.BufferSize, sampleRate p
 	}
 }
 
-// RunProcess returns configured processor runner
-func (p *Processor) RunProcess(string) pipe.ProcessRunner {
-	return &runner.Process{
-		Processor: p,
-		Before: func() error {
-			p.plugin.SetCallback(p.callback())
-			p.plugin.SetBufferSize(int(p.bufferSize))
-			p.plugin.SetSampleRate(int(p.sampleRate))
-			p.plugin.SetSpeakerArrangement(int(p.numChannels))
-			p.plugin.Resume()
-			return nil
-		},
-		After: func() error {
-			p.plugin.Suspend()
-			return nil
-		},
-	}
+// Process returns processor function with default settings initialized.
+func (p *Processor) Process(string) (phono.ProcessFunc, error) {
+	p.plugin.SetCallback(p.callback())
+	p.plugin.SetBufferSize(int(p.bufferSize))
+	p.plugin.SetSampleRate(int(p.sampleRate))
+	p.plugin.SetSpeakerArrangement(int(p.numChannels))
+	p.plugin.Resume()
+	return func(b phono.Buffer) (phono.Buffer, error) {
+		b = p.plugin.Process(b)
+		p.currentPosition += int64(b.Size())
+		return b, nil
+	}, nil
 }
 
-// Process buffer
-func (p *Processor) Process(m *phono.Message) (*phono.Message, error) {
-	m.Buffer = p.plugin.Process(m.Buffer)
-	p.currentPosition += int64(m.Buffer.Size())
-	return m, nil
+// Flush suspends plugin.
+func (p *Processor) Flush(string) error {
+	p.plugin.Suspend()
+	return nil
 }
 
-// wraped callback with session
+// wraped callback with session.
 func (p *Processor) callback() vst2.HostCallbackFunc {
 	return func(plugin *vst2.Plugin, opcode vst2.MasterOpcode, index int64, value int64, ptr unsafe.Pointer, opt float64) int {
 		switch opcode {
