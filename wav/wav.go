@@ -8,20 +8,18 @@ import (
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/pipe"
-	"github.com/dudk/phono/pipe/runner"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 )
 
 type (
-	// Pump reads from wav file
-	// todo: implement conversion if needed
+	// Pump reads from wav file.
 	Pump struct {
 		phono.UID
 		bufferSize phono.BufferSize
 		newMessage phono.NewMessageFunc
 
-		// properties of decoded wav
+		// properties of decoded wav.
 		wavNumChannels phono.NumChannels
 		wavSampleRate  phono.SampleRate
 		wavBitDepth    int
@@ -34,7 +32,7 @@ type (
 		once sync.Once
 	}
 
-	// Sink sink saves audio to wav file
+	// Sink sink saves audio to wav file.
 	Sink struct {
 		phono.UID
 		wavSampleRate  phono.SampleRate
@@ -48,15 +46,15 @@ type (
 )
 
 var (
-	// ErrBufferSizeNotDefined is used when buffer size is not defined
+	// ErrBufferSizeNotDefined is used when buffer size is not defined.
 	ErrBufferSizeNotDefined = errors.New("Buffer size is not defined")
-	// ErrSampleRateNotDefined is used when buffer size is not defined
+	// ErrSampleRateNotDefined is used when buffer size is not defined.
 	ErrSampleRateNotDefined = errors.New("Sample rate is not defined")
-	// ErrNumChannelsNotDefined is used when number of channels is not defined
+	// ErrNumChannelsNotDefined is used when number of channels is not defined.
 	ErrNumChannelsNotDefined = errors.New("Number of channels is not defined")
 )
 
-// NewPump creates a new wav pump and sets wav props
+// NewPump creates a new wav pump and sets wav props.
 func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -86,65 +84,62 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 	}, nil
 }
 
-// RunPump starts wav file processing
-func (p *Pump) RunPump(sourceID string) pipe.PumpRunner {
-	return &runner.Pump{
-		Pump: p,
-		Before: func() error {
-			return runner.SingleUse(&p.once)
-		},
-		After: func() error {
-			return p.file.Close()
-		},
-	}
+// Flush closes the file.
+func (p *Pump) Flush(string) error {
+	return p.file.Close()
 }
 
-// Pump starts the pump process
-// once executed, wav attributes are accessible
-func (p *Pump) Pump(m *phono.Message) (*phono.Message, error) {
-	if p.decoder == nil {
-		return nil, errors.New("Source is not defined")
-	}
-
-	readSamples, err := p.decoder.PCMBuffer(p.ib)
+// Pump starts the pump process once executed, wav attributes are accessible.
+func (p *Pump) Pump(string) (phono.PumpFunc, error) {
+	err := pipe.SingleUse(&p.once)
 	if err != nil {
 		return nil, err
 	}
+	return func() (phono.Buffer, error) {
+		if p.decoder == nil {
+			return nil, errors.New("Source is not defined")
+		}
 
-	if readSamples == 0 {
-		return nil, pipe.ErrEOP
-	}
-	// prune buffer to actual size
-	p.ib.Data = p.ib.Data[:readSamples]
-	// convert buffer to buffer
-	m.Buffer, err = AsSamples(p.ib)
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+		readSamples, err := p.decoder.PCMBuffer(p.ib)
+		if err != nil {
+			return nil, err
+		}
+
+		if readSamples == 0 {
+			return nil, pipe.ErrEOP
+		}
+		// prune buffer to actual size
+		p.ib.Data = p.ib.Data[:readSamples]
+		// convert buffer to buffer
+		b, err := AsSamples(p.ib)
+		if err != nil {
+			return nil, err
+		}
+		return b, nil
+	}, nil
 }
 
-// WavSampleRate returns wav's sample rate
+// WavSampleRate returns wav's sample rate.
 func (p *Pump) WavSampleRate() phono.SampleRate {
 	return p.wavSampleRate
 }
 
-// WavNumChannels returns wav's number of channels
+// WavNumChannels returns wav's number of channels.
 func (p *Pump) WavNumChannels() phono.NumChannels {
 	return p.wavNumChannels
 }
 
-// WavBitDepth returns wav's bit depth
+// WavBitDepth returns wav's bit depth.
 func (p *Pump) WavBitDepth() int {
 	return p.wavBitDepth
 }
 
-// WavAudioFormat returns wav's audio format
+// WavAudioFormat returns wav's audio format.
 func (p *Pump) WavAudioFormat() int {
 	return p.wavAudioFormat
 }
 
-// NewSink creates new wav sink
+// NewSink creates new wav sink.
 func NewSink(path string, wavSampleRate phono.SampleRate, wavNumChannels phono.NumChannels, bitDepth int, wavAudioFormat int) (*Sink, error) {
 	f, err := os.Create(path)
 	if err != nil {
@@ -169,30 +164,27 @@ func NewSink(path string, wavSampleRate phono.SampleRate, wavNumChannels phono.N
 	}, nil
 }
 
-// RunSink returns new sink runner with defined configuration
-func (s *Sink) RunSink(sourceID string) pipe.SinkRunner {
-	return &runner.Sink{
-		Sink: s,
-		After: func() error {
-			err := s.encoder.Close()
-			if err != nil {
-				return err
-			}
-			return s.file.Close()
-		},
-	}
-}
-
-// Sink implements Sink interface
-func (s *Sink) Sink(m *phono.Message) error {
-	err := AsBuffer(s.ib, m.Buffer)
+// Flush flushes encoder.
+func (s *Sink) Flush(string) error {
+	err := s.encoder.Close()
 	if err != nil {
 		return err
 	}
-	return s.encoder.Write(s.ib)
+	return s.file.Close()
 }
 
-// AsSamples converts from audio.Buffer to [][]float64 buffer
+// Sink returns new Sink function instance.
+func (s *Sink) Sink(string) (phono.SinkFunc, error) {
+	return func(b phono.Buffer) error {
+		err := AsBuffer(s.ib, b)
+		if err != nil {
+			return err
+		}
+		return s.encoder.Write(s.ib)
+	}, nil
+}
+
+// AsSamples converts from audio.Buffer to [][]float64 buffer.
 func AsSamples(b audio.Buffer) (phono.Buffer, error) {
 	if b == nil {
 		return nil, nil
@@ -221,7 +213,7 @@ func AsSamples(b audio.Buffer) (phono.Buffer, error) {
 	}
 }
 
-// AsBuffer converts from [][]float64 to audio.Buffer
+// AsBuffer converts from [][]float64 to audio.Buffer.
 func AsBuffer(b audio.Buffer, s phono.Buffer) error {
 	if b == nil || s == nil {
 		return nil

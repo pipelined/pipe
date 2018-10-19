@@ -1,14 +1,12 @@
 package track
 
 import (
-	"github.com/dudk/phono/pipe/runner"
-
 	"github.com/dudk/phono/pipe"
 
 	"github.com/dudk/phono"
 )
 
-// Track is a sequence of pipes which are executed one after another
+// Track is a sequence of pipes which are executed one after another.
 type Track struct {
 	phono.UID
 	bs phono.BufferSize
@@ -25,7 +23,7 @@ type Track struct {
 }
 
 // Clip is a phono.Clip in track.
-// It uses double-linked list structure
+// It uses double-linked list structure.
 type clip struct {
 	At int64
 	*phono.Clip
@@ -33,7 +31,7 @@ type clip struct {
 	Prev *clip
 }
 
-// End returns an end index of Clip
+// End returns an end index of Clip.
 func (c *clip) End() int64 {
 	if c == nil {
 		return -1
@@ -41,7 +39,7 @@ func (c *clip) End() int64 {
 	return c.At + int64(c.Len)
 }
 
-// New creates a new track in a session
+// New creates a new track in a session.
 func New(bs phono.BufferSize, nc phono.NumChannels) (t *Track) {
 	t = &Track{
 		nextIndex:   0,
@@ -51,7 +49,7 @@ func New(bs phono.BufferSize, nc phono.NumChannels) (t *Track) {
 	return
 }
 
-// BufferSizeParam pushes new limit value for pump
+// BufferSizeParam pushes new limit value for pump.
 func (t *Track) BufferSizeParam(bs phono.BufferSize) phono.Param {
 	return phono.Param{
 		ID: t.ID(),
@@ -61,29 +59,21 @@ func (t *Track) BufferSizeParam(bs phono.BufferSize) phono.Param {
 	}
 }
 
-// RunPump returns initialised track pump runner
-func (t *Track) RunPump(string) pipe.PumpRunner {
-	return &runner.Pump{
-		Pump: t,
-		Before: func() error {
-			t.newIndex = make(chan int64)
-			t.nextIndex = 0
-			return nil
-		},
-	}
+// Pump implements track pump with a sequence of not overlapped clips.
+func (t *Track) Pump(string) (phono.PumpFunc, error) {
+	t.newIndex = make(chan int64)
+	t.nextIndex = 0
+	return func() (phono.Buffer, error) {
+		if t.nextIndex >= t.clipsEnd() {
+			return nil, pipe.ErrEOP
+		}
+		b := t.bufferAt(t.nextIndex)
+		t.nextIndex += int64(t.bs)
+		return b, nil
+	}, nil
 }
 
-// Pump implements track pump with a sequence of not overlapped clips
-func (t *Track) Pump(m *phono.Message) (*phono.Message, error) {
-	if t.nextIndex >= t.clipsEnd() {
-		return nil, pipe.ErrEOP
-	}
-	m.Buffer = t.bufferAt(t.nextIndex)
-	t.nextIndex += int64(t.bs)
-	return m, nil
-}
-
-// Reset flushes all clips from track
+// Reset flushes all clips from track.
 func (t *Track) Reset() {
 	t.start = nil
 	t.end = nil
@@ -129,8 +119,8 @@ func (t *Track) bufferAt(index int64) (result phono.Buffer) {
 	return result
 }
 
-// clipAfter searches for a first clip after passed index
-// returns start position of clip and index in clip
+// clipAfter searches for a first clip after passed index.
+// returns start position of clip and index in clip.
 func (t *Track) clipAfter(index int64) *clip {
 	slice := t.start
 	for slice != nil {
@@ -142,7 +132,7 @@ func (t *Track) clipAfter(index int64) *clip {
 	return nil
 }
 
-// clipsEnd returns index of last value of last clip
+// clipsEnd returns index of last value of last clip.
 func (t *Track) clipsEnd() int64 {
 	if t.end == nil {
 		return -1
@@ -150,8 +140,7 @@ func (t *Track) clipsEnd() int64 {
 	return t.end.At + int64(t.end.Len)
 }
 
-// AddClip assigns a frame to a track
-// currently works only if clips are passed in order of processing
+// AddClip assigns a frame to a track.
 func (t *Track) AddClip(at int64, f *phono.Clip) {
 	if f == nil {
 		return
