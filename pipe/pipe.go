@@ -11,51 +11,6 @@ import (
 	"github.com/rs/xid"
 )
 
-// Pump is a source of samples
-type Pump interface {
-	phono.Identifiable
-	RunPump(sourceID string) PumpRunner
-	Pump(*phono.Message) (*phono.Message, error)
-}
-
-// Processor defines interface for pipe-processors
-type Processor interface {
-	phono.Identifiable
-	RunProcess(sourceID string) ProcessRunner
-	Process(*phono.Message) (*phono.Message, error)
-}
-
-// Sink is an interface for final stage in audio pipeline
-type Sink interface {
-	phono.Identifiable
-	RunSink(sourceID string) SinkRunner
-	Sink(*phono.Message) error
-}
-
-// PumpRunner is a pump runner
-type PumpRunner interface {
-	Measurable
-	phono.Identifiable
-	Run(context.Context, phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error)
-	SetMetric(Measurable)
-}
-
-// ProcessRunner is a processor runner
-type ProcessRunner interface {
-	Measurable
-	phono.Identifiable
-	Run(<-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
-	SetMetric(Measurable)
-}
-
-// SinkRunner is a sink runner
-type SinkRunner interface {
-	Measurable
-	phono.Identifiable
-	Run(<-chan *phono.Message) (<-chan error, error)
-	SetMetric(Measurable)
-}
-
 // Pipe is a pipeline with fully defined sound processing sequence
 // it has:
 //	 1 		pump
@@ -66,9 +21,9 @@ type Pipe struct {
 	sampleRate phono.SampleRate
 	phono.UID
 	cancelFn   context.CancelFunc
-	pump       PumpRunner
-	processors []ProcessRunner
-	sinks      []SinkRunner
+	pump       *PumpRunner
+	processors []*ProcessRunner
+	sinks      []*SinkRunner
 
 	// metrics holds all references to measurable components
 	metrics map[string]Measurable
@@ -178,8 +133,8 @@ var (
 func New(sampleRate phono.SampleRate, params ...Param) *Pipe {
 	p := &Pipe{
 		sampleRate:  sampleRate,
-		processors:  make([]ProcessRunner, 0),
-		sinks:       make([]SinkRunner, 0),
+		processors:  make([]*ProcessRunner, 0),
+		sinks:       make([]*SinkRunner, 0),
 		eventc:      make(chan eventMessage, 100),
 		transitionc: make(chan transitionMessage, 100),
 		log:         log.GetLogger(),
@@ -208,22 +163,21 @@ func WithName(n string) Param {
 }
 
 // WithPump sets pump to Pipe
-func WithPump(pump Pump) Param {
+func WithPump(pump phono.Pump) Param {
 	if pump.ID() == "" {
 		pump.SetID(xid.New().String())
 	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
-			runner := pump.RunPump(p.ID())
+			runner := NewPump(pump, NewMetric(pump.ID(), p.sampleRate))
 			p.metrics[runner.ID()] = runner
-			runner.SetMetric(NewMetric(runner.ID(), p.sampleRate))
 			p.pump = runner
 		}
 	}
 }
 
 // WithProcessors sets processors to Pipe
-func WithProcessors(processors ...Processor) Param {
+func WithProcessors(processors ...phono.Processor) Param {
 	for i := range processors {
 		if processors[i].ID() == "" {
 			processors[i].SetID(xid.New().String())
@@ -232,9 +186,8 @@ func WithProcessors(processors ...Processor) Param {
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			for i := range processors {
-				runner := processors[i].RunProcess(p.ID())
+				runner := NewProcessor(processors[i], NewMetric(processors[i].ID(), p.sampleRate))
 				p.metrics[runner.ID()] = runner
-				runner.SetMetric(NewMetric(runner.ID(), p.sampleRate))
 				p.processors = append(p.processors, runner)
 			}
 		}
@@ -242,7 +195,7 @@ func WithProcessors(processors ...Processor) Param {
 }
 
 // WithSinks sets sinks to Pipe
-func WithSinks(sinks ...Sink) Param {
+func WithSinks(sinks ...phono.Sink) Param {
 	for i := range sinks {
 		if sinks[i].ID() == "" {
 			sinks[i].SetID(xid.New().String())
@@ -251,9 +204,8 @@ func WithSinks(sinks ...Sink) Param {
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			for i := range sinks {
-				runner := sinks[i].RunSink(p.ID())
+				runner := NewSink(sinks[i], NewMetric(sinks[i].ID(), p.sampleRate))
 				p.metrics[runner.ID()] = runner
-				runner.SetMetric(NewMetric(runner.ID(), p.sampleRate))
 				p.sinks = append(p.sinks, runner)
 			}
 		}
@@ -450,7 +402,7 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Run(broadcasts[i])
+		errc, err := s.Run(p.ID(), broadcasts[i])
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
 			return nil, err
@@ -598,7 +550,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 		// start pump
-		out, errc, err := p.pump.Run(ctx, p.soure())
+		out, errc, err := p.pump.Run(ctx, p.ID(), p.soure())
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 			e.done <- err
@@ -609,7 +561,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 
 		// start chained processesing
 		for _, proc := range p.processors {
-			out, errc, err = proc.Run(out)
+			out, errc, err = proc.Run(p.ID(), out)
 			if err != nil {
 				p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 				e.done <- err
