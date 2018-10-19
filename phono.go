@@ -5,6 +5,29 @@ import (
 	"time"
 )
 
+// Pump is a source of samples
+type Pump interface {
+	Identifiable
+	Pump(string) (PumpFunc, error)
+}
+
+// Processor defines interface for pipe-processors
+type Processor interface {
+	Identifiable
+	Process(string) (ProcessFunc, error)
+}
+
+// Sink is an interface for final stage in audio pipeline
+type Sink interface {
+	Identifiable
+	// RunSink(sourceID string) SinkRunner
+	Sink(string) (SinkFunc, error)
+}
+
+type PumpFunc func() (Buffer, error)
+type ProcessFunc func(Buffer) (Buffer, error)
+type SinkFunc func(Buffer) error
+
 // Pipe transport types
 type (
 	// Buffer represent a sample data sliced per channel
