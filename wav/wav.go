@@ -27,7 +27,7 @@ type (
 		file           *os.File
 		decoder        *wav.Decoder
 		ib             *audio.IntBuffer
-		// Once for single-use
+		// Once for single-use.
 		once sync.Once
 	}
 
@@ -90,7 +90,7 @@ func (p *Pump) Flush(string) error {
 
 // Pump starts the pump process once executed, wav attributes are accessible.
 func (p *Pump) Pump(string) (phono.PumpFunc, error) {
-	err := pipe.SingleUse(&p.once)
+	err := phono.SingleUse(&p.once)
 	if err != nil {
 		return nil, err
 	}

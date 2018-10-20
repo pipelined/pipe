@@ -2,8 +2,6 @@ package pipe
 
 import (
 	"context"
-	"errors"
-	"sync"
 
 	"github.com/dudk/phono"
 )
@@ -41,21 +39,16 @@ type Flusher interface {
 // FlushFunc represents clean up function which is executed after loop is finished.
 type FlushFunc func(string) error
 
-var (
-	// ErrSingleUseReused is returned when object designed for single-use is being reused.
-	ErrSingleUseReused = errors.New("Error reuse single-use object")
-
-	// counters is a structure for metrics initialization.
-	counters = struct {
-		pump      []string
-		processor []string
-		sink      []string
-	}{
-		pump:      []string{OutputCounter},
-		processor: []string{OutputCounter},
-		sink:      []string{OutputCounter},
-	}
-)
+// counters is a structure for metrics initialization.
+var counters = struct {
+	pump      []string
+	processor []string
+	sink      []string
+}{
+	pump:      []string{OutputCounter},
+	processor: []string{OutputCounter},
+	sink:      []string{OutputCounter},
+}
 
 const (
 	// OutputCounter is a key for output counter within metric.
@@ -201,13 +194,4 @@ func (s *sinkRunner) run(sourceID string, in <-chan *message) (<-chan error, err
 	}()
 
 	return errc, nil
-}
-
-// SingleUse is designed to be used in runner-return functions to define a single-use pipe components.
-func SingleUse(once *sync.Once) (err error) {
-	err = ErrSingleUseReused
-	once.Do(func() {
-		err = nil
-	})
-	return
 }

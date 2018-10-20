@@ -63,7 +63,7 @@ func TestWavPipe(t *testing.T) {
 		assert.Equal(t, test.samples, sampleCount)
 
 		err = p.Do(pipe.Run)
-		assert.Equal(t, pipe.ErrSingleUseReused, err)
+		assert.Equal(t, phono.ErrSingleUseReused, err)
 	}
 }
 

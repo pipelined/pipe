@@ -18,7 +18,7 @@ type Processor struct {
 	bufferSize    phono.BufferSize
 	numChannels   phono.NumChannels
 	sampleRate    phono.SampleRate
-	tempo         phono.Tempo
+	tempo         float32
 	timeSignature vst2.TimeSignature
 
 	currentPosition int64

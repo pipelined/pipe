@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/dudk/phono"
-	"github.com/dudk/phono/pipe"
 )
 
 // Asset is a sink which uses a regular buffer as underlying storage.
@@ -19,7 +18,7 @@ type Asset struct {
 
 // Sink appends buffers to asset.
 func (a *Asset) Sink(string) (phono.SinkFunc, error) {
-	err := pipe.SingleUse(&a.once)
+	err := phono.SingleUse(&a.once)
 	if err != nil {
 		return nil, err
 	}
