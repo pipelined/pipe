@@ -21,9 +21,9 @@ type Pipe struct {
 	sampleRate phono.SampleRate
 	phono.UID
 	cancelFn   context.CancelFunc
-	pump       *PumpRunner
-	processors []*ProcessRunner
-	sinks      []*SinkRunner
+	pump       *pumpRunner
+	processors []*processRunner
+	sinks      []*sinkRunner
 
 	// metrics holds all references to measurable components
 	metrics map[string]Measurable
@@ -133,8 +133,8 @@ var (
 func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 	p := &Pipe{
 		sampleRate:  sampleRate,
-		processors:  make([]*ProcessRunner, 0),
-		sinks:       make([]*SinkRunner, 0),
+		processors:  make([]*processRunner, 0),
+		sinks:       make([]*sinkRunner, 0),
 		eventc:      make(chan eventMessage, 100),
 		transitionc: make(chan transitionMessage, 100),
 		log:         log.GetLogger(),
@@ -169,9 +169,13 @@ func WithPump(pump phono.Pump) Option {
 	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
-			runner := NewPump(pump, NewMetric(pump.ID(), p.sampleRate))
-			p.metrics[runner.ID()] = runner
-			p.pump = runner
+			r := &pumpRunner{
+				Pump:       pump,
+				Flusher:    flusher(p),
+				Measurable: NewMetric(pump.ID(), p.sampleRate, counters.pump...),
+			}
+			p.metrics[r.ID()] = r
+			p.pump = r
 		}
 	}
 }
@@ -186,9 +190,13 @@ func WithProcessors(processors ...phono.Processor) Option {
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			for i := range processors {
-				runner := NewProcessor(processors[i], NewMetric(processors[i].ID(), p.sampleRate))
-				p.metrics[runner.ID()] = runner
-				p.processors = append(p.processors, runner)
+				r := &processRunner{
+					Processor:  processors[i],
+					Flusher:    flusher(processors[i]),
+					Measurable: NewMetric(processors[i].ID(), p.sampleRate, counters.processor...),
+				}
+				p.metrics[r.ID()] = r
+				p.processors = append(p.processors, r)
 			}
 		}
 	}
@@ -204,9 +212,13 @@ func WithSinks(sinks ...phono.Sink) Option {
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			for i := range sinks {
-				runner := NewSink(sinks[i], NewMetric(sinks[i].ID(), p.sampleRate))
-				p.metrics[runner.ID()] = runner
-				p.sinks = append(p.sinks, runner)
+				r := &sinkRunner{
+					Sink:       sinks[i],
+					Flusher:    flusher(sinks[i]),
+					Measurable: NewMetric(sinks[i].ID(), p.sampleRate, counters.sink...),
+				}
+				p.metrics[r.ID()] = r
+				p.sinks = append(p.sinks, r)
 			}
 		}
 	}
@@ -405,7 +417,7 @@ func (p *Pipe) broadcastToSinks(in <-chan *message) ([]<-chan error, error) {
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Run(p.ID(), broadcasts[i])
+		errc, err := s.run(p.ID(), broadcasts[i])
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
 			return nil, err
@@ -553,7 +565,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 		// start pump
-		out, errc, err := p.pump.Run(ctx, p.ID(), p.soure())
+		out, errc, err := p.pump.run(ctx, p.ID(), p.soure())
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 			e.done <- err
@@ -564,7 +576,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 
 		// start chained processesing
 		for _, proc := range p.processors {
-			out, errc, err = proc.Run(p.ID(), out)
+			out, errc, err = proc.run(p.ID(), out)
 			if err != nil {
 				p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 				e.done <- err

@@ -8,16 +8,16 @@ import (
 	"github.com/dudk/phono"
 )
 
-// PumpRunner represents pump's runner.
-type PumpRunner struct {
+// pumpRunner is pump's runner.
+type pumpRunner struct {
 	phono.Pump
 	Measurable
 	Flusher
 	out chan *message
 }
 
-// ProcessRunner represents processor's runner.
-type ProcessRunner struct {
+// processRunner represents processor's runner.
+type processRunner struct {
 	phono.Processor
 	Measurable
 	Flusher
@@ -25,8 +25,8 @@ type ProcessRunner struct {
 	out chan *message
 }
 
-// SinkRunner represents sink's runner.
-type SinkRunner struct {
+// sinkRunner represents sink's runner.
+type sinkRunner struct {
 	phono.Sink
 	Measurable
 	Flusher
@@ -44,6 +44,17 @@ type FlushFunc func(string) error
 var (
 	// ErrSingleUseReused is returned when object designed for single-use is being reused.
 	ErrSingleUseReused = errors.New("Error reuse single-use object")
+
+	// counters is a structure for metrics initialization.
+	counters = struct {
+		pump      []string
+		processor []string
+		sink      []string
+	}{
+		pump:      []string{OutputCounter},
+		processor: []string{OutputCounter},
+		sink:      []string{OutputCounter},
+	}
 )
 
 const (
@@ -52,44 +63,16 @@ const (
 	OutputCounter = "Output"
 )
 
-func NewPump(p phono.Pump, m Measurable) *PumpRunner {
-	r := &PumpRunner{
-		Pump:       p,
-		Measurable: m,
+// flusher checks if interface implements Flusher and if so, return it.
+func flusher(i interface{}) Flusher {
+	if v, ok := i.(Flusher); ok {
+		return v
 	}
-	r.Measurable.AddCounters(OutputCounter)
-	if v, ok := p.(Flusher); ok {
-		r.Flusher = v
-	}
-	return r
+	return nil
 }
 
-func NewProcessor(p phono.Processor, m Measurable) *ProcessRunner {
-	r := &ProcessRunner{
-		Processor:  p,
-		Measurable: m,
-	}
-	r.Measurable.AddCounters(OutputCounter)
-	if v, ok := p.(Flusher); ok {
-		r.Flusher = v
-	}
-	return r
-}
-
-func NewSink(s phono.Sink, m Measurable) *SinkRunner {
-	r := &SinkRunner{
-		Sink:       s,
-		Measurable: m,
-	}
-	r.Measurable.AddCounters(OutputCounter)
-	if v, ok := s.(Flusher); ok {
-		r.Flusher = v
-	}
-	return r
-}
-
-// Run the Pump runner
-func (p *PumpRunner) Run(ctx context.Context, sourceID string, newMessage newMessageFunc) (<-chan *message, <-chan error, error) {
+// run the Pump runner.
+func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMessageFunc) (<-chan *message, <-chan error, error) {
 	p.Measurable.Reset()
 	pumpFn, err := p.Pump.Pump(sourceID)
 	if err != nil {
@@ -108,8 +91,8 @@ func (p *PumpRunner) Run(ctx context.Context, sourceID string, newMessage newMes
 				}
 			}
 		}()
-		defer p.FinishMeasure()
-		p.Latency()
+		defer p.Measurable.FinishMeasure()
+		p.Measurable.Latency()
 		var err error
 		for {
 			m := newMessage()
@@ -134,16 +117,9 @@ func (p *PumpRunner) Run(ctx context.Context, sourceID string, newMessage newMes
 	return out, errc, nil
 }
 
-// SetMetric assigns new metrics and sets up the counters
-func (p *PumpRunner) SetMetric(m Measurable) {
-	p.Measurable = m
-	p.Measurable.AddCounters(OutputCounter)
-}
-
-// Run the Processor runner
-func (p *ProcessRunner) Run(sourceID string, in <-chan *message) (<-chan *message, <-chan error, error) {
+// run the Processor runner.
+func (p *processRunner) run(sourceID string, in <-chan *message) (<-chan *message, <-chan error, error) {
 	p.Measurable.Reset()
-	// err := p.Before.call()
 	processFn, err := p.Process(sourceID)
 	if err != nil {
 		return nil, nil, err
@@ -162,8 +138,8 @@ func (p *ProcessRunner) Run(sourceID string, in <-chan *message) (<-chan *messag
 				}
 			}
 		}()
-		defer p.FinishMeasure()
-		p.Latency()
+		defer p.Measurable.FinishMeasure()
+		p.Measurable.Latency()
 		var err error
 		for in != nil {
 			select {
@@ -186,16 +162,9 @@ func (p *ProcessRunner) Run(sourceID string, in <-chan *message) (<-chan *messag
 	return p.out, errc, nil
 }
 
-// SetMetric assigns new metrics and sets up the counters
-func (p *ProcessRunner) SetMetric(m Measurable) {
-	p.Measurable = m
-	p.Measurable.AddCounters(OutputCounter)
-}
-
-// Run the sink runner
-func (s *SinkRunner) Run(sourceID string, in <-chan *message) (<-chan error, error) {
+// run the sink runner.
+func (s *sinkRunner) run(sourceID string, in <-chan *message) (<-chan error, error) {
 	s.Measurable.Reset()
-	// err := s.Before.call()
 	sinkFn, err := s.Sink.Sink(sourceID)
 	if err != nil {
 		return nil, err
@@ -211,8 +180,8 @@ func (s *SinkRunner) Run(sourceID string, in <-chan *message) (<-chan error, err
 				}
 			}
 		}()
-		defer s.FinishMeasure()
-		s.Latency()
+		defer s.Measurable.FinishMeasure()
+		s.Measurable.Latency()
 		for in != nil {
 			select {
 			case m, ok := <-in:
@@ -234,13 +203,7 @@ func (s *SinkRunner) Run(sourceID string, in <-chan *message) (<-chan error, err
 	return errc, nil
 }
 
-// SetMetric assigns new metrics and sets up the counters
-func (s *SinkRunner) SetMetric(m Measurable) {
-	s.Measurable = m
-	s.Measurable.AddCounters(OutputCounter)
-}
-
-// SingleUse is designed to be used in runner-return functions to define a single-use pipe elements
+// SingleUse is designed to be used in runner-return functions to define a single-use pipe components.
 func SingleUse(once *sync.Once) (err error) {
 	err = ErrSingleUseReused
 	once.Do(func() {
@@ -248,10 +211,3 @@ func SingleUse(once *sync.Once) (err error) {
 	})
 	return
 }
-
-// func (f Flusher) call(sourceID string) error {
-// 	if fn == nil {
-// 		return nil
-// 	}
-// 	return f.Flush(sourceID)
-// }
