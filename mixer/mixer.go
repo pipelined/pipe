@@ -2,6 +2,7 @@ package mixer
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/log"
@@ -13,13 +14,15 @@ type Mixer struct {
 	log.Logger
 	numChannels phono.NumChannels
 	bufferSize  phono.BufferSize
-	open        chan string     // channel to send signals about new inputs
-	ready       chan *frame     // channel to send frames ready for mix
-	in          chan *inMessage // channel to send incoming messages
-	outputID    string          // id of the pipe which is output of mixer
-	inputs      map[string]*input
-	done        map[string]*input
+	open        chan string       // channel to send signals about new inputs
+	ready       chan *frame       // channel to send frames ready for mix
+	in          chan *inMessage   // channel to send incoming messages
+	inputs      map[string]*input // inputs sinking data
+	done        map[string]*input // output for pumping data
 	*frame
+
+	sync.Mutex
+	outputID string // id of the pipe which is output of mixer
 }
 
 type inMessage struct {
@@ -95,6 +98,8 @@ func (m *Mixer) Sink(sourceID string) (phono.SinkFunc, error) {
 
 // Flush mixer data for defined source.
 func (m *Mixer) Flush(sourceID string) error {
+	m.Lock()
+	defer m.Unlock()
 	if sourceID == m.outputID {
 		return nil
 	}
@@ -104,7 +109,9 @@ func (m *Mixer) Flush(sourceID string) error {
 
 // Pump returns a pump function which allows to read the out channel.
 func (m *Mixer) Pump(sourceID string) (phono.PumpFunc, error) {
+	m.Lock()
 	m.outputID = sourceID
+	m.Unlock()
 	// new frame
 	m.frame = &frame{}
 
