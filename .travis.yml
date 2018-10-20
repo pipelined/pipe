@@ -7,8 +7,9 @@ os: osx
 install: true
 
 env:
-  - GO111MODULE=on
-  - CODECOV_TOKEN=d9d971f2-368d-46b7-ab06-f605ef2bdb10
+  global:
+    - GO111MODULE=on
+    - CODECOV_TOKEN="d9d971f2-368d-46b7-ab06-f605ef2bdb10"
 
 addons:
   ssh_known_hosts:

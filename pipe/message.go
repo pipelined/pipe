@@ -4,12 +4,10 @@ import "github.com/dudk/phono"
 
 // Message is a main structure for pipe transport
 type message struct {
-	// Buffer of message
-	phono.Buffer
-	// params for pipe
-	*params
-	// ID of original pipe
-	sourceID string
+	phono.Buffer         // Buffer of message
+	*params              // params for pipe
+	sourceID     string  // ID of pipe which spawned this message.
+	feedback     *params //feedback are params applied after processing happened
 }
 
 // NewMessageFunc is a message-producer function
