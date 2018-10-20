@@ -92,7 +92,7 @@ func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMes
 			m.applyTo(p.Pump.ID())
 			m.Buffer, err = pumpFn()
 			if err != nil {
-				if err != ErrEOP {
+				if err != phono.ErrEOP {
 					errc <- err
 				}
 				return

@@ -1,8 +1,6 @@
 package track
 
 import (
-	"github.com/dudk/phono/pipe"
-
 	"github.com/dudk/phono"
 )
 
@@ -65,7 +63,7 @@ func (t *Track) Pump(string) (phono.PumpFunc, error) {
 	t.nextIndex = 0
 	return func() (phono.Buffer, error) {
 		if t.nextIndex >= t.clipsEnd() {
-			return nil, pipe.ErrEOP
+			return nil, phono.ErrEOP
 		}
 		b := t.bufferAt(t.nextIndex)
 		t.nextIndex += int64(t.bs)

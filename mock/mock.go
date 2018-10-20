@@ -90,7 +90,7 @@ func (p *Pump) Pump(string) (phono.PumpFunc, error) {
 	p.Reset()
 	return func() (phono.Buffer, error) {
 		if Limit(p.Counter.Messages()) >= p.Limit {
-			return nil, pipe.ErrEOP
+			return nil, phono.ErrEOP
 		}
 		time.Sleep(p.Interval)
 
