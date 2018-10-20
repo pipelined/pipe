@@ -83,14 +83,14 @@ func TestMixer(t *testing.T) {
 
 	var err error
 	for _, test := range tests {
-		track1.Push(phono.NewParams(
+		track1.Push(
 			pump1.LimitParam(test.Limit),
 			pump1.ValueParam(test.value1),
-		))
-		track2.Push(phono.NewParams(
+		)
+		track2.Push(
 			pump2.LimitParam(test.Limit),
 			pump2.ValueParam(test.value2),
-		))
+		)
 
 		_, err = track1.Begin(pipe.Run)
 		assert.Nil(t, err)
