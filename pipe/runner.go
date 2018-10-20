@@ -11,7 +11,7 @@ import (
 // pumpRunner is pump's runner.
 type pumpRunner struct {
 	phono.Pump
-	Measurable
+	measurable
 	Flusher
 	out chan *message
 }
@@ -19,7 +19,7 @@ type pumpRunner struct {
 // processRunner represents processor's runner.
 type processRunner struct {
 	phono.Processor
-	Measurable
+	measurable
 	Flusher
 	in  <-chan *message
 	out chan *message
@@ -28,7 +28,7 @@ type processRunner struct {
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
 	phono.Sink
-	Measurable
+	measurable
 	Flusher
 	in <-chan *message
 }
@@ -73,7 +73,7 @@ func flusher(i interface{}) Flusher {
 
 // run the Pump runner.
 func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMessageFunc) (<-chan *message, <-chan error, error) {
-	p.Measurable.Reset()
+	p.measurable.Reset()
 	pumpFn, err := p.Pump.Pump(sourceID)
 	if err != nil {
 		return nil, nil, err
@@ -91,8 +91,8 @@ func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMes
 				}
 			}
 		}()
-		defer p.Measurable.FinishMeasure()
-		p.Measurable.Latency()
+		defer p.measurable.FinishMeasure()
+		p.measurable.Latency()
 		var err error
 		for {
 			m := newMessage()
@@ -119,7 +119,7 @@ func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMes
 
 // run the Processor runner.
 func (p *processRunner) run(sourceID string, in <-chan *message) (<-chan *message, <-chan error, error) {
-	p.Measurable.Reset()
+	p.measurable.Reset()
 	processFn, err := p.Process(sourceID)
 	if err != nil {
 		return nil, nil, err
@@ -138,8 +138,8 @@ func (p *processRunner) run(sourceID string, in <-chan *message) (<-chan *messag
 				}
 			}
 		}()
-		defer p.Measurable.FinishMeasure()
-		p.Measurable.Latency()
+		defer p.measurable.FinishMeasure()
+		p.measurable.Latency()
 		var err error
 		for in != nil {
 			select {
@@ -164,7 +164,7 @@ func (p *processRunner) run(sourceID string, in <-chan *message) (<-chan *messag
 
 // run the sink runner.
 func (s *sinkRunner) run(sourceID string, in <-chan *message) (<-chan error, error) {
-	s.Measurable.Reset()
+	s.measurable.Reset()
 	sinkFn, err := s.Sink.Sink(sourceID)
 	if err != nil {
 		return nil, err
@@ -180,8 +180,8 @@ func (s *sinkRunner) run(sourceID string, in <-chan *message) (<-chan error, err
 				}
 			}
 		}()
-		defer s.Measurable.FinishMeasure()
-		s.Measurable.Latency()
+		defer s.measurable.FinishMeasure()
+		s.measurable.Latency()
 		for in != nil {
 			select {
 			case m, ok := <-in:
