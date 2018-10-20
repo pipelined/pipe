@@ -80,6 +80,6 @@ func TestPipe(t *testing.T) {
 		}
 		err = p.Do(pipe.Run)
 		assert.NotNil(t, err)
-		assert.Equal(t, pipe.ErrSingleUseReused, err)
+		assert.Equal(t, phono.ErrSingleUseReused, err)
 	}
 }

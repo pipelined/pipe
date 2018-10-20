@@ -1,6 +1,7 @@
 package phono
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
@@ -24,11 +25,18 @@ type Sink interface {
 	Sink(string) (SinkFunc, error)
 }
 
-type PumpFunc func() (Buffer, error)
-type ProcessFunc func(Buffer) (Buffer, error)
-type SinkFunc func(Buffer) error
+// Components closure types.
+type (
+	// PumpFunc produces new buffer of data.
+	PumpFunc func() (Buffer, error)
 
-// Pipe transport types
+	// ProcessFunc consumes and returns new buffer of data.
+	ProcessFunc func(Buffer) (Buffer, error)
+
+	// SinkFunc consumes buffer of data.
+	SinkFunc func(Buffer) error
+)
+
 type (
 	// Buffer represent a sample data sliced per channel
 	Buffer [][]float64
@@ -79,9 +87,19 @@ type (
 	NumChannels int
 	// SampleRate represents a sample rate value
 	SampleRate int
-	// Tempo represents a tempo value
-	Tempo float32
 )
+
+// SingleUse is designed to be used in runner-return functions to define a single-use pipe components.
+func SingleUse(once *sync.Once) (err error) {
+	err = ErrSingleUseReused
+	once.Do(func() {
+		err = nil
+	})
+	return
+}
+
+// ErrSingleUseReused is returned when object designed for single-use is being reused.
+var ErrSingleUseReused = errors.New("Error reuse single-use object")
 
 // At assignes param to sample position
 func (p *Param) At(s int64) *Param {
