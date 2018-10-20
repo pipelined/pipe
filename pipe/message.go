@@ -3,7 +3,7 @@ package pipe
 import "github.com/dudk/phono"
 
 // Message is a main structure for pipe transport
-type Message struct {
+type message struct {
 	// Buffer of message
 	phono.Buffer
 	// Params for pipe
@@ -14,7 +14,7 @@ type Message struct {
 
 // NewMessageFunc is a message-producer function
 // sourceID expected to be pump's id
-type newMessageFunc func() *Message
+type newMessageFunc func() *message
 
 // Params represent a set of parameters mapped to ID of their receivers
 type Params struct {
