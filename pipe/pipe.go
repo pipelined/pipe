@@ -38,7 +38,7 @@ type Pipe struct {
 
 	message struct {
 		ask  chan struct{}
-		take chan *Message
+		take chan *message
 	}
 
 	log log.Logger
@@ -394,13 +394,13 @@ func mergeErrors(errcList ...<-chan error) chan error {
 }
 
 // broadcastToSinks passes messages to all sinks
-func (p *Pipe) broadcastToSinks(in <-chan *Message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(in <-chan *message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
-	broadcasts := make([]chan *Message, len(p.sinks))
+	broadcasts := make([]chan *message, len(p.sinks))
 	for i := range broadcasts {
-		broadcasts[i] = make(chan *Message)
+		broadcasts[i] = make(chan *message)
 	}
 
 	//start broadcast
@@ -432,8 +432,8 @@ func (p *Pipe) broadcastToSinks(in <-chan *Message) ([]<-chan error, error) {
 
 // newMessage creates a new message with cached params
 // if new params are pushed into pipe - next message will contain them
-func (p *Pipe) newMessage() *Message {
-	m := new(Message)
+func (p *Pipe) newMessage() *message {
+	m := new(message)
 	if !p.params.Empty() {
 		m.Params = p.params
 		p.params = new(Params)
@@ -444,10 +444,10 @@ func (p *Pipe) newMessage() *Message {
 // soure returns a default message producer which will be sent to pump
 func (p *Pipe) soure() newMessageFunc {
 	p.message.ask = make(chan struct{})
-	p.message.take = make(chan *Message)
+	p.message.take = make(chan *message)
 	var do struct{}
 	// if pipe paused this call will block
-	return func() *Message {
+	return func() *message {
 		p.message.ask <- do
 		msg := <-p.message.take
 		msg.SourceID = p.ID()
