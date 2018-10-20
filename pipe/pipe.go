@@ -20,21 +20,18 @@ type Pipe struct {
 	name       string
 	sampleRate phono.SampleRate
 	phono.UID
-	cancelFn   context.CancelFunc
+	cancelFn context.CancelFunc
+
 	pump       *pumpRunner
 	processors []*processRunner
 	sinks      []*sinkRunner
 
-	// metrics holds all references to measurable components
-	metrics map[string]measurable
-
-	params *params
-	// errors channel
-	errc chan error
-	// event channel
-	eventc chan eventMessage
-	// transitions channel
-	transitionc chan transitionMessage
+	metrics     map[string]measurable  // metrics holds all references to measurable components
+	params      *params                //cahced params
+	feedback    *params                //cached feedback
+	errc        chan error             // errors channel
+	eventc      chan eventMessage      // event channel
+	transitionc chan transitionMessage // transitions channel
 
 	message struct {
 		ask  chan struct{}
@@ -446,6 +443,10 @@ func (p *Pipe) newMessage() *message {
 		m.params = p.params
 		p.params = new(params)
 	}
+	if !p.feedback.empty() {
+		m.feedback = p.feedback
+		p.feedback = new(params)
+	}
 	return m
 }
 
@@ -604,7 +605,9 @@ func (s running) listen(p *Pipe) listenFn {
 func (s running) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case measure:
-		fallthrough
+		e.params.applyTo(p.ID())
+		p.feedback = p.feedback.merge(e.params)
+		return s
 	case push:
 		e.params.applyTo(p.ID())
 		p.params = p.params.merge(e.params)
@@ -637,7 +640,9 @@ func (s pausing) listen(p *Pipe) listenFn {
 func (s pausing) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case measure:
-		fallthrough
+		e.params.applyTo(p.ID())
+		p.feedback = p.feedback.merge(e.params)
+		return s
 	case push:
 		e.params.applyTo(p.ID())
 		p.params = p.params.merge(e.params)
@@ -653,7 +658,7 @@ func (s pausing) sendMessage(p *Pipe) State {
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
 		param := phono.ReceivedBy(&wg, sink)
-		m.params = m.params.add(param)
+		m.feedback = m.feedback.add(param)
 	}
 	p.message.take <- m
 	wg.Wait()
