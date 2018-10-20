@@ -17,7 +17,6 @@ type (
 	Pump struct {
 		phono.UID
 		bufferSize phono.BufferSize
-		newMessage phono.NewMessageFunc
 
 		// properties of decoded wav.
 		wavNumChannels phono.NumChannels

@@ -28,7 +28,7 @@ type Pipe struct {
 	// metrics holds all references to measurable components
 	metrics map[string]Measurable
 
-	params *phono.Params
+	params *Params
 	// errors channel
 	errc chan error
 	// event channel
@@ -38,7 +38,7 @@ type Pipe struct {
 
 	message struct {
 		ask  chan struct{}
-		take chan *phono.Message
+		take chan *Message
 	}
 
 	log log.Logger
@@ -102,7 +102,7 @@ type event int
 type eventMessage struct {
 	event
 	done      chan error
-	params    *phono.Params
+	params    *Params
 	callbacks []string
 }
 
@@ -272,10 +272,13 @@ func (p *Pipe) WaitAsync(s State) <-chan error {
 }
 
 // Push new params into pipe
-func (p *Pipe) Push(newParams *phono.Params) {
+func (p *Pipe) Push(ps ...phono.Param) {
+	if len(ps) == 0 {
+		return
+	}
 	p.eventc <- eventMessage{
 		event:  params,
-		params: newParams,
+		params: NewParams(ps...),
 	}
 }
 
@@ -391,13 +394,13 @@ func mergeErrors(errcList ...<-chan error) chan error {
 }
 
 // broadcastToSinks passes messages to all sinks
-func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(in <-chan *Message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
-	broadcasts := make([]chan *phono.Message, len(p.sinks))
+	broadcasts := make([]chan *Message, len(p.sinks))
 	for i := range broadcasts {
-		broadcasts[i] = make(chan *phono.Message)
+		broadcasts[i] = make(chan *Message)
 	}
 
 	//start broadcast
@@ -429,22 +432,22 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 
 // newMessage creates a new message with cached params
 // if new params are pushed into pipe - next message will contain them
-func (p *Pipe) newMessage() *phono.Message {
-	m := new(phono.Message)
+func (p *Pipe) newMessage() *Message {
+	m := new(Message)
 	if !p.params.Empty() {
 		m.Params = p.params
-		p.params = new(phono.Params)
+		p.params = new(Params)
 	}
 	return m
 }
 
 // soure returns a default message producer which will be sent to pump
-func (p *Pipe) soure() phono.NewMessageFunc {
+func (p *Pipe) soure() newMessageFunc {
 	p.message.ask = make(chan struct{})
-	p.message.take = make(chan *phono.Message)
+	p.message.take = make(chan *Message)
 	var do struct{}
 	// if pipe paused this call will block
-	return func() *phono.Message {
+	return func() *Message {
 		p.message.ask <- do
 		msg := <-p.message.take
 		msg.SourceID = p.ID()

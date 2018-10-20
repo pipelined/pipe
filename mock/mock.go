@@ -43,7 +43,6 @@ type Pump struct {
 	Value float64
 	phono.BufferSize
 	phono.NumChannels
-	newMessage phono.NewMessageFunc
 }
 
 // IntervalParam pushes new interval value for pump.

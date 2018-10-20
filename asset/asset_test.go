@@ -54,12 +54,11 @@ func TestPipe(t *testing.T) {
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),
 		)
-		params := phono.NewParams(
+		p.Push(
 			pump.LimitParam(test.Limit),
 			pump.NumChannelsParam(test.NumChannels),
 			pump.ValueParam(test.value),
 		)
-		p.Push(params)
 		err := p.Do(pipe.Run)
 		assert.Nil(t, err)
 

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/dudk/phono"
-	"github.com/dudk/phono/mock"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -45,32 +44,6 @@ var sliceTests = []struct {
 		len:      1,
 		expected: nil,
 	},
-}
-
-func TestSimpleParams(t *testing.T) {
-	p := &mock.Pump{}
-	interval := 10 * time.Millisecond
-	params := phono.NewParams(p.IntervalParam(interval))
-	params.ApplyTo(p.ID())
-
-	assert.Equal(t, interval, p.Interval)
-}
-
-func TestMergeParams(t *testing.T) {
-	var params *phono.Params
-	p := &mock.Pump{}
-
-	interval := 10 * time.Millisecond
-	newParams := phono.NewParams(p.IntervalParam(interval))
-	params = params.Merge(newParams)
-	params.ApplyTo(p.ID())
-	assert.Equal(t, interval, p.Interval)
-
-	newInterval := 20 * time.Millisecond
-	newParams = phono.NewParams(p.IntervalParam(newInterval))
-	params = params.Merge(newParams)
-	params.ApplyTo(p.ID())
-	assert.Equal(t, newInterval, p.Interval)
 }
 
 func TestBuffer(t *testing.T) {
