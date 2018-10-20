@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/dudk/phono"
-	"github.com/dudk/phono/pipe"
 )
 
 const (
@@ -37,7 +36,7 @@ type (
 // Pump mocks a pipe.Pump interface.
 type Pump struct {
 	phono.UID
-	pipe.Counter
+	Counter
 	Interval time.Duration
 	Limit
 	Value float64
@@ -109,7 +108,7 @@ func (p *Pump) Pump(string) (phono.PumpFunc, error) {
 // Processor mocks a pipe.Processor interface.
 type Processor struct {
 	phono.UID
-	pipe.Counter
+	Counter
 }
 
 // Process implementation for runner
@@ -125,7 +124,7 @@ func (p *Processor) Process(string) (phono.ProcessFunc, error) {
 // Buffer is not thread-safe, so should not be checked while pipe is running.
 type Sink struct {
 	phono.UID
-	pipe.Counter
+	Counter
 	phono.Buffer
 }
 
@@ -138,4 +137,32 @@ func (s *Sink) Sink(string) (phono.SinkFunc, error) {
 		s.Counter.Advance(b)
 		return nil
 	}, nil
+}
+
+// Counter counts messages and samples.
+// Duration is not zero only in context of measure.
+type Counter struct {
+	messages int64
+	samples  int64
+}
+
+// Advance counter's metrics.
+func (c *Counter) Advance(buf phono.Buffer) {
+	c.messages++
+	c.samples = c.samples + int64(buf.Size())
+}
+
+// Reset resets counter's metrics.
+func (c *Counter) Reset() {
+	c.messages, c.samples = 0, 0
+}
+
+// Count returns messages and samples metrics.
+func (c *Counter) Count() (int64, int64) {
+	return c.messages, c.samples
+}
+
+// Messages returns messages metrics.
+func (c *Counter) Messages() int64 {
+	return c.messages
 }
