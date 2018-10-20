@@ -3,8 +3,6 @@ package asset_test
 import (
 	"testing"
 
-	"github.com/dudk/phono/pipe/runner"
-
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/asset"
 	"github.com/dudk/phono/mock"
@@ -56,12 +54,11 @@ func TestPipe(t *testing.T) {
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),
 		)
-		params := phono.NewParams(
+		p.Push(
 			pump.LimitParam(test.Limit),
 			pump.NumChannelsParam(test.NumChannels),
 			pump.ValueParam(test.value),
 		)
-		p.Push(params)
 		err := p.Do(pipe.Run)
 		assert.Nil(t, err)
 
@@ -83,6 +80,6 @@ func TestPipe(t *testing.T) {
 		}
 		err = p.Do(pipe.Run)
 		assert.NotNil(t, err)
-		assert.Equal(t, runner.ErrSingleUseReused, err)
+		assert.Equal(t, phono.ErrSingleUseReused, err)
 	}
 }

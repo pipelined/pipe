@@ -1,11 +1,42 @@
 package phono
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
 
-// Pipe transport types
+// Pump is a source of samples
+type Pump interface {
+	Identifiable
+	Pump(string) (PumpFunc, error)
+}
+
+// Processor defines interface for pipe-processors
+type Processor interface {
+	Identifiable
+	Process(string) (ProcessFunc, error)
+}
+
+// Sink is an interface for final stage in audio pipeline
+type Sink interface {
+	Identifiable
+	// RunSink(sourceID string) SinkRunner
+	Sink(string) (SinkFunc, error)
+}
+
+// Components closure types.
+type (
+	// PumpFunc produces new buffer of data.
+	PumpFunc func() (Buffer, error)
+
+	// ProcessFunc consumes and returns new buffer of data.
+	ProcessFunc func(Buffer) (Buffer, error)
+
+	// SinkFunc consumes buffer of data.
+	SinkFunc func(Buffer) error
+)
+
 type (
 	// Buffer represent a sample data sliced per channel
 	Buffer [][]float64
@@ -20,20 +51,6 @@ type (
 		Start int64
 		Len   int
 	}
-
-	// Message is a main structure for pipe transport
-	Message struct {
-		// Buffer of message
-		Buffer
-		// Params for pipe
-		*Params
-		// ID of original pipe
-		SourceID string
-	}
-
-	// NewMessageFunc is a message-producer function
-	// sourceID expected to be pump's id
-	NewMessageFunc func() *Message
 )
 
 // Param-related types
@@ -60,11 +77,6 @@ type (
 		at     int64
 		atTime time.Duration
 	}
-
-	// Params represent a set of parameters mapped to ID of their receivers
-	Params struct {
-		private map[string][]ParamFunc
-	}
 )
 
 // Generic types
@@ -75,8 +87,22 @@ type (
 	NumChannels int
 	// SampleRate represents a sample rate value
 	SampleRate int
-	// Tempo represents a tempo value
-	Tempo float32
+)
+
+// SingleUse is designed to be used in runner-return functions to define a single-use pipe components.
+func SingleUse(once *sync.Once) (err error) {
+	err = ErrSingleUseReused
+	once.Do(func() {
+		err = nil
+	})
+	return
+}
+
+var (
+	// ErrSingleUseReused is returned when object designed for single-use is being reused.
+	ErrSingleUseReused = errors.New("Error reuse single-use object")
+	// ErrEOP is returned if pump finished processing and indicates a gracefull ending
+	ErrEOP = errors.New("End of pipe")
 )
 
 // At assignes param to sample position
@@ -93,70 +119,6 @@ func (p *Param) AtTime(d time.Duration) *Param {
 		p.atTime = d
 	}
 	return p
-}
-
-// NewParams returns a new params instance with initialised map inside
-func NewParams(params ...Param) (result *Params) {
-	result = &Params{
-		private: make(map[string][]ParamFunc),
-	}
-	result.Add(params...)
-	return
-}
-
-// Add accepts a slice of params
-func (p *Params) Add(params ...Param) *Params {
-	if p == nil {
-		p = NewParams(params...)
-	} else {
-		for _, param := range params {
-			private, ok := p.private[param.ID]
-			if !ok {
-				private = make([]ParamFunc, 0, len(params))
-			}
-			private = append(private, param.Apply)
-
-			p.private[param.ID] = private
-		}
-	}
-
-	return p
-}
-
-// ApplyTo consumes params defined for consumer in this param set
-func (p *Params) ApplyTo(id string) {
-	if p == nil {
-		return
-	}
-	if params, ok := p.private[id]; ok {
-		for _, param := range params {
-			param()
-		}
-		delete(p.private, id)
-	}
-}
-
-// Merge two param sets into one
-func (p *Params) Merge(source *Params) *Params {
-	if p == nil || p.Empty() {
-		return source
-	}
-	for newKey, newValues := range source.private {
-		if _, ok := p.private[newKey]; ok {
-			p.private[newKey] = append(p.private[newKey], newValues...)
-		} else {
-			p.private[newKey] = newValues
-		}
-	}
-	return p
-}
-
-// Empty returns true if params are empty
-func (p *Params) Empty() bool {
-	if p == nil || p.private == nil || len(p.private) == 0 {
-		return true
-	}
-	return false
 }
 
 // ID of the pipe
