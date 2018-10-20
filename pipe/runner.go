@@ -113,7 +113,7 @@ func (p *PumpRunner) Run(ctx context.Context, sourceID string, newMessage newMes
 		var err error
 		for {
 			m := newMessage()
-			m.ApplyTo(p.Pump.ID())
+			m.applyTo(p.Pump.ID())
 			m.Buffer, err = pumpFn()
 			if err != nil {
 				if err != ErrEOP {
@@ -171,7 +171,7 @@ func (p *ProcessRunner) Run(sourceID string, in <-chan *message) (<-chan *messag
 				if !ok {
 					return
 				}
-				m.ApplyTo(p.Processor.ID())
+				m.applyTo(p.Processor.ID())
 				m.Buffer, err = processFn(m.Buffer)
 				if err != nil {
 					errc <- err
@@ -219,7 +219,7 @@ func (s *SinkRunner) Run(sourceID string, in <-chan *message) (<-chan error, err
 				if !ok {
 					return
 				}
-				m.Params.ApplyTo(s.Sink.ID())
+				m.params.applyTo(s.Sink.ID())
 				err = sinkFn(m.Buffer)
 				if err != nil {
 					errc <- err

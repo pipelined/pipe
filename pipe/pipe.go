@@ -28,7 +28,7 @@ type Pipe struct {
 	// metrics holds all references to measurable components
 	metrics map[string]Measurable
 
-	params *Params
+	params *params
 	// errors channel
 	errc chan error
 	// event channel
@@ -102,7 +102,7 @@ type event int
 type eventMessage struct {
 	event
 	done      chan error
-	params    *Params
+	params    *params
 	callbacks []string
 }
 
@@ -117,7 +117,7 @@ const (
 	run event = iota
 	pause
 	resume
-	params
+	push
 	measure
 )
 
@@ -272,13 +272,13 @@ func (p *Pipe) WaitAsync(s State) <-chan error {
 }
 
 // Push new params into pipe
-func (p *Pipe) Push(ps ...phono.Param) {
-	if len(ps) == 0 {
+func (p *Pipe) Push(values ...phono.Param) {
+	if len(values) == 0 {
 		return
 	}
 	p.eventc <- eventMessage{
-		event:  params,
-		params: NewParams(ps...),
+		event:  push,
+		params: newParams(values...),
 	}
 }
 
@@ -320,7 +320,7 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 				wg.Done()
 			},
 		}
-		em.params = em.params.Add(param)
+		em.params = em.params.add(param)
 	}
 	//wait and close
 	go func() {
@@ -434,9 +434,9 @@ func (p *Pipe) broadcastToSinks(in <-chan *message) ([]<-chan error, error) {
 // if new params are pushed into pipe - next message will contain them
 func (p *Pipe) newMessage() *message {
 	m := new(message)
-	if !p.params.Empty() {
-		m.Params = p.params
-		p.params = new(Params)
+	if !p.params.empty() {
+		m.params = p.params
+		p.params = new(params)
 	}
 	return m
 }
@@ -450,7 +450,7 @@ func (p *Pipe) soure() newMessageFunc {
 	return func() *message {
 		p.message.ask <- do
 		msg := <-p.message.take
-		msg.SourceID = p.ID()
+		msg.sourceID = p.ID()
 		return msg
 	}
 }
@@ -472,7 +472,7 @@ func (e event) String() string {
 		return "pause"
 	case resume:
 		return "resume"
-	case params:
+	case push:
 		return "params"
 	}
 	return "unknown"
@@ -538,13 +538,13 @@ func (s ready) listen(p *Pipe) listenFn {
 
 func (s ready) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
-	case params:
-		e.params.ApplyTo(p.ID())
-		p.params = p.params.Merge(e.params)
+	case push:
+		e.params.applyTo(p.ID())
+		p.params = p.params.merge(e.params)
 		return s
 	case measure:
 		for _, id := range e.callbacks {
-			e.params.ApplyTo(id)
+			e.params.applyTo(id)
 		}
 		return s
 	case run:
@@ -597,9 +597,9 @@ func (s running) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case measure:
 		fallthrough
-	case params:
-		e.params.ApplyTo(p.ID())
-		p.params = p.params.Merge(e.params)
+	case push:
+		e.params.applyTo(p.ID())
+		p.params = p.params.merge(e.params)
 		return s
 	case pause:
 		close(e.done)
@@ -630,9 +630,9 @@ func (s pausing) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case measure:
 		fallthrough
-	case params:
-		e.params.ApplyTo(p.ID())
-		p.params = p.params.Merge(e.params)
+	case push:
+		e.params.applyTo(p.ID())
+		p.params = p.params.merge(e.params)
 		return s
 	}
 	e.done <- ErrInvalidState
@@ -645,7 +645,7 @@ func (s pausing) sendMessage(p *Pipe) State {
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
 		param := phono.ReceivedBy(&wg, sink)
-		m.Params = m.Params.Add(param)
+		m.params = m.params.add(param)
 	}
 	p.message.take <- m
 	wg.Wait()
@@ -670,13 +670,13 @@ func (s paused) listen(p *Pipe) listenFn {
 
 func (s paused) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
-	case params:
-		e.params.ApplyTo(p.ID())
-		p.params = p.params.Merge(e.params)
+	case push:
+		e.params.applyTo(p.ID())
+		p.params = p.params.merge(e.params)
 		return s
 	case measure:
 		for _, id := range e.callbacks {
-			e.params.ApplyTo(id)
+			e.params.applyTo(id)
 		}
 		return s
 	case resume:
