@@ -44,9 +44,9 @@ type Pipe struct {
 	log log.Logger
 }
 
-// Param provides a way to set parameters to pipe
+// Option provides a way to set parameters to pipe
 // returns phono.ParamFunc, which can be executed later
-type Param func(p *Pipe) phono.ParamFunc
+type Option func(p *Pipe) phono.ParamFunc
 
 type listenFn func() State
 
@@ -128,9 +128,9 @@ var (
 	ErrEOP = errors.New("End of pipe")
 )
 
-// New creates a new pipe and applies provided params
+// New creates a new pipe and applies provided options
 // returned pipe is in ready state
-func New(sampleRate phono.SampleRate, params ...Param) *Pipe {
+func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 	p := &Pipe{
 		sampleRate:  sampleRate,
 		processors:  make([]*ProcessRunner, 0),
@@ -141,8 +141,8 @@ func New(sampleRate phono.SampleRate, params ...Param) *Pipe {
 		metrics:     make(map[string]Measurable),
 	}
 	p.SetID(xid.New().String())
-	for _, param := range params {
-		param(p)()
+	for _, option := range options {
+		option(p)()
 	}
 	go func() {
 		var state State = Ready
@@ -154,7 +154,7 @@ func New(sampleRate phono.SampleRate, params ...Param) *Pipe {
 }
 
 // WithName sets name to Pipe
-func WithName(n string) Param {
+func WithName(n string) Option {
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			p.name = n
@@ -163,7 +163,7 @@ func WithName(n string) Param {
 }
 
 // WithPump sets pump to Pipe
-func WithPump(pump phono.Pump) Param {
+func WithPump(pump phono.Pump) Option {
 	if pump.ID() == "" {
 		pump.SetID(xid.New().String())
 	}
@@ -177,7 +177,7 @@ func WithPump(pump phono.Pump) Param {
 }
 
 // WithProcessors sets processors to Pipe
-func WithProcessors(processors ...phono.Processor) Param {
+func WithProcessors(processors ...phono.Processor) Option {
 	for i := range processors {
 		if processors[i].ID() == "" {
 			processors[i].SetID(xid.New().String())
@@ -195,7 +195,7 @@ func WithProcessors(processors ...phono.Processor) Param {
 }
 
 // WithSinks sets sinks to Pipe
-func WithSinks(sinks ...phono.Sink) Param {
+func WithSinks(sinks ...phono.Sink) Option {
 	for i := range sinks {
 		if sinks[i].ID() == "" {
 			sinks[i].SetID(xid.New().String())
