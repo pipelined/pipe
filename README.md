@@ -2,6 +2,7 @@
 [![GoDoc](https://godoc.org/github.com/dudk/phono?status.svg)](https://godoc.org/github.com/dudk/phono)
 [![Build Status](https://travis-ci.org/dudk/phono.svg?branch=master)](https://travis-ci.org/dudk/phono)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dudk/phono)](https://goreportcard.com/report/github.com/dudk/phono)
+[![codecov](https://codecov.io/gh/dudk/phono/branch/master/graph/badge.svg)](https://codecov.io/gh/dudk/phono)
 
 `phono` is a framework for floating point signal processing. It utilizes [pipeline](https://blog.golang.org/pipelines) pattern to build fast, asynchronomous and easy-to-extend pipes for sound processing. Each pipe consists of one Pump, zero or multiple Processors and one or more Sinks. Phono also offers a friendly API for new pipe components implementations.
 
