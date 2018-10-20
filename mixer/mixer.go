@@ -5,7 +5,6 @@ import (
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/log"
-	"github.com/dudk/phono/pipe"
 )
 
 // Mixer summs up multiple channels of messages into a single channel.
@@ -176,7 +175,7 @@ func (m *Mixer) Pump(sourceID string) (phono.PumpFunc, error) {
 		// receive new buffer
 		f, ok := <-m.ready
 		if !ok {
-			return nil, pipe.ErrEOP
+			return nil, phono.ErrEOP
 		}
 		b := f.sum(m.numChannels, m.bufferSize)
 		return b, nil

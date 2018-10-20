@@ -98,8 +98,12 @@ func SingleUse(once *sync.Once) (err error) {
 	return
 }
 
-// ErrSingleUseReused is returned when object designed for single-use is being reused.
-var ErrSingleUseReused = errors.New("Error reuse single-use object")
+var (
+	// ErrSingleUseReused is returned when object designed for single-use is being reused.
+	ErrSingleUseReused = errors.New("Error reuse single-use object")
+	// ErrEOP is returned if pump finished processing and indicates a gracefull ending
+	ErrEOP = errors.New("End of pipe")
+)
 
 // At assignes param to sample position
 func (p *Param) At(s int64) *Param {

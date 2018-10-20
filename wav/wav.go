@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/dudk/phono"
-	"github.com/dudk/phono/pipe"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 )
@@ -105,7 +104,7 @@ func (p *Pump) Pump(string) (phono.PumpFunc, error) {
 		}
 
 		if readSamples == 0 {
-			return nil, pipe.ErrEOP
+			return nil, phono.ErrEOP
 		}
 		// prune buffer to actual size
 		p.ib.Data = p.ib.Data[:readSamples]
