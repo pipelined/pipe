@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dudk/phono/pipe/runner"
-
 	"github.com/dudk/phono/mock"
 
 	"github.com/go-audio/audio"
@@ -65,7 +63,7 @@ func TestWavPipe(t *testing.T) {
 		assert.Equal(t, test.samples, sampleCount)
 
 		err = p.Do(pipe.Run)
-		assert.Equal(t, runner.ErrSingleUseReused, err)
+		assert.Equal(t, phono.ErrSingleUseReused, err)
 	}
 }
 

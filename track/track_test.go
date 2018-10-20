@@ -197,9 +197,7 @@ func TestSliceOverlaps(t *testing.T) {
 			pipe.WithSinks(sink),
 		)
 		if test.BufferSize > 0 {
-			p.Push(phono.NewParams(
-				track.BufferSizeParam(test.BufferSize),
-			))
+			p.Push(track.BufferSizeParam(test.BufferSize))
 		}
 
 		_ = p.Do(pipe.Run)

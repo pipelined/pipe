@@ -11,51 +11,6 @@ import (
 	"github.com/rs/xid"
 )
 
-// Pump is a source of samples
-type Pump interface {
-	phono.Identifiable
-	RunPump(sourceID string) PumpRunner
-	Pump(*phono.Message) (*phono.Message, error)
-}
-
-// Processor defines interface for pipe-processors
-type Processor interface {
-	phono.Identifiable
-	RunProcess(sourceID string) ProcessRunner
-	Process(*phono.Message) (*phono.Message, error)
-}
-
-// Sink is an interface for final stage in audio pipeline
-type Sink interface {
-	phono.Identifiable
-	RunSink(sourceID string) SinkRunner
-	Sink(*phono.Message) error
-}
-
-// PumpRunner is a pump runner
-type PumpRunner interface {
-	Measurable
-	phono.Identifiable
-	Run(context.Context, phono.NewMessageFunc) (<-chan *phono.Message, <-chan error, error)
-	SetMetric(Measurable)
-}
-
-// ProcessRunner is a processor runner
-type ProcessRunner interface {
-	Measurable
-	phono.Identifiable
-	Run(<-chan *phono.Message) (<-chan *phono.Message, <-chan error, error)
-	SetMetric(Measurable)
-}
-
-// SinkRunner is a sink runner
-type SinkRunner interface {
-	Measurable
-	phono.Identifiable
-	Run(<-chan *phono.Message) (<-chan error, error)
-	SetMetric(Measurable)
-}
-
 // Pipe is a pipeline with fully defined sound processing sequence
 // it has:
 //	 1 		pump
@@ -66,14 +21,14 @@ type Pipe struct {
 	sampleRate phono.SampleRate
 	phono.UID
 	cancelFn   context.CancelFunc
-	pump       PumpRunner
-	processors []ProcessRunner
-	sinks      []SinkRunner
+	pump       *pumpRunner
+	processors []*processRunner
+	sinks      []*sinkRunner
 
 	// metrics holds all references to measurable components
-	metrics map[string]Measurable
+	metrics map[string]measurable
 
-	params *phono.Params
+	params *params
 	// errors channel
 	errc chan error
 	// event channel
@@ -83,15 +38,15 @@ type Pipe struct {
 
 	message struct {
 		ask  chan struct{}
-		take chan *phono.Message
+		take chan *message
 	}
 
 	log log.Logger
 }
 
-// Param provides a way to set parameters to pipe
+// Option provides a way to set parameters to pipe
 // returns phono.ParamFunc, which can be executed later
-type Param func(p *Pipe) phono.ParamFunc
+type Option func(p *Pipe) phono.ParamFunc
 
 type listenFn func() State
 
@@ -147,7 +102,7 @@ type event int
 type eventMessage struct {
 	event
 	done      chan error
-	params    *phono.Params
+	params    *params
 	callbacks []string
 }
 
@@ -162,32 +117,28 @@ const (
 	run event = iota
 	pause
 	resume
-	params
+	push
 	measure
 )
 
-var (
-	// ErrInvalidState is returned if pipe method cannot be executed at this moment
-	ErrInvalidState = errors.New("Invalid state")
-	// ErrEOP is returned if pump finished processing and indicates a gracefull ending
-	ErrEOP = errors.New("End of pipe")
-)
+// ErrInvalidState is returned if pipe method cannot be executed at this moment
+var ErrInvalidState = errors.New("Invalid state")
 
-// New creates a new pipe and applies provided params
+// New creates a new pipe and applies provided options
 // returned pipe is in ready state
-func New(sampleRate phono.SampleRate, params ...Param) *Pipe {
+func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 	p := &Pipe{
 		sampleRate:  sampleRate,
-		processors:  make([]ProcessRunner, 0),
-		sinks:       make([]SinkRunner, 0),
+		processors:  make([]*processRunner, 0),
+		sinks:       make([]*sinkRunner, 0),
 		eventc:      make(chan eventMessage, 100),
 		transitionc: make(chan transitionMessage, 100),
 		log:         log.GetLogger(),
-		metrics:     make(map[string]Measurable),
+		metrics:     make(map[string]measurable),
 	}
 	p.SetID(xid.New().String())
-	for _, param := range params {
-		param(p)()
+	for _, option := range options {
+		option(p)()
 	}
 	go func() {
 		var state State = Ready
@@ -199,7 +150,7 @@ func New(sampleRate phono.SampleRate, params ...Param) *Pipe {
 }
 
 // WithName sets name to Pipe
-func WithName(n string) Param {
+func WithName(n string) Option {
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			p.name = n
@@ -208,22 +159,25 @@ func WithName(n string) Param {
 }
 
 // WithPump sets pump to Pipe
-func WithPump(pump Pump) Param {
+func WithPump(pump phono.Pump) Option {
 	if pump.ID() == "" {
 		pump.SetID(xid.New().String())
 	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
-			runner := pump.RunPump(p.ID())
-			p.metrics[runner.ID()] = runner
-			runner.SetMetric(NewMetric(runner.ID(), p.sampleRate))
-			p.pump = runner
+			r := &pumpRunner{
+				Pump:       pump,
+				Flusher:    flusher(p),
+				measurable: newMetric(pump.ID(), p.sampleRate, counters.pump...),
+			}
+			p.metrics[r.ID()] = r
+			p.pump = r
 		}
 	}
 }
 
 // WithProcessors sets processors to Pipe
-func WithProcessors(processors ...Processor) Param {
+func WithProcessors(processors ...phono.Processor) Option {
 	for i := range processors {
 		if processors[i].ID() == "" {
 			processors[i].SetID(xid.New().String())
@@ -232,17 +186,20 @@ func WithProcessors(processors ...Processor) Param {
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			for i := range processors {
-				runner := processors[i].RunProcess(p.ID())
-				p.metrics[runner.ID()] = runner
-				runner.SetMetric(NewMetric(runner.ID(), p.sampleRate))
-				p.processors = append(p.processors, runner)
+				r := &processRunner{
+					Processor:  processors[i],
+					Flusher:    flusher(processors[i]),
+					measurable: newMetric(processors[i].ID(), p.sampleRate, counters.processor...),
+				}
+				p.metrics[r.ID()] = r
+				p.processors = append(p.processors, r)
 			}
 		}
 	}
 }
 
 // WithSinks sets sinks to Pipe
-func WithSinks(sinks ...Sink) Param {
+func WithSinks(sinks ...phono.Sink) Option {
 	for i := range sinks {
 		if sinks[i].ID() == "" {
 			sinks[i].SetID(xid.New().String())
@@ -251,10 +208,13 @@ func WithSinks(sinks ...Sink) Param {
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
 			for i := range sinks {
-				runner := sinks[i].RunSink(p.ID())
-				p.metrics[runner.ID()] = runner
-				runner.SetMetric(NewMetric(runner.ID(), p.sampleRate))
-				p.sinks = append(p.sinks, runner)
+				r := &sinkRunner{
+					Sink:       sinks[i],
+					Flusher:    flusher(sinks[i]),
+					measurable: newMetric(sinks[i].ID(), p.sampleRate, counters.sink...),
+				}
+				p.metrics[r.ID()] = r
+				p.sinks = append(p.sinks, r)
 			}
 		}
 	}
@@ -320,10 +280,13 @@ func (p *Pipe) WaitAsync(s State) <-chan error {
 }
 
 // Push new params into pipe
-func (p *Pipe) Push(newParams *phono.Params) {
+func (p *Pipe) Push(values ...phono.Param) {
+	if len(values) == 0 {
+		return
+	}
 	p.eventc <- eventMessage{
-		event:  params,
-		params: newParams,
+		event:  push,
+		params: newParams(values...),
 	}
 }
 
@@ -365,7 +328,7 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 				wg.Done()
 			},
 		}
-		em.params = em.params.Add(param)
+		em.params = em.params.add(param)
 	}
 	//wait and close
 	go func() {
@@ -439,18 +402,18 @@ func mergeErrors(errcList ...<-chan error) chan error {
 }
 
 // broadcastToSinks passes messages to all sinks
-func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(in <-chan *message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
-	broadcasts := make([]chan *phono.Message, len(p.sinks))
+	broadcasts := make([]chan *message, len(p.sinks))
 	for i := range broadcasts {
-		broadcasts[i] = make(chan *phono.Message)
+		broadcasts[i] = make(chan *message)
 	}
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.Run(broadcasts[i])
+		errc, err := s.run(p.ID(), broadcasts[i])
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
 			return nil, err
@@ -477,25 +440,25 @@ func (p *Pipe) broadcastToSinks(in <-chan *phono.Message) ([]<-chan error, error
 
 // newMessage creates a new message with cached params
 // if new params are pushed into pipe - next message will contain them
-func (p *Pipe) newMessage() *phono.Message {
-	m := new(phono.Message)
-	if !p.params.Empty() {
-		m.Params = p.params
-		p.params = new(phono.Params)
+func (p *Pipe) newMessage() *message {
+	m := new(message)
+	if !p.params.empty() {
+		m.params = p.params
+		p.params = new(params)
 	}
 	return m
 }
 
 // soure returns a default message producer which will be sent to pump
-func (p *Pipe) soure() phono.NewMessageFunc {
+func (p *Pipe) soure() newMessageFunc {
 	p.message.ask = make(chan struct{})
-	p.message.take = make(chan *phono.Message)
+	p.message.take = make(chan *message)
 	var do struct{}
 	// if pipe paused this call will block
-	return func() *phono.Message {
+	return func() *message {
 		p.message.ask <- do
 		msg := <-p.message.take
-		msg.SourceID = p.ID()
+		msg.sourceID = p.ID()
 		return msg
 	}
 }
@@ -517,7 +480,7 @@ func (e event) String() string {
 		return "pause"
 	case resume:
 		return "resume"
-	case params:
+	case push:
 		return "params"
 	}
 	return "unknown"
@@ -583,13 +546,13 @@ func (s ready) listen(p *Pipe) listenFn {
 
 func (s ready) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
-	case params:
-		e.params.ApplyTo(p.ID())
-		p.params = p.params.Merge(e.params)
+	case push:
+		e.params.applyTo(p.ID())
+		p.params = p.params.merge(e.params)
 		return s
 	case measure:
 		for _, id := range e.callbacks {
-			e.params.ApplyTo(id)
+			e.params.applyTo(id)
 		}
 		return s
 	case run:
@@ -598,7 +561,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 		// start pump
-		out, errc, err := p.pump.Run(ctx, p.soure())
+		out, errc, err := p.pump.run(ctx, p.ID(), p.soure())
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 			e.done <- err
@@ -609,7 +572,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 
 		// start chained processesing
 		for _, proc := range p.processors {
-			out, errc, err = proc.Run(out)
+			out, errc, err = proc.run(p.ID(), out)
 			if err != nil {
 				p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 				e.done <- err
@@ -642,9 +605,9 @@ func (s running) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case measure:
 		fallthrough
-	case params:
-		e.params.ApplyTo(p.ID())
-		p.params = p.params.Merge(e.params)
+	case push:
+		e.params.applyTo(p.ID())
+		p.params = p.params.merge(e.params)
 		return s
 	case pause:
 		close(e.done)
@@ -675,9 +638,9 @@ func (s pausing) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
 	case measure:
 		fallthrough
-	case params:
-		e.params.ApplyTo(p.ID())
-		p.params = p.params.Merge(e.params)
+	case push:
+		e.params.applyTo(p.ID())
+		p.params = p.params.merge(e.params)
 		return s
 	}
 	e.done <- ErrInvalidState
@@ -690,7 +653,7 @@ func (s pausing) sendMessage(p *Pipe) State {
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
 		param := phono.ReceivedBy(&wg, sink)
-		m.Params = m.Params.Add(param)
+		m.params = m.params.add(param)
 	}
 	p.message.take <- m
 	wg.Wait()
@@ -715,13 +678,13 @@ func (s paused) listen(p *Pipe) listenFn {
 
 func (s paused) transition(p *Pipe, e eventMessage) State {
 	switch e.event {
-	case params:
-		e.params.ApplyTo(p.ID())
-		p.params = p.params.Merge(e.params)
+	case push:
+		e.params.applyTo(p.ID())
+		p.params = p.params.merge(e.params)
 		return s
 	case measure:
 		for _, id := range e.callbacks {
-			e.params.ApplyTo(id)
+			e.params.applyTo(id)
 		}
 		return s
 	case resume:
