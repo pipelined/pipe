@@ -89,7 +89,7 @@ func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMes
 		var err error
 		for {
 			m := newMessage()
-			m.applyTo(p.Pump.ID())
+			m.applyTo(p.ID())
 			m.Buffer, err = pumpFn()
 			if err != nil {
 				if err != phono.ErrEOP {
@@ -98,13 +98,14 @@ func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMes
 				return
 			}
 			p.Counter(OutputCounter).Advance(m.Buffer)
+			p.Latency()
+			m.feedback.applyTo(p.ID())
 			select {
 			case <-ctx.Done():
 				return
 			default:
 				out <- m
 			}
-			p.Latency()
 		}
 	}()
 	return out, errc, nil
@@ -147,9 +148,10 @@ func (p *processRunner) run(sourceID string, in <-chan *message) (<-chan *messag
 					return
 				}
 				p.Counter(OutputCounter).Advance(m.Buffer)
+				p.Latency()
+				m.feedback.applyTo(p.ID())
 				p.out <- m
 			}
-			p.Latency()
 		}
 	}()
 	return p.out, errc, nil
@@ -188,8 +190,9 @@ func (s *sinkRunner) run(sourceID string, in <-chan *message) (<-chan error, err
 					return
 				}
 				s.Counter(OutputCounter).Advance(m.Buffer)
+				s.Latency()
+				m.feedback.applyTo(s.ID())
 			}
-			s.Latency()
 		}
 	}()
 
