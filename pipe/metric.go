@@ -14,7 +14,6 @@ type (
 		Reset()
 		Measure() Measure
 		FinishMeasure()
-		AddCounters(...string)
 		Counter(string) *Counter
 		Latency()
 	}
