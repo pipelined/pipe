@@ -1,27 +1,35 @@
-package pipe_test
+package pipe
 
-// func TestSimpleParams(t *testing.T) {
-// 	p := &mock.Pump{}
-// 	interval := 10 * time.Millisecond
-// 	params := pipe.NewParams(p.IntervalParam(interval))
-// 	params.ApplyTo(p.ID())
+import (
+	"testing"
+	"time"
 
-// 	assert.Equal(t, interval, p.Interval)
-// }
+	"github.com/dudk/phono/mock"
+	"github.com/stretchr/testify/assert"
+)
 
-// func TestMergeParams(t *testing.T) {
-// 	var params *pipe.Params
-// 	p := &mock.Pump{}
+func TestSimpleParams(t *testing.T) {
+	pump := &mock.Pump{}
+	interval := 10 * time.Millisecond
+	p := newParams(pump.IntervalParam(interval))
+	p.applyTo(pump.ID())
 
-// 	interval := 10 * time.Millisecond
-// 	newParams := pipe.NewParams(p.IntervalParam(interval))
-// 	params = params.Merge(newParams)
-// 	params.ApplyTo(p.ID())
-// 	assert.Equal(t, interval, p.Interval)
+	assert.Equal(t, interval, pump.Interval)
+}
 
-// 	newInterval := 20 * time.Millisecond
-// 	newParams = pipe.NewParams(p.IntervalParam(newInterval))
-// 	params = params.Merge(newParams)
-// 	params.ApplyTo(p.ID())
-// 	assert.Equal(t, newInterval, p.Interval)
-// }
+func TestMergeParams(t *testing.T) {
+	var p *params
+	pump := &mock.Pump{}
+
+	interval := 10 * time.Millisecond
+	newP := newParams(pump.IntervalParam(interval))
+	p = p.merge(newP)
+	p.applyTo(pump.ID())
+	assert.Equal(t, interval, pump.Interval)
+
+	newInterval := 20 * time.Millisecond
+	newP = newParams(pump.IntervalParam(newInterval))
+	p = p.merge(newP)
+	p.applyTo(pump.ID())
+	assert.Equal(t, newInterval, pump.Interval)
+}
