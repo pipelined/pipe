@@ -26,7 +26,7 @@ type Pipe struct {
 	sinks      []*sinkRunner
 
 	// metrics holds all references to measurable components
-	metrics map[string]Measurable
+	metrics map[string]measurable
 
 	params *params
 	// errors channel
@@ -138,7 +138,7 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 		eventc:      make(chan eventMessage, 100),
 		transitionc: make(chan transitionMessage, 100),
 		log:         log.GetLogger(),
-		metrics:     make(map[string]Measurable),
+		metrics:     make(map[string]measurable),
 	}
 	p.SetID(xid.New().String())
 	for _, option := range options {
@@ -172,7 +172,7 @@ func WithPump(pump phono.Pump) Option {
 			r := &pumpRunner{
 				Pump:       pump,
 				Flusher:    flusher(p),
-				Measurable: NewMetric(pump.ID(), p.sampleRate, counters.pump...),
+				measurable: newMetric(pump.ID(), p.sampleRate, counters.pump...),
 			}
 			p.metrics[r.ID()] = r
 			p.pump = r
@@ -193,7 +193,7 @@ func WithProcessors(processors ...phono.Processor) Option {
 				r := &processRunner{
 					Processor:  processors[i],
 					Flusher:    flusher(processors[i]),
-					Measurable: NewMetric(processors[i].ID(), p.sampleRate, counters.processor...),
+					measurable: newMetric(processors[i].ID(), p.sampleRate, counters.processor...),
 				}
 				p.metrics[r.ID()] = r
 				p.processors = append(p.processors, r)
@@ -215,7 +215,7 @@ func WithSinks(sinks ...phono.Sink) Option {
 				r := &sinkRunner{
 					Sink:       sinks[i],
 					Flusher:    flusher(sinks[i]),
-					Measurable: NewMetric(sinks[i].ID(), p.sampleRate, counters.sink...),
+					measurable: newMetric(sinks[i].ID(), p.sampleRate, counters.sink...),
 				}
 				p.metrics[r.ID()] = r
 				p.sinks = append(p.sinks, r)

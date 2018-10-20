@@ -8,9 +8,10 @@ import (
 )
 
 type (
-	// Measurable identifies an entity with measurable metrics.
+	// measurable identifies an entity with measurable metrics.
 	// Each measurable can have multiple counters.
-	Measurable interface {
+	// If custom metrics will be needed, it can be exposed in the future.
+	measurable interface {
 		Reset()
 		Measure() Measure
 		FinishMeasure()
@@ -18,8 +19,8 @@ type (
 		Latency()
 	}
 
-	// Metric represents measures of pipe components.
-	Metric struct {
+	// metric represents measures of pipe components.
+	metric struct {
 		ID string
 		phono.SampleRate
 		Counters       map[string]*Counter
@@ -29,7 +30,7 @@ type (
 		latency        time.Duration
 	}
 
-	// Measure represents Metric values at certain moment of time.
+	// Measure represents metric values at certain moment of time.
 	// It should be used to transfer metrics values through pipe and avoid data races with counters.
 	Measure struct {
 		ID string
@@ -49,9 +50,9 @@ type (
 	}
 )
 
-// NewMetric creates new metric with requested measures.
-func NewMetric(id string, sampleRate phono.SampleRate, keys ...string) *Metric {
-	m := &Metric{
+// newMetric creates new metric with requested measures.
+func newMetric(id string, sampleRate phono.SampleRate, keys ...string) *metric {
+	m := &metric{
 		ID:         id,
 		SampleRate: sampleRate,
 		Counters:   make(map[string]*Counter),
@@ -61,7 +62,7 @@ func NewMetric(id string, sampleRate phono.SampleRate, keys ...string) *Metric {
 }
 
 // Reset metrics values
-func (m *Metric) Reset() {
+func (m *metric) Reset() {
 	m.start = time.Now()
 	m.latencyMeasure = time.Now()
 	for key := range m.Counters {
@@ -70,24 +71,24 @@ func (m *Metric) Reset() {
 }
 
 // FinishMeasure finalizes metric values.
-func (m *Metric) FinishMeasure() {
+func (m *metric) FinishMeasure() {
 	m.elapsed = time.Since(m.start)
 }
 
 // Counter returns counter for specified key.
-func (m *Metric) Counter(key string) *Counter {
+func (m *metric) Counter(key string) *Counter {
 	return m.Counters[key]
 }
 
 // AddCounters to metric with defined keys.
-func (m *Metric) AddCounters(keys ...string) {
+func (m *metric) AddCounters(keys ...string) {
 	for _, measure := range keys {
 		m.Counters[measure] = &Counter{}
 	}
 }
 
 // Latency sets latency since last latency measure.
-func (m *Metric) Latency() {
+func (m *metric) Latency() {
 	m.latency = time.Since(m.latencyMeasure)
 	m.latencyMeasure = time.Now()
 }
@@ -97,8 +98,8 @@ func (m Measure) String() string {
 	return fmt.Sprintf("SampleRate: %v Started: %v Elapsed: %v Latency: %v Counters: %v", m.SampleRate, m.Start, m.Elapsed, m.Latency, m.Counters)
 }
 
-// Measure returns latest measures of Metric.
-func (m *Metric) Measure() Measure {
+// Measure returns latest measures of metric.
+func (m *metric) Measure() Measure {
 	if m == nil {
 		return Measure{}
 	}
