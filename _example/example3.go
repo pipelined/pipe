@@ -4,6 +4,7 @@ import (
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/mixer"
 	"github.com/dudk/phono/pipe"
+	"github.com/dudk/phono/test"
 	"github.com/dudk/phono/wav"
 )
 
@@ -16,18 +17,15 @@ import (
 // In real life implicit conversion will be needed.
 func three() {
 	bs := phono.BufferSize(512)
-	inPath1 := "../_testdata/sample1.wav"
-	inPath2 := "../_testdata/sample2.wav"
-	outPath := "../_testdata/out/example3.wav"
 
-	wavPump1, err := wav.NewPump(inPath1, bs)
+	wavPump1, err := wav.NewPump(test.Data.Wav1, bs)
 	check(err)
-	wavPump2, err := wav.NewPump(inPath2, bs)
+	wavPump2, err := wav.NewPump(test.Data.Wav2, bs)
 	check(err)
 	sampleRate := wavPump1.WavSampleRate()
 
 	wavSink, err := wav.NewSink(
-		outPath,
+		test.Out.Example3,
 		wavPump1.WavSampleRate(),
 		wavPump1.WavNumChannels(),
 		wavPump1.WavBitDepth(),

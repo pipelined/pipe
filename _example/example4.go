@@ -5,6 +5,7 @@ import (
 	"github.com/dudk/phono/asset"
 	"github.com/dudk/phono/pipe"
 	"github.com/dudk/phono/portaudio"
+	"github.com/dudk/phono/test"
 	"github.com/dudk/phono/track"
 	"github.com/dudk/phono/wav"
 )
@@ -16,11 +17,9 @@ import (
 //		Save track into .wav and play it with portaudio
 func four() {
 	bufferSize := phono.BufferSize(512)
-	inPath := "../_testdata/sample1.wav"
-	outPath := "../_testdata/out/example4.wav"
 
 	// wav pump
-	wavPump, err := wav.NewPump(inPath, bufferSize)
+	wavPump, err := wav.NewPump(test.Data.Wav1, bufferSize)
 	check(err)
 	sampleRate := wavPump.WavSampleRate()
 
@@ -50,7 +49,7 @@ func four() {
 
 	// wav sink
 	wavSink, err := wav.NewSink(
-		outPath,
+		test.Out.Example4,
 		wavPump.WavSampleRate(),
 		wavPump.WavNumChannels(),
 		wavPump.WavBitDepth(),

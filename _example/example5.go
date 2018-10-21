@@ -4,6 +4,7 @@ import (
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/mixer"
 	"github.com/dudk/phono/pipe"
+	"github.com/dudk/phono/test"
 	"github.com/dudk/phono/vst2"
 	"github.com/dudk/phono/wav"
 	vst2sdk "github.com/dudk/vst2"
@@ -19,16 +20,13 @@ import (
 // In real life implicit conversion will be needed.
 func five() {
 	bs := phono.BufferSize(512)
-	inPath1 := "../_testdata/sample1.wav"
-	inPath2 := "../_testdata/sample2.wav"
-	outPath := "../_testdata/out/example5.wav"
 
 	// wav pump 1
-	wavPump1, err := wav.NewPump(inPath1, bs)
+	wavPump1, err := wav.NewPump(test.Data.Wav1, bs)
 	check(err)
 
 	// wav pump 2
-	wavPump2, err := wav.NewPump(inPath2, bs)
+	wavPump2, err := wav.NewPump(test.Data.Wav2, bs)
 	check(err)
 
 	sampleRate := wavPump1.WavSampleRate()
@@ -51,8 +49,7 @@ func five() {
 	defer track2.Close()
 
 	// vst2 processor
-	vst2path := "../_testdata/Krush.vst"
-	vst2lib, err := vst2sdk.Open(vst2path)
+	vst2lib, err := vst2sdk.Open(test.Vst)
 	check(err)
 	defer vst2lib.Close()
 
@@ -69,7 +66,7 @@ func five() {
 
 	// wav sink
 	wavSink, err := wav.NewSink(
-		outPath,
+		test.Out.Example5,
 		wavPump1.WavSampleRate(),
 		wavPump1.WavNumChannels(),
 		wavPump1.WavBitDepth(),
