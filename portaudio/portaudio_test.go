@@ -1,9 +1,10 @@
+// +build portaudio
+
 package portaudio_test
 
 import (
 	"testing"
 
-	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
 
 	"github.com/dudk/phono"
@@ -18,9 +19,6 @@ var (
 )
 
 func TestSink(t *testing.T) {
-	if mock.SkipPortaudio {
-		t.Skip("Skip portaudio_test.TestSink")
-	}
 	pump, err := wav.NewPump(inFile, bufferSize)
 	assert.Nil(t, err)
 	sampleRate := pump.WavSampleRate()
