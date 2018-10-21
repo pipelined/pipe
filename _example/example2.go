@@ -3,6 +3,7 @@ package example
 import (
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/pipe"
+	"github.com/dudk/phono/test"
 	"github.com/dudk/phono/vst2"
 	"github.com/dudk/phono/wav"
 	vst2sdk "github.com/dudk/vst2"
@@ -13,18 +14,15 @@ import (
 //		Process it with VST2 plugin
 // 		Save result into new .wav file
 func two() {
-	inPath := "../_testdata/sample1.wav"
-	outPath := "../_testdata/out/example2.wav"
 	bufferSize := phono.BufferSize(512)
 	wavPump, err := wav.NewPump(
-		inPath,
+		test.Data.Wav1,
 		bufferSize,
 	)
 	check(err)
 	sampleRate := wavPump.WavSampleRate()
 
-	vst2path := "../_testdata/Krush.vst"
-	vst2lib, err := vst2sdk.Open(vst2path)
+	vst2lib, err := vst2sdk.Open(test.Vst)
 	check(err)
 	defer vst2lib.Close()
 
@@ -38,7 +36,7 @@ func two() {
 		wavPump.WavNumChannels(),
 	)
 	wavSink, err := wav.NewSink(
-		outPath,
+		test.Out.Example2,
 		wavPump.WavSampleRate(),
 		wavPump.WavNumChannels(),
 		wavPump.WavBitDepth(),

@@ -4,6 +4,7 @@ import (
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/pipe"
 	"github.com/dudk/phono/portaudio"
+	"github.com/dudk/phono/test"
 	"github.com/dudk/phono/wav"
 )
 
@@ -11,11 +12,10 @@ import (
 //		Read .wav file
 //		Play it with portaudio
 func one() {
-	wavPath := "../_testdata/sample1.wav"
 	bufferSize := phono.BufferSize(512)
 	// wav pump
 	wavPump, err := wav.NewPump(
-		wavPath,
+		test.Data.Wav1,
 		bufferSize,
 	)
 	check(err)
