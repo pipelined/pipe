@@ -1,8 +1,6 @@
 package mock
 
 import (
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/dudk/phono"
@@ -17,15 +15,6 @@ const (
 	// PumpDefaultLimit is 10 messages
 	PumpDefaultLimit = 10
 )
-
-var (
-	// SkipPortaudio detects that portaudio tests should be skipped.
-	SkipPortaudio = false
-)
-
-func init() {
-	SkipPortaudio, _ = strconv.ParseBool(os.Getenv("SKIP_PORTAUDIO"))
-}
 
 // Param types
 type (
