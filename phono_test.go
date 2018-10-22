@@ -1,6 +1,7 @@
 package phono_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -82,4 +83,12 @@ func TestSampleRate(t *testing.T) {
 	expected := 500 * time.Millisecond
 	result := sampleRate.DurationOf(22050)
 	assert.Equal(t, expected, result)
+}
+
+func TestSingleUse(t *testing.T) {
+	var once sync.Once
+	err := phono.SingleUse(&once)
+	assert.Nil(t, err)
+	err = phono.SingleUse(&once)
+	assert.Equal(t, phono.ErrSingleUseReused, err)
 }
