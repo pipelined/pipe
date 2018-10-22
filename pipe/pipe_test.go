@@ -1,7 +1,6 @@
 package pipe_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -17,6 +16,18 @@ const (
 	bufferSize                  = 512
 	sampleRate phono.SampleRate = 44100
 )
+
+var measureTests = struct {
+	interval time.Duration
+	mock.Limit
+	phono.BufferSize
+	phono.NumChannels
+}{
+	interval:    10 * time.Millisecond,
+	Limit:       10,
+	BufferSize:  10,
+	NumChannels: 1,
+}
 
 func TestPipeActions(t *testing.T) {
 
@@ -123,21 +134,28 @@ func TestPipe(t *testing.T) {
 	p.Close()
 }
 
-func TestMetrics(t *testing.T) {
-	limit := 10
-	bufferSize := 10
-	interval := 100 * time.Millisecond
-	numChannels := 1
+func TestMetricsEmpty(t *testing.T) {
+	p := pipe.New(sampleRate)
+	mc := p.Measure()
+	assert.Nil(t, mc)
+}
 
+func TestMetricsBadID(t *testing.T) {
+	proc := &mock.Processor{}
+	p := pipe.New(sampleRate, pipe.WithProcessors(proc))
+	mc := p.Measure(proc.ID() + "bad")
+	assert.Nil(t, mc)
+}
+
+func TestMetrics(t *testing.T) {
 	pump := &mock.Pump{
-		Limit:       mock.Limit(limit),
-		Interval:    interval,
-		BufferSize:  phono.BufferSize(bufferSize),
-		NumChannels: phono.NumChannels(numChannels),
+		Limit:       measureTests.Limit,
+		Interval:    measureTests.interval,
+		BufferSize:  measureTests.BufferSize,
+		NumChannels: measureTests.NumChannels,
 	}
 	proc := &mock.Processor{}
 	sink := &mock.Sink{}
-
 	p := pipe.New(
 		sampleRate,
 		pipe.WithName("Test Metrics"),
@@ -149,7 +167,8 @@ func TestMetrics(t *testing.T) {
 	var mc <-chan pipe.Measure
 
 	// zero measures
-	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
+	mc = p.Measure()
+	assert.NotNil(t, mc)
 	for m := range mc {
 		assert.NotNil(t, m)
 		assert.Equal(t, time.Time{}, m.Start)
@@ -161,51 +180,34 @@ func TestMetrics(t *testing.T) {
 		}
 		switch m.ID {
 		case pump.ID():
-			assert.Equal(t, pump.ID(), m.ID)
 		case proc.ID():
-			assert.Equal(t, proc.ID(), m.ID)
 		case sink.ID():
-			assert.Equal(t, sink.ID(), m.ID)
+		default:
+			t.Errorf("Measure with empty id")
 		}
 	}
 
-	// beforeRun := time.Now()
-
-	_, err := p.Begin(pipe.Run)
-	// time.Sleep(interval)
-	// zero measures
+	start := time.Now()
+	p.Begin(pipe.Run)
+	time.Sleep(measureTests.interval / 2)
+	p.Begin(pipe.Pause)
 	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
-	// for m := range mc {
-	// 	assert.NotNil(t, m)
-	// 	assert.True(t, beforeRun.Before(m.Start))
-	// 	assert.True(t, interval < m.Elapsed)
-	// 	for _, c := range m.Counters {
-	// 		assert.Equal(t, int64(1), c.Messages())
-	// 		assert.Equal(t, int64(bufferSize), c.Samples())
-	// 		assert.Equal(t, sampleRate.DurationOf(int64(bufferSize)), c.Duration())
-	// 	}
-	// 	switch m.ID {
-	// 	case pump.ID():
-	// 		assert.Equal(t, pump.ID(), m.ID)
-	// 	case proc.ID():
-	// 		assert.Equal(t, proc.ID(), m.ID)
-	// 	case sink.ID():
-	// 		assert.Equal(t, sink.ID(), m.ID)
-	// 	}
-	// }
-
-	err = p.Do(pipe.Pause)
-
-	assert.Nil(t, err)
-	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
+	// measure diring pausing
 	for m := range mc {
+		assert.NotNil(t, m)
+		assert.True(t, start.Before(m.Start))
+		assert.True(t, measureTests.interval < m.Elapsed)
+		for _, c := range m.Counters {
+			assert.Equal(t, int64(2), c.Messages())
+			assert.Equal(t, int64(measureTests.BufferSize)*2, c.Samples())
+			assert.Equal(t, sampleRate.DurationOf(int64(measureTests.BufferSize))*2, c.Duration())
+		}
 		switch m.ID {
 		case pump.ID():
-			fmt.Printf("Pump measure: %v\n", m)
 		case proc.ID():
-			fmt.Printf("Proc measure: %v\n", m)
 		case sink.ID():
-			fmt.Printf("Sink measure: %v\n", m)
+		default:
+			t.Errorf("Measure with empty id")
 		}
 	}
 }

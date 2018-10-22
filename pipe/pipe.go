@@ -293,23 +293,29 @@ func (p *Pipe) Push(values ...phono.Param) {
 // Result channel has buffer sized to found components. Order of measures can differ from
 // requested order due to pipeline configuration.
 func (p *Pipe) Measure(ids ...string) <-chan Measure {
-	if len(ids) == 0 {
+	if len(p.metrics) == 0 {
 		return nil
 	}
-	em := eventMessage{
-		event:     measure,
-		callbacks: make([]string, 0, len(ids)),
-	}
-	// check if passed ids are part of the pipe
-	for _, id := range ids {
-		_, ok := p.metrics[id]
-		if ok {
+	em := eventMessage{event: measure}
+	if len(ids) > 0 {
+		em.callbacks = make([]string, 0, len(ids))
+		// check if passed ids are part of the pipe
+		for _, id := range ids {
+			_, ok := p.metrics[id]
+			if ok {
+				em.callbacks = append(em.callbacks, id)
+			}
+		}
+		// no components found
+		if len(em.callbacks) == 0 {
+			return nil
+		}
+	} else {
+		em.callbacks = make([]string, 0, len(p.metrics))
+		// get all if nothin is passed
+		for id := range p.metrics {
 			em.callbacks = append(em.callbacks, id)
 		}
-	}
-	// no components found
-	if len(em.callbacks) == 0 {
-		return nil
 	}
 	// waitgroup to close metrics channel
 	var wg sync.WaitGroup
