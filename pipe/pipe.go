@@ -11,6 +11,21 @@ import (
 	"github.com/rs/xid"
 )
 
+// Message is a main structure for pipe transport
+type message struct {
+	phono.Buffer        // Buffer of message
+	params              // params for pipe
+	sourceID     string // ID of pipe which spawned this message.
+	feedback     params //feedback are params applied after processing happened
+}
+
+// NewMessageFunc is a message-producer function
+// sourceID expected to be pump's id
+type newMessageFunc func() message
+
+// params represent a set of parameters mapped to ID of their receivers.
+type params map[string][]phono.ParamFunc
+
 // Pipe is a pipeline with fully defined sound processing sequence
 // it has:
 //	 1 		pump
@@ -42,49 +57,6 @@ type Pipe struct {
 // Option provides a way to set parameters to pipe
 // returns phono.ParamFunc, which can be executed later
 type Option func(p *Pipe) phono.ParamFunc
-
-type listenFn func() State
-
-// State identifies one of the possible states pipe can be in
-type State interface {
-	listen(*Pipe) listenFn
-	transition(*Pipe, eventMessage) State
-}
-
-// idleState identifies that the pipe is ONLY waiting for user to send an event
-type idleState interface {
-	State
-}
-
-// activeState identifies that the pipe is processing signals and also is waiting for user to send an event
-type activeState interface {
-	State
-	sendMessage(*Pipe) State
-	handleError(*Pipe, error) State
-}
-
-// states
-type (
-	ready   struct{}
-	running struct{}
-	pausing struct{}
-	paused  struct{}
-)
-
-// states variables
-var (
-	// Ready [idle] state means that pipe can be started
-	Ready ready
-
-	// Running [active] state means that pipe is executing at the moment
-	Running running
-
-	// Paused [idle] state means that pipe is paused and can be resumed
-	Paused paused
-
-	// Pausing [active] state means that pause event was sent, but still not reached all sinks
-	Pausing pausing
-)
 
 // actionFn is an action function which causes a pipe state change
 // chan error is closed when state is changed
@@ -142,7 +114,7 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 	go func() {
 		var state State = Ready
 		for state != nil {
-			state = state.listen(p)()
+			state = state.listen(p)
 		}
 	}()
 	return p
@@ -502,210 +474,41 @@ func (p *Pipe) String() string {
 	return fmt.Sprintf("%v %v", p.name, p.ID())
 }
 
-// listenIdle is used to listen to pipe's channels which are relevant for idle state
-func (p *Pipe) listenIdle(s idleState) listenFn {
-	return func() State {
-		var newState State
-		for {
-			select {
-			case e, ok := <-p.eventc:
-				if !ok {
-					p.close()
-					return nil
-				}
-				newState = s.transition(p, e)
-			}
-			if s != newState {
-				p.transitionc <- transitionMessage{newState, nil}
-				return newState
-			}
+// add appends a slice of params.
+func (p params) add(params ...phono.Param) params {
+	for _, param := range params {
+		private, ok := p[param.ID]
+		if !ok {
+			private = make([]phono.ParamFunc, 0, len(params))
+		}
+		private = append(private, param.Apply)
+
+		p[param.ID] = private
+	}
+	return p
+}
+
+// applyTo consumes params defined for consumer in this param set.
+func (p params) applyTo(id string) {
+	if p == nil {
+		return
+	}
+	if params, ok := p[id]; ok {
+		for _, param := range params {
+			param()
+		}
+		delete(p, id)
+	}
+}
+
+// merge two param sets into one.
+func (p params) merge(source params) params {
+	for newKey, newValues := range source {
+		if _, ok := p[newKey]; ok {
+			p[newKey] = append(p[newKey], newValues...)
+		} else {
+			p[newKey] = newValues
 		}
 	}
-}
-
-// listenActive is used to listen to pipe's channels which are relevant for active state
-func (p *Pipe) listenActive(s activeState) listenFn {
-	return func() State {
-		var newState State
-		for {
-			select {
-			case e, ok := <-p.eventc:
-				if !ok {
-					p.close()
-					return nil
-				}
-				newState = s.transition(p, e)
-			case <-p.providerc:
-				newState = s.sendMessage(p)
-			case err := <-p.errc:
-				newState = s.handleError(p, err)
-			}
-			if s != newState {
-				p.transitionc <- transitionMessage{newState, nil}
-				return newState
-			}
-		}
-	}
-}
-
-func (s ready) listen(p *Pipe) listenFn {
-	return p.listenIdle(s)
-}
-
-func (s ready) transition(p *Pipe, e eventMessage) State {
-	switch e.event {
-	case push:
-		e.params.applyTo(p.ID())
-		p.params = p.params.merge(e.params)
-		return s
-	case measure:
-		for _, id := range e.callbacks {
-			e.params.applyTo(id)
-		}
-		return s
-	case run:
-		ctx, cancelFn := context.WithCancel(context.Background())
-		p.cancelFn = cancelFn
-		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
-
-		// start pump
-		out, errc, err := p.pump.run(ctx, p.ID(), p.source())
-		if err != nil {
-			p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
-			e.done <- err
-			p.cancelFn()
-			return s
-		}
-		errcList = append(errcList, errc)
-
-		// start chained processesing
-		for _, proc := range p.processors {
-			out, errc, err = proc.run(p.ID(), out)
-			if err != nil {
-				p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
-				e.done <- err
-				p.cancelFn()
-				return s
-			}
-			errcList = append(errcList, errc)
-		}
-
-		sinkErrcList, err := p.broadcastToSinks(out)
-		if err != nil {
-			e.done <- err
-			p.cancelFn()
-			return s
-		}
-		errcList = append(errcList, sinkErrcList...)
-		p.errc = mergeErrors(errcList...)
-		close(e.done)
-		return Running
-	}
-	e.done <- ErrInvalidState
-	return s
-}
-
-func (s running) listen(p *Pipe) listenFn {
-	return p.listenActive(s)
-}
-
-func (s running) transition(p *Pipe, e eventMessage) State {
-	switch e.event {
-	case measure:
-		e.params.applyTo(p.ID())
-		p.feedback = p.feedback.merge(e.params)
-		return s
-	case push:
-		e.params.applyTo(p.ID())
-		p.params = p.params.merge(e.params)
-		return s
-	case pause:
-		close(e.done)
-		return Pausing
-	}
-	e.done <- ErrInvalidState
-	return s
-}
-
-func (s running) sendMessage(p *Pipe) State {
-	p.consumerc <- p.newMessage()
-	return s
-}
-
-func (s running) handleError(p *Pipe, err error) State {
-	if err != nil {
-		p.transitionc <- transitionMessage{s, err}
-		p.cancelFn()
-	}
-	return Ready
-}
-
-func (s pausing) listen(p *Pipe) listenFn {
-	return p.listenActive(s)
-}
-
-func (s pausing) transition(p *Pipe, e eventMessage) State {
-	switch e.event {
-	case measure:
-		e.params.applyTo(p.ID())
-		p.feedback = p.feedback.merge(e.params)
-		return s
-	case push:
-		e.params.applyTo(p.ID())
-		p.params = p.params.merge(e.params)
-		return s
-	}
-	e.done <- ErrInvalidState
-	return s
-}
-
-func (s pausing) sendMessage(p *Pipe) State {
-	m := p.newMessage()
-	if len(m.feedback) == 0 {
-		m.feedback = make(map[string][]phono.ParamFunc)
-	}
-	var wg sync.WaitGroup
-	wg.Add(len(p.sinks))
-	for _, sink := range p.sinks {
-		param := phono.ReceivedBy(&wg, sink)
-		m.feedback = m.feedback.add(param)
-	}
-	p.consumerc <- m
-	wg.Wait()
-	return Paused
-}
-
-func (s pausing) handleError(p *Pipe, err error) State {
-	// if nil error is received, it means that pipe finished before pause got finished
-	if err != nil {
-		p.transitionc <- transitionMessage{Pausing, err}
-		p.cancelFn()
-	} else {
-		// because pipe is finished, we need send this signal to stop waiting
-		p.transitionc <- transitionMessage{Paused, nil}
-	}
-	return Ready
-}
-
-func (s paused) listen(p *Pipe) listenFn {
-	return p.listenIdle(s)
-}
-
-func (s paused) transition(p *Pipe, e eventMessage) State {
-	switch e.event {
-	case push:
-		e.params.applyTo(p.ID())
-		p.params = p.params.merge(e.params)
-		return s
-	case measure:
-		for _, id := range e.callbacks {
-			e.params.applyTo(id)
-		}
-		return s
-	case resume:
-		close(e.done)
-		return Running
-	}
-	e.done <- ErrInvalidState
-	return s
+	return p
 }
