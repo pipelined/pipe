@@ -72,10 +72,10 @@ type (
 	// Param is a structure for delayed parameters apply
 	// used as return type in functions which enable Params support for different packages
 	Param struct {
-		ID     string
-		Apply  ParamFunc
-		at     int64
-		atTime time.Duration
+		ID     string        // id of mutable object.
+		Apply  ParamFunc     // mutator.
+		At     int64         // sample position of this param.
+		AtTime time.Duration // time position of this param.
 	}
 )
 
@@ -104,22 +104,6 @@ var (
 	// ErrEOP is returned if pump finished processing and indicates a gracefull ending
 	ErrEOP = errors.New("End of pipe")
 )
-
-// At assignes param to sample position
-func (p *Param) At(s int64) *Param {
-	if p != nil {
-		p.at = s
-	}
-	return p
-}
-
-// AtTime assignes param to time position
-func (p *Param) AtTime(d time.Duration) *Param {
-	if p != nil {
-		p.atTime = d
-	}
-	return p
-}
 
 // ID of the pipe
 func (i *UID) ID() string {
@@ -198,15 +182,15 @@ func (b Buffer) Slice(start int64, len int) Buffer {
 // if start >= buffer size, nil is returned
 // if start + len >= buffer size, len is decreased till the end of slice
 // if start < 0, nil is returned
-func (b Buffer) Clip(start int64, len int) *Clip {
+func (b Buffer) Clip(start int64, len int) Clip {
 	if b == nil || BufferSize(start) >= b.Size() || start < 0 {
-		return nil
+		return Clip{}
 	}
 	end := BufferSize(start + int64(len))
 	if end >= b.Size() {
 		len = int(b.Size()) - int(start)
 	}
-	return &Clip{
+	return Clip{
 		Buffer: b,
 		Start:  start,
 		Len:    len,

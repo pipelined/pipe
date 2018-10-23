@@ -29,14 +29,14 @@ var (
 	}
 	overlapTests = []struct {
 		phono.BufferSize
-		clips   []*phono.Clip
+		clips   []phono.Clip
 		clipsAt []int64
 		result  []float64
 		msg     string
 	}{
 		{
 			BufferSize: 2,
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 1),
 				asset2.Clip(5, 3),
 			},
@@ -46,7 +46,7 @@ var (
 		},
 		{
 			BufferSize: 3,
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 1),
 				asset2.Clip(5, 3),
 			},
@@ -56,7 +56,7 @@ var (
 		},
 		{
 			BufferSize: 2,
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 1),
 				asset2.Clip(5, 3),
 			},
@@ -66,7 +66,7 @@ var (
 		},
 		{
 			BufferSize: 2,
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 1),
 				asset2.Clip(5, 3),
 			},
@@ -75,7 +75,7 @@ var (
 			msg:     "Sequence with interval",
 		},
 		{
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 3),
 				asset2.Clip(5, 2),
 			},
@@ -84,7 +84,7 @@ var (
 			msg:     "Overlap previous",
 		},
 		{
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 3),
 				asset2.Clip(5, 2),
 			},
@@ -93,7 +93,7 @@ var (
 			msg:     "Overlap next",
 		},
 		{
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 5),
 				asset2.Clip(5, 2),
 			},
@@ -102,7 +102,7 @@ var (
 			msg:     "Overlap single in the middle",
 		},
 		{
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 2),
 				asset1.Clip(3, 2),
 				asset2.Clip(5, 2),
@@ -112,7 +112,7 @@ var (
 			msg:     "Overlap two in the middle",
 		},
 		{
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 2),
 				asset1.Clip(5, 2),
 				asset2.Clip(3, 2),
@@ -122,7 +122,7 @@ var (
 			msg:     "Overlap two in the middle shifted",
 		},
 		{
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 2),
 				asset2.Clip(3, 5),
 			},
@@ -131,7 +131,7 @@ var (
 			msg:     "Overlap single completely",
 		},
 		{
-			clips: []*phono.Clip{
+			clips: []phono.Clip{
 				asset1.Clip(3, 2),
 				asset1.Clip(5, 2),
 				asset2.Clip(1, 8),
