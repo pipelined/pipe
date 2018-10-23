@@ -24,7 +24,7 @@ type Track struct {
 // It uses double-linked list structure.
 type clip struct {
 	At int64
-	*phono.Clip
+	phono.Clip
 	Next *clip
 	Prev *clip
 }
@@ -139,10 +139,7 @@ func (t *Track) clipsEnd() int64 {
 }
 
 // AddClip assigns a frame to a track.
-func (t *Track) AddClip(at int64, f *phono.Clip) {
-	if f == nil {
-		return
-	}
+func (t *Track) AddClip(at int64, f phono.Clip) {
 	t.current = nil
 	c := &clip{
 		At:   at,
