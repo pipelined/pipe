@@ -11,7 +11,7 @@ type pumpRunner struct {
 	phono.Pump
 	measurable
 	Flusher
-	out chan *message
+	out chan message
 }
 
 // processRunner represents processor's runner.
@@ -19,8 +19,8 @@ type processRunner struct {
 	phono.Processor
 	measurable
 	Flusher
-	in  <-chan *message
-	out chan *message
+	in  <-chan message
+	out chan message
 }
 
 // sinkRunner represents sink's runner.
@@ -28,7 +28,7 @@ type sinkRunner struct {
 	phono.Sink
 	measurable
 	Flusher
-	in <-chan *message
+	in <-chan message
 }
 
 // Flusher owns resource that has to be flushed in the end of execution.
@@ -65,13 +65,13 @@ func flusher(i interface{}) Flusher {
 }
 
 // run the Pump runner.
-func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMessageFunc) (<-chan *message, <-chan error, error) {
+func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMessageFunc) (<-chan message, <-chan error, error) {
 	p.measurable.Reset()
 	pumpFn, err := p.Pump.Pump(sourceID)
 	if err != nil {
 		return nil, nil, err
 	}
-	out := make(chan *message)
+	out := make(chan message)
 	errc := make(chan error, 1)
 	go func() {
 		defer close(out)
@@ -112,7 +112,7 @@ func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMes
 }
 
 // run the Processor runner.
-func (p *processRunner) run(sourceID string, in <-chan *message) (<-chan *message, <-chan error, error) {
+func (p *processRunner) run(sourceID string, in <-chan message) (<-chan message, <-chan error, error) {
 	p.measurable.Reset()
 	processFn, err := p.Process(sourceID)
 	if err != nil {
@@ -120,7 +120,7 @@ func (p *processRunner) run(sourceID string, in <-chan *message) (<-chan *messag
 	}
 	errc := make(chan error, 1)
 	p.in = in
-	p.out = make(chan *message)
+	p.out = make(chan message)
 	go func() {
 		defer close(p.out)
 		defer close(errc)
@@ -158,7 +158,7 @@ func (p *processRunner) run(sourceID string, in <-chan *message) (<-chan *messag
 }
 
 // run the sink runner.
-func (s *sinkRunner) run(sourceID string, in <-chan *message) (<-chan error, error) {
+func (s *sinkRunner) run(sourceID string, in <-chan message) (<-chan error, error) {
 	s.measurable.Reset()
 	sinkFn, err := s.Sink.Sink(sourceID)
 	if err != nil {
