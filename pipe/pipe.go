@@ -27,16 +27,14 @@ type Pipe struct {
 	sinks      []*sinkRunner
 
 	metrics     map[string]measurable  // metrics holds all references to measurable components
-	params      *params                //cahced params
-	feedback    *params                //cached feedback
+	params      params                 //cahced params
+	feedback    params                 //cached feedback
 	errc        chan error             // errors channel
 	eventc      chan eventMessage      // event channel
 	transitionc chan transitionMessage // transitions channel
 
-	message struct {
-		ask  chan struct{}
-		take chan *message
-	}
+	providerc chan struct{} // ask for new message request
+	consumerc chan message  // emission of messages
 
 	log log.Logger
 }
@@ -99,7 +97,7 @@ type event int
 type eventMessage struct {
 	event
 	done      chan error
-	params    *params
+	params    params
 	callbacks []string
 }
 
@@ -126,12 +124,16 @@ var ErrInvalidState = errors.New("Invalid state")
 func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 	p := &Pipe{
 		sampleRate:  sampleRate,
+		log:         log.GetLogger(),
 		processors:  make([]*processRunner, 0),
 		sinks:       make([]*sinkRunner, 0),
-		eventc:      make(chan eventMessage, 100),
-		transitionc: make(chan transitionMessage, 100),
-		log:         log.GetLogger(),
 		metrics:     make(map[string]measurable),
+		params:      make(map[string][]phono.ParamFunc),
+		feedback:    make(map[string][]phono.ParamFunc),
+		eventc:      make(chan eventMessage, 1),
+		transitionc: make(chan transitionMessage, 100),
+		providerc:   make(chan struct{}),
+		consumerc:   make(chan message),
 	}
 	p.SetID(xid.New().String())
 	for _, option := range options {
@@ -281,9 +283,10 @@ func (p *Pipe) Push(values ...phono.Param) {
 	if len(values) == 0 {
 		return
 	}
+	params := params(make(map[string][]phono.ParamFunc))
 	p.eventc <- eventMessage{
 		event:  push,
-		params: newParams(values...),
+		params: params.add(values...),
 	}
 }
 
@@ -296,7 +299,7 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	if len(p.metrics) == 0 {
 		return nil
 	}
-	em := eventMessage{event: measure}
+	em := eventMessage{event: measure, params: make(map[string][]phono.ParamFunc)}
 	if len(ids) > 0 {
 		em.callbacks = make([]string, 0, len(ids))
 		// check if passed ids are part of the pipe
@@ -405,13 +408,13 @@ func mergeErrors(errcList ...<-chan error) chan error {
 }
 
 // broadcastToSinks passes messages to all sinks
-func (p *Pipe) broadcastToSinks(in <-chan *message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
-	broadcasts := make([]chan *message, len(p.sinks))
+	broadcasts := make([]chan message, len(p.sinks))
 	for i := range broadcasts {
-		broadcasts[i] = make(chan *message)
+		broadcasts[i] = make(chan message)
 	}
 
 	//start broadcast
@@ -443,28 +446,26 @@ func (p *Pipe) broadcastToSinks(in <-chan *message) ([]<-chan error, error) {
 
 // newMessage creates a new message with cached params
 // if new params are pushed into pipe - next message will contain them
-func (p *Pipe) newMessage() *message {
-	m := new(message)
-	if !p.params.empty() {
+func (p *Pipe) newMessage() message {
+	m := message{}
+	if len(p.params) > 0 {
 		m.params = p.params
-		p.params = new(params)
+		p.params = make(map[string][]phono.ParamFunc)
 	}
-	if !p.feedback.empty() {
+	if len(p.feedback) > 0 {
 		m.feedback = p.feedback
-		p.feedback = new(params)
+		p.feedback = make(map[string][]phono.ParamFunc)
 	}
 	return m
 }
 
-// soure returns a default message producer which will be sent to pump
+// soure returns a default message producer which will be sent to pump.
 func (p *Pipe) soure() newMessageFunc {
-	p.message.ask = make(chan struct{})
-	p.message.take = make(chan *message)
-	var do struct{}
 	// if pipe paused this call will block
-	return func() *message {
-		p.message.ask <- do
-		msg := <-p.message.take
+	return func() message {
+		var do struct{}
+		p.providerc <- do
+		msg := <-p.consumerc
 		msg.sourceID = p.ID()
 		return msg
 	}
@@ -534,7 +535,7 @@ func (p *Pipe) listenActive(s activeState) listenFn {
 					return nil
 				}
 				newState = s.transition(p, e)
-			case <-p.message.ask:
+			case <-p.providerc:
 				newState = s.sendMessage(p)
 			case err := <-p.errc:
 				newState = s.handleError(p, err)
@@ -627,7 +628,7 @@ func (s running) transition(p *Pipe, e eventMessage) State {
 }
 
 func (s running) sendMessage(p *Pipe) State {
-	p.message.take <- p.newMessage()
+	p.consumerc <- p.newMessage()
 	return s
 }
 
@@ -660,13 +661,16 @@ func (s pausing) transition(p *Pipe, e eventMessage) State {
 
 func (s pausing) sendMessage(p *Pipe) State {
 	m := p.newMessage()
+	if len(m.feedback) == 0 {
+		m.feedback = make(map[string][]phono.ParamFunc)
+	}
 	var wg sync.WaitGroup
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
 		param := phono.ReceivedBy(&wg, sink)
 		m.feedback = m.feedback.add(param)
 	}
-	p.message.take <- m
+	p.consumerc <- m
 	wg.Wait()
 	return Paused
 }
