@@ -2,9 +2,11 @@ package wav_test
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/dudk/phono/mock"
+	"github.com/dudk/phono/test"
 
 	"github.com/go-audio/audio"
 
@@ -26,18 +28,18 @@ var tests = []struct {
 	samples  int64
 }{
 	{
-		BufferSize: 512,
-		inFile:     "../_testdata/sample1.wav",
-		outFile:    "../_testdata/out/wav1.wav",
-		messages:   646,
-		samples:    330534,
+		BufferSize: bufferSize,
+		inFile:     test.Data.Wav1,
+		outFile:    test.Out.Wav1,
+		messages:   int64(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
+		samples:    test.Data.Wav1Samples,
 	},
 	{
-		BufferSize: 512,
-		inFile:     "../_testdata/out/wav1.wav",
-		outFile:    "../_testdata/out/wav2.wav",
-		messages:   646,
-		samples:    330534,
+		BufferSize: bufferSize,
+		inFile:     test.Out.Wav1,
+		outFile:    test.Out.Wav2,
+		messages:   int64(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
+		samples:    test.Data.Wav1Samples,
 	},
 }
 

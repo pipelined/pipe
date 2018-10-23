@@ -9,13 +9,8 @@ import (
 	"github.com/dudk/phono/mixer"
 	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
+	"github.com/dudk/phono/test"
 	"github.com/dudk/phono/wav"
-)
-
-const (
-	wavPath1 = "../_testdata/sample1.wav"
-	wavPath2 = "../_testdata/sample2.wav"
-	outPath  = "../_testdata/out/mixer1.wav"
 )
 
 var (
@@ -120,11 +115,11 @@ func TestMixer(t *testing.T) {
 func TestWavMixer(t *testing.T) {
 	bs := phono.BufferSize(512)
 
-	p1, _ := wav.NewPump(wavPath1, bs)
-	p2, _ := wav.NewPump(wavPath2, bs)
+	p1, _ := wav.NewPump(test.Data.Wav1, bs)
+	p2, _ := wav.NewPump(test.Data.Wav2, bs)
 	sampleRate := p1.WavSampleRate()
 
-	s, _ := wav.NewSink(outPath, p1.WavSampleRate(), p1.WavNumChannels(), p1.WavBitDepth(), p1.WavAudioFormat())
+	s, _ := wav.NewSink(test.Out.Mixer, p1.WavSampleRate(), p1.WavNumChannels(), p1.WavBitDepth(), p1.WavAudioFormat())
 
 	m := mixer.New(bs, p1.WavNumChannels())
 

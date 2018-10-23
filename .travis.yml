@@ -31,7 +31,7 @@ before_install:
   - git clone ssh://git@github.com/dudk/vst2sdk.git
   - brew install portaudio
 
-script: env SKIP_PORTAUDIO=true CGO_CFLAGS=-I$(pwd)/vst2sdk go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+script: env CGO_CFLAGS=-I$(pwd)/vst2sdk go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
