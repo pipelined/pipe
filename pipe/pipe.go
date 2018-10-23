@@ -460,7 +460,7 @@ func (p *Pipe) newMessage() message {
 }
 
 // soure returns a default message producer which will be sent to pump.
-func (p *Pipe) soure() newMessageFunc {
+func (p *Pipe) source() newMessageFunc {
 	// if pipe paused this call will block
 	return func() message {
 		var do struct{}
@@ -569,7 +569,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 		// start pump
-		out, errc, err := p.pump.run(ctx, p.ID(), p.soure())
+		out, errc, err := p.pump.run(ctx, p.ID(), p.source())
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 			e.done <- err
