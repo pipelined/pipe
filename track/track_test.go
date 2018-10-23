@@ -7,6 +7,7 @@ import (
 	"github.com/dudk/phono/asset"
 	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
+	"github.com/dudk/phono/test"
 	"github.com/dudk/phono/track"
 	"github.com/dudk/phono/wav"
 
@@ -19,8 +20,6 @@ var (
 	bufferSize  = phono.BufferSize(512)
 	sampleRate  = phono.SampleRate(44100)
 	numChannels = phono.NumChannels(1)
-	inFile      = "../_testdata/sample1.wav"
-	outFile     = "../_testdata/out/track1.wav"
 
 	asset1 = &asset.Asset{
 		Buffer: [][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}},
@@ -145,7 +144,7 @@ var (
 )
 
 func TestTrackWavSlices(t *testing.T) {
-	wavPump, err := wav.NewPump(inFile, bufferSize)
+	wavPump, err := wav.NewPump(test.Data.Wav1, bufferSize)
 	assert.Nil(t, err)
 	asset := &asset.Asset{
 		SampleRate: sampleRate,
@@ -159,7 +158,7 @@ func TestTrackWavSlices(t *testing.T) {
 	_ = p1.Do(pipe.Run)
 
 	wavSink, err := wav.NewSink(
-		outFile,
+		test.Out.Track,
 		wavPump.WavSampleRate(),
 		wavPump.WavNumChannels(),
 		wavPump.WavBitDepth(),
