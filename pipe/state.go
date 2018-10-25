@@ -36,18 +36,147 @@ type (
 
 // states variables
 var (
-	// Ready [idle] state means that pipe can be started
+	// Ready [idle] state means that pipe can be started.
 	Ready ready
 
-	// Running [active] state means that pipe is executing at the moment
+	// Running [active] state means that pipe is executing at the moment.
 	Running running
 
-	// Paused [idle] state means that pipe is paused and can be resumed
+	// Paused [idle] state means that pipe is paused and can be resumed.
 	Paused paused
 
-	// Pausing [active] state means that pause event was sent, but still not reached all sinks
+	// Pausing [active] state means that pause event was sent, but still not reached all sinks.
 	Pausing pausing
 )
+
+// Run sends a run event into pipe.
+func Run(p *Pipe) (State, chan error) {
+	runEvent := eventMessage{
+		event: run,
+		done:  make(chan error),
+	}
+	p.eventc <- runEvent
+	return Ready, runEvent.done
+}
+
+// Pause sends a pause event into pipe.
+func Pause(p *Pipe) (State, chan error) {
+	pauseEvent := eventMessage{
+		event: pause,
+		done:  make(chan error),
+	}
+	p.eventc <- pauseEvent
+	return Paused, pauseEvent.done
+}
+
+// Resume sends a resume event into pipe.
+func Resume(p *Pipe) (State, chan error) {
+	resumeEvent := eventMessage{
+		event: resume,
+		done:  make(chan error),
+	}
+	p.eventc <- resumeEvent
+	return Ready, resumeEvent.done
+}
+
+// Wait for state transition or first error to occur.
+func (p *Pipe) Wait(s State) error {
+	for msg := range p.transitionc {
+		if msg.err != nil {
+			p.log.Debug(fmt.Sprintf("%v received signal: %v with error: %v", p, msg.State, msg.err))
+			return msg.err
+		}
+		if msg.State == s {
+			p.log.Debug(fmt.Sprintf("%v received state: %T", p, msg.State))
+			return nil
+		}
+	}
+	return nil
+}
+
+// WaitAsync allows to wait for state transition or first error occurance through the returned channel.
+func (p *Pipe) WaitAsync(s State) <-chan error {
+	errc := make(chan error)
+	go func() {
+		err := p.Wait(s)
+		if err != nil {
+			errc <- err
+		} else {
+			close(errc)
+		}
+	}()
+	return errc
+}
+
+// Begin executes a passed action and waits till first error or till the passed function receive a done signal.
+func (p *Pipe) Begin(fn actionFn) (State, error) {
+	s, errc := fn(p)
+	if errc == nil {
+		return s, nil
+	}
+	for err := range errc {
+		if err != nil {
+			return s, err
+		}
+	}
+	return s, nil
+}
+
+// Do begins an action and waits for returned state
+func (p *Pipe) Do(fn actionFn) error {
+	s, errc := fn(p)
+	if errc == nil {
+		return p.Wait(s)
+	}
+	for err := range errc {
+		if err != nil {
+			return err
+		}
+	}
+	return p.Wait(s)
+}
+
+// idle is used to listen to pipe's channels which are relevant for idle state.
+func (p *Pipe) idle(s idleState) State {
+	var newState State
+	for {
+		select {
+		case e, ok := <-p.eventc:
+			if !ok {
+				p.close()
+				return nil
+			}
+			newState = s.transition(p, e)
+		}
+		if s != newState {
+			p.transitionc <- transitionMessage{newState, nil}
+			return newState
+		}
+	}
+}
+
+// active is used to listen to pipe's channels which are relevant for active state.
+func (p *Pipe) active(s activeState) State {
+	var newState State
+	for {
+		select {
+		case e, ok := <-p.eventc:
+			if !ok {
+				p.close()
+				return nil
+			}
+			newState = s.transition(p, e)
+		case <-p.providerc:
+			newState = s.sendMessage(p)
+		case err := <-p.errc:
+			newState = s.handleError(p, err)
+		}
+		if s != newState {
+			p.transitionc <- transitionMessage{newState, nil}
+			return newState
+		}
+	}
+}
 
 func (s ready) listen(p *Pipe) State {
 	return p.idle(s)
@@ -209,46 +338,4 @@ func (s paused) transition(p *Pipe, e eventMessage) State {
 	}
 	e.done <- ErrInvalidState
 	return s
-}
-
-// idle is used to listen to pipe's channels which are relevant for idle state
-func (p *Pipe) idle(s idleState) State {
-	var newState State
-	for {
-		select {
-		case e, ok := <-p.eventc:
-			if !ok {
-				p.close()
-				return nil
-			}
-			newState = s.transition(p, e)
-		}
-		if s != newState {
-			p.transitionc <- transitionMessage{newState, nil}
-			return newState
-		}
-	}
-}
-
-// active is used to listen to pipe's channels which are relevant for active state
-func (p *Pipe) active(s activeState) State {
-	var newState State
-	for {
-		select {
-		case e, ok := <-p.eventc:
-			if !ok {
-				p.close()
-				return nil
-			}
-			newState = s.transition(p, e)
-		case <-p.providerc:
-			newState = s.sendMessage(p)
-		case err := <-p.errc:
-			newState = s.handleError(p, err)
-		}
-		if s != newState {
-			p.transitionc <- transitionMessage{newState, nil}
-			return newState
-		}
-	}
 }
