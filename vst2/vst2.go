@@ -27,6 +27,7 @@ type Processor struct {
 // NewProcessor creates new vst2 processor.
 func NewProcessor(plugin *vst2.Plugin, bufferSize phono.BufferSize, sampleRate phono.SampleRate, numChannels phono.NumChannels) *Processor {
 	return &Processor{
+		UID:             phono.NewUID(),
 		plugin:          plugin,
 		currentPosition: 0,
 		bufferSize:      bufferSize,

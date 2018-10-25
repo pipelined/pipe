@@ -45,18 +45,20 @@ var (
 
 func TestMixer(t *testing.T) {
 	pump1 := &mock.Pump{
+		UID:         phono.NewUID(),
 		Limit:       1,
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
 	}
 	pump2 := &mock.Pump{
+		UID:         phono.NewUID(),
 		Limit:       1,
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
 	}
 	sampleRate := phono.SampleRate(44100)
 	mix := mixer.New(bufferSize, numChannels)
-	sink := &mock.Sink{}
+	sink := &mock.Sink{UID: phono.NewUID()}
 	playback := pipe.New(
 		sampleRate,
 		pipe.WithName("Playback"),

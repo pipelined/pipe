@@ -4,23 +4,25 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/rs/xid"
 )
 
 // Pump is a source of samples
 type Pump interface {
-	Identifiable
+	ID() string
 	Pump(string) (PumpFunc, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	Identifiable
+	ID() string
 	Process(string) (ProcessFunc, error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Identifiable
+	ID() string
 	// RunSink(sourceID string) SinkRunner
 	Sink(string) (SinkFunc, error)
 }
@@ -55,16 +57,8 @@ type (
 
 // Param-related types
 type (
-	// Identifiable defines a unique component
-	Identifiable interface {
-		ID() string
-		SetID(string)
-	}
-
 	// UID is a string unique identifier
-	UID struct {
-		value string
-	}
+	UID string
 
 	// ParamFunc represents a function which mutates the pipe element (e.g. Pump, Processor or Sink)
 	ParamFunc func()
@@ -72,10 +66,10 @@ type (
 	// Param is a structure for delayed parameters apply
 	// used as return type in functions which enable Params support for different packages
 	Param struct {
-		ID     string
-		Apply  ParamFunc
-		at     int64
-		atTime time.Duration
+		ID     string        // id of mutable object.
+		Apply  ParamFunc     // mutator.
+		At     int64         // sample position of this param.
+		AtTime time.Duration // time position of this param.
 	}
 )
 
@@ -105,36 +99,20 @@ var (
 	ErrEOP = errors.New("End of pipe")
 )
 
-// At assignes param to sample position
-func (p *Param) At(s int64) *Param {
-	if p != nil {
-		p.at = s
-	}
-	return p
+// NewUID returns new UID value.
+func NewUID() UID {
+	return UID(xid.New().String())
 }
 
-// AtTime assignes param to time position
-func (p *Param) AtTime(d time.Duration) *Param {
-	if p != nil {
-		p.atTime = d
-	}
-	return p
-}
-
-// ID of the pipe
-func (i *UID) ID() string {
-	return i.value
-}
-
-// SetID to the pipe
-func (i *UID) SetID(id string) {
-	i.value = id
+// ID returns string value of unique identifier. Should be used to satisfy Identifiable interface.
+func (id UID) ID() string {
+	return string(id)
 }
 
 // ReceivedBy returns channel which is closed when param received by identified entity
-func ReceivedBy(wg *sync.WaitGroup, id Identifiable) Param {
+func ReceivedBy(wg *sync.WaitGroup, id string) Param {
 	return Param{
-		ID: id.ID(),
+		ID: id,
 		Apply: func() {
 			wg.Done()
 		},
@@ -198,15 +176,15 @@ func (b Buffer) Slice(start int64, len int) Buffer {
 // if start >= buffer size, nil is returned
 // if start + len >= buffer size, len is decreased till the end of slice
 // if start < 0, nil is returned
-func (b Buffer) Clip(start int64, len int) *Clip {
+func (b Buffer) Clip(start int64, len int) Clip {
 	if b == nil || BufferSize(start) >= b.Size() || start < 0 {
-		return nil
+		return Clip{}
 	}
 	end := BufferSize(start + int64(len))
 	if end >= b.Size() {
 		len = int(b.Size()) - int(start)
 	}
-	return &Clip{
+	return Clip{
 		Buffer: b,
 		Start:  start,
 		Len:    len,
