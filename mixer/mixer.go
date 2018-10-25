@@ -76,6 +76,7 @@ const (
 // New returns new mixer.
 func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
+		UID:         phono.NewUID(),
 		Logger:      log.GetLogger(),
 		inputs:      make(map[string]*input),
 		done:        make(map[string]*input),

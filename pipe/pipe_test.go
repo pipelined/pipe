@@ -32,13 +32,14 @@ var measureTests = struct {
 func TestPipeActions(t *testing.T) {
 
 	pump := &mock.Pump{
+		UID:         phono.NewUID(),
 		Limit:       1000,
 		Interval:    0,
 		NumChannels: 1,
 	}
 
-	proc := &mock.Processor{}
-	sink := &mock.Sink{}
+	proc := &mock.Processor{UID: phono.NewUID()}
+	sink := &mock.Sink{UID: phono.NewUID()}
 
 	// new pipe
 	p := pipe.New(
@@ -95,16 +96,17 @@ func TestPipe(t *testing.T) {
 	messages := int64(1000)
 	samples := int64(10)
 	pump := &mock.Pump{
+		UID:         phono.NewUID(),
 		Limit:       mock.Limit(messages),
 		Interval:    0,
 		BufferSize:  phono.BufferSize(samples),
 		NumChannels: 1,
 	}
 
-	proc1 := &mock.Processor{}
-	proc2 := &mock.Processor{}
-	sink1 := &mock.Sink{}
-	sink2 := &mock.Sink{}
+	proc1 := &mock.Processor{UID: phono.NewUID()}
+	proc2 := &mock.Processor{UID: phono.NewUID()}
+	sink1 := &mock.Sink{UID: phono.NewUID()}
+	sink2 := &mock.Sink{UID: phono.NewUID()}
 	// new pipe
 	p := pipe.New(
 		sampleRate,
@@ -141,7 +143,7 @@ func TestMetricsEmpty(t *testing.T) {
 }
 
 func TestMetricsBadID(t *testing.T) {
-	proc := &mock.Processor{}
+	proc := &mock.Processor{UID: phono.NewUID()}
 	p := pipe.New(sampleRate, pipe.WithProcessors(proc))
 	mc := p.Measure(proc.ID() + "bad")
 	assert.Nil(t, mc)
@@ -149,13 +151,14 @@ func TestMetricsBadID(t *testing.T) {
 
 func TestMetrics(t *testing.T) {
 	pump := &mock.Pump{
+		UID:         phono.NewUID(),
 		Limit:       measureTests.Limit,
 		Interval:    measureTests.interval,
 		BufferSize:  measureTests.BufferSize,
 		NumChannels: measureTests.NumChannels,
 	}
-	proc := &mock.Processor{}
-	sink := &mock.Sink{}
+	proc := &mock.Processor{UID: phono.NewUID()}
+	sink := &mock.Sink{UID: phono.NewUID()}
 	p := pipe.New(
 		sampleRate,
 		pipe.WithName("Test Metrics"),
