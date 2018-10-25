@@ -47,7 +47,7 @@ func TestPipe(t *testing.T) {
 	sampleRate := phono.SampleRate(44100)
 
 	for _, test := range tests {
-		sink := &asset.Asset{UID: phono.NewUID()}
+		sink := asset.New()
 		p := pipe.New(
 			sampleRate,
 			pipe.WithName("Mock"),
