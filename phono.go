@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/rs/xid"
 )
 
 // Pump is a source of samples
@@ -58,13 +60,10 @@ type (
 	// Identifiable defines a unique component
 	Identifiable interface {
 		ID() string
-		SetID(string)
 	}
 
 	// UID is a string unique identifier
-	UID struct {
-		value string
-	}
+	UID string
 
 	// ParamFunc represents a function which mutates the pipe element (e.g. Pump, Processor or Sink)
 	ParamFunc func()
@@ -105,20 +104,20 @@ var (
 	ErrEOP = errors.New("End of pipe")
 )
 
-// ID of the pipe
-func (i *UID) ID() string {
-	return i.value
+// NewUID returns new UID value.
+func NewUID() UID {
+	return UID(xid.New().String())
 }
 
-// SetID to the pipe
-func (i *UID) SetID(id string) {
-	i.value = id
+// ID returns string value of unique identifier. Should be used to satisfy Identifiable interface.
+func (id UID) ID() string {
+	return string(id)
 }
 
 // ReceivedBy returns channel which is closed when param received by identified entity
-func ReceivedBy(wg *sync.WaitGroup, id Identifiable) Param {
+func ReceivedBy(wg *sync.WaitGroup, id string) Param {
 	return Param{
-		ID: id.ID(),
+		ID: id,
 		Apply: func() {
 			wg.Done()
 		},
