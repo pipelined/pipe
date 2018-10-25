@@ -21,14 +21,9 @@ var (
 	sampleRate  = phono.SampleRate(44100)
 	numChannels = phono.NumChannels(1)
 
-	asset1 = &asset.Asset{
-		UID:    phono.NewUID(),
-		Buffer: [][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}},
-	}
-	asset2 = &asset.Asset{
-		UID:    phono.NewUID(),
-		Buffer: [][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}},
-	}
+	buffer1 = phono.Buffer([][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}})
+	buffer2 = phono.Buffer([][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}})
+
 	overlapTests = []struct {
 		phono.BufferSize
 		clips   []phono.Clip
@@ -39,8 +34,8 @@ var (
 		{
 			BufferSize: 2,
 			clips: []phono.Clip{
-				asset1.Clip(3, 1),
-				asset2.Clip(5, 3),
+				buffer1.Clip(3, 1),
+				buffer2.Clip(5, 3),
 			},
 			clipsAt: []int64{3, 4},
 			result:  []float64{0, 0, 0, 1, 2, 2, 2, 0},
@@ -49,8 +44,8 @@ var (
 		{
 			BufferSize: 3,
 			clips: []phono.Clip{
-				asset1.Clip(3, 1),
-				asset2.Clip(5, 3),
+				buffer1.Clip(3, 1),
+				buffer2.Clip(5, 3),
 			},
 			clipsAt: []int64{3, 4},
 			result:  []float64{0, 0, 0, 1, 2, 2, 2, 0, 0},
@@ -59,8 +54,8 @@ var (
 		{
 			BufferSize: 2,
 			clips: []phono.Clip{
-				asset1.Clip(3, 1),
-				asset2.Clip(5, 3),
+				buffer1.Clip(3, 1),
+				buffer2.Clip(5, 3),
 			},
 			clipsAt: []int64{2, 3},
 			result:  []float64{0, 0, 1, 2, 2, 2},
@@ -69,8 +64,8 @@ var (
 		{
 			BufferSize: 2,
 			clips: []phono.Clip{
-				asset1.Clip(3, 1),
-				asset2.Clip(5, 3),
+				buffer1.Clip(3, 1),
+				buffer2.Clip(5, 3),
 			},
 			clipsAt: []int64{2, 4},
 			result:  []float64{0, 0, 1, 0, 2, 2, 2, 0},
@@ -78,8 +73,8 @@ var (
 		},
 		{
 			clips: []phono.Clip{
-				asset1.Clip(3, 3),
-				asset2.Clip(5, 2),
+				buffer1.Clip(3, 3),
+				buffer2.Clip(5, 2),
 			},
 			clipsAt: []int64{3, 2},
 			result:  []float64{0, 0, 2, 2, 1, 1},
@@ -87,8 +82,8 @@ var (
 		},
 		{
 			clips: []phono.Clip{
-				asset1.Clip(3, 3),
-				asset2.Clip(5, 2),
+				buffer1.Clip(3, 3),
+				buffer2.Clip(5, 2),
 			},
 			clipsAt: []int64{2, 4},
 			result:  []float64{0, 0, 1, 1, 2, 2},
@@ -96,8 +91,8 @@ var (
 		},
 		{
 			clips: []phono.Clip{
-				asset1.Clip(3, 5),
-				asset2.Clip(5, 2),
+				buffer1.Clip(3, 5),
+				buffer2.Clip(5, 2),
 			},
 			clipsAt: []int64{2, 4},
 			result:  []float64{0, 0, 1, 1, 2, 2, 1, 0},
@@ -105,9 +100,9 @@ var (
 		},
 		{
 			clips: []phono.Clip{
-				asset1.Clip(3, 2),
-				asset1.Clip(3, 2),
-				asset2.Clip(5, 2),
+				buffer1.Clip(3, 2),
+				buffer1.Clip(3, 2),
+				buffer2.Clip(5, 2),
 			},
 			clipsAt: []int64{2, 5, 4},
 			result:  []float64{0, 0, 1, 1, 2, 2, 1, 0},
@@ -115,9 +110,9 @@ var (
 		},
 		{
 			clips: []phono.Clip{
-				asset1.Clip(3, 2),
-				asset1.Clip(5, 2),
-				asset2.Clip(3, 2),
+				buffer1.Clip(3, 2),
+				buffer1.Clip(5, 2),
+				buffer2.Clip(3, 2),
 			},
 			clipsAt: []int64{2, 5, 3},
 			result:  []float64{0, 0, 1, 2, 2, 1, 1, 0},
@@ -125,8 +120,8 @@ var (
 		},
 		{
 			clips: []phono.Clip{
-				asset1.Clip(3, 2),
-				asset2.Clip(3, 5),
+				buffer1.Clip(3, 2),
+				buffer2.Clip(3, 5),
 			},
 			clipsAt: []int64{2, 2},
 			result:  []float64{0, 0, 2, 2, 2, 2, 2, 0},
@@ -134,9 +129,9 @@ var (
 		},
 		{
 			clips: []phono.Clip{
-				asset1.Clip(3, 2),
-				asset1.Clip(5, 2),
-				asset2.Clip(1, 8),
+				buffer1.Clip(3, 2),
+				buffer1.Clip(5, 2),
+				buffer2.Clip(1, 8),
 			},
 			clipsAt: []int64{2, 5, 1},
 			result:  []float64{0, 2, 2, 2, 2, 2, 2, 2, 2, 0},
@@ -181,7 +176,7 @@ func TestTrackWavSlices(t *testing.T) {
 func TestSliceOverlaps(t *testing.T) {
 	sink := &mock.Sink{UID: phono.NewUID()}
 	bufferSize := phono.BufferSize(2)
-	track := track.New(bufferSize, asset1.NumChannels())
+	track := track.New(bufferSize, buffer1.NumChannels())
 	for _, test := range overlapTests {
 		fmt.Printf("Starting: %v\n", test.msg)
 		track.Reset()
