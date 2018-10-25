@@ -40,6 +40,7 @@ func (c *clip) End() int64 {
 // New creates a new track in a session.
 func New(bs phono.BufferSize, nc phono.NumChannels) (t *Track) {
 	t = &Track{
+		UID:         phono.NewUID(),
 		nextIndex:   0,
 		bs:          bs,
 		NumChannels: nc,

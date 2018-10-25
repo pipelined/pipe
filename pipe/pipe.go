@@ -8,7 +8,6 @@ import (
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/log"
-	"github.com/rs/xid"
 )
 
 // Message is a main structure for pipe transport
@@ -32,10 +31,10 @@ type params map[string][]phono.ParamFunc
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
+	phono.UID
 	name       string
 	sampleRate phono.SampleRate
-	phono.UID
-	cancelFn context.CancelFunc
+	cancelFn   context.CancelFunc
 
 	pump       *pumpRunner
 	processors []*processRunner
@@ -88,13 +87,17 @@ const (
 	measure
 )
 
-// ErrInvalidState is returned if pipe method cannot be executed at this moment
+// ErrInvalidState is returned if pipe method cannot be executed at this moment.
 var ErrInvalidState = errors.New("Invalid state")
+
+// ErrComponentNoID is used to cause a panic when new component without ID is added to pipe.
+var ErrComponentNoID = errors.New("Component have no ID value")
 
 // New creates a new pipe and applies provided options
 // returned pipe is in ready state
 func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 	p := &Pipe{
+		UID:         phono.NewUID(),
 		sampleRate:  sampleRate,
 		log:         log.GetLogger(),
 		processors:  make([]*processRunner, 0),
@@ -107,7 +110,6 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 		providerc:   make(chan struct{}),
 		consumerc:   make(chan message),
 	}
-	p.SetID(xid.New().String())
 	for _, option := range options {
 		option(p)()
 	}
@@ -132,7 +134,7 @@ func WithName(n string) Option {
 // WithPump sets pump to Pipe
 func WithPump(pump phono.Pump) Option {
 	if pump.ID() == "" {
-		pump.SetID(xid.New().String())
+		panic(ErrComponentNoID)
 	}
 	return func(p *Pipe) phono.ParamFunc {
 		return func() {
@@ -151,7 +153,7 @@ func WithPump(pump phono.Pump) Option {
 func WithProcessors(processors ...phono.Processor) Option {
 	for i := range processors {
 		if processors[i].ID() == "" {
-			processors[i].SetID(xid.New().String())
+			panic(ErrComponentNoID)
 		}
 	}
 	return func(p *Pipe) phono.ParamFunc {
@@ -173,7 +175,7 @@ func WithProcessors(processors ...phono.Processor) Option {
 func WithSinks(sinks ...phono.Sink) Option {
 	for i := range sinks {
 		if sinks[i].ID() == "" {
-			sinks[i].SetID(xid.New().String())
+			panic(ErrComponentNoID)
 		}
 	}
 	return func(p *Pipe) phono.ParamFunc {

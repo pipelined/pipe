@@ -20,9 +20,10 @@ type (
 // NewSink returns new initialized sink which allows to play pipe.
 func NewSink(bs phono.BufferSize, sr phono.SampleRate, nc phono.NumChannels) *Sink {
 	return &Sink{
-		bs: bs,
-		sr: sr,
-		nc: nc,
+		UID: phono.NewUID(),
+		bs:  bs,
+		sr:  sr,
+		nc:  nc,
 	}
 }
 

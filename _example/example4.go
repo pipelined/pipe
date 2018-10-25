@@ -25,6 +25,7 @@ func four() {
 
 	// asset sink
 	asset := &asset.Asset{
+		UID:        phono.NewUID(),
 		SampleRate: wavPump.WavSampleRate(),
 	}
 

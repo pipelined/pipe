@@ -22,9 +22,11 @@ var (
 	numChannels = phono.NumChannels(1)
 
 	asset1 = &asset.Asset{
+		UID:    phono.NewUID(),
 		Buffer: [][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}},
 	}
 	asset2 = &asset.Asset{
+		UID:    phono.NewUID(),
 		Buffer: [][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}},
 	}
 	overlapTests = []struct {
@@ -147,6 +149,7 @@ func TestTrackWavSlices(t *testing.T) {
 	wavPump, err := wav.NewPump(test.Data.Wav1, bufferSize)
 	assert.Nil(t, err)
 	asset := &asset.Asset{
+		UID:        phono.NewUID(),
 		SampleRate: sampleRate,
 	}
 
@@ -179,7 +182,7 @@ func TestTrackWavSlices(t *testing.T) {
 }
 
 func TestSliceOverlaps(t *testing.T) {
-	sink := &mock.Sink{}
+	sink := &mock.Sink{UID: phono.NewUID()}
 	bufferSize := phono.BufferSize(2)
 	track := track.New(bufferSize, asset1.NumChannels())
 	for _, test := range overlapTests {

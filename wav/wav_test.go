@@ -51,7 +51,7 @@ func TestWavPipe(t *testing.T) {
 		sink, err := wav.NewSink(test.outFile, pump.WavSampleRate(), pump.WavNumChannels(), pump.WavBitDepth(), pump.WavAudioFormat())
 		assert.Nil(t, err)
 
-		processor := &mock.Processor{}
+		processor := &mock.Processor{UID: phono.NewUID()}
 		p := pipe.New(
 			sampleRate,
 			pipe.WithPump(pump),

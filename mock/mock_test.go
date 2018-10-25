@@ -40,11 +40,12 @@ var (
 
 func TestPipe(t *testing.T) {
 	pump := &mock.Pump{
+		UID:        phono.NewUID(),
 		Limit:      1,
 		BufferSize: bufferSize,
 	}
-	processor := &mock.Processor{}
-	sink := &mock.Sink{}
+	processor := &mock.Processor{UID: phono.NewUID()}
+	sink := &mock.Sink{UID: phono.NewUID()}
 	p := pipe.New(
 		sampleRate,
 		pipe.WithName("Mock"),

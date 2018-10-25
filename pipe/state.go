@@ -168,7 +168,7 @@ func (s pausing) sendMessage(p *Pipe) State {
 	var wg sync.WaitGroup
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
-		param := phono.ReceivedBy(&wg, sink)
+		param := phono.ReceivedBy(&wg, sink.ID())
 		m.feedback = m.feedback.add(param)
 	}
 	p.consumerc <- m

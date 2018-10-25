@@ -66,6 +66,7 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 	}
 
 	return &Pump{
+		UID:            phono.NewUID(),
 		file:           file,
 		decoder:        decoder,
 		bufferSize:     bufferSize,
@@ -147,6 +148,7 @@ func NewSink(path string, wavSampleRate phono.SampleRate, wavNumChannels phono.N
 	e := wav.NewEncoder(f, int(wavSampleRate), bitDepth, int(wavNumChannels), wavAudioFormat)
 
 	return &Sink{
+		UID:            phono.NewUID(),
 		file:           f,
 		encoder:        e,
 		wavSampleRate:  wavSampleRate,
