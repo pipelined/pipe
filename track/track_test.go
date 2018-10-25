@@ -148,10 +148,7 @@ var (
 func TestTrackWavSlices(t *testing.T) {
 	wavPump, err := wav.NewPump(test.Data.Wav1, bufferSize)
 	assert.Nil(t, err)
-	asset := &asset.Asset{
-		UID:        phono.NewUID(),
-		SampleRate: sampleRate,
-	}
+	asset := asset.New()
 
 	p1 := pipe.New(
 		sampleRate,
