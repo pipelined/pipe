@@ -10,19 +10,19 @@ import (
 
 // Pump is a source of samples
 type Pump interface {
-	Identifiable
+	ID() string
 	Pump(string) (PumpFunc, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	Identifiable
+	ID() string
 	Process(string) (ProcessFunc, error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Identifiable
+	ID() string
 	// RunSink(sourceID string) SinkRunner
 	Sink(string) (SinkFunc, error)
 }
@@ -57,11 +57,6 @@ type (
 
 // Param-related types
 type (
-	// Identifiable defines a unique component
-	Identifiable interface {
-		ID() string
-	}
-
 	// UID is a string unique identifier
 	UID string
 
