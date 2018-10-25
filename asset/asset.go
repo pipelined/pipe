@@ -10,10 +10,16 @@ import (
 // It can be used as processing input and always should be copied.
 type Asset struct {
 	phono.UID
-	phono.SampleRate
 	phono.Buffer
 
 	once sync.Once
+}
+
+// New creates asset.
+func New() *Asset {
+	return &Asset{
+		UID: phono.NewUID(),
+	}
 }
 
 // Sink appends buffers to asset.

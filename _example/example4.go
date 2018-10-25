@@ -24,10 +24,7 @@ func four() {
 	sampleRate := wavPump.WavSampleRate()
 
 	// asset sink
-	asset := &asset.Asset{
-		UID:        phono.NewUID(),
-		SampleRate: wavPump.WavSampleRate(),
-	}
+	asset := asset.New()
 
 	// import pipe
 	importAsset := pipe.New(
