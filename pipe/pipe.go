@@ -193,65 +193,6 @@ func WithSinks(sinks ...phono.Sink) Option {
 	}
 }
 
-// Run sends a run event into pipe
-func Run(p *Pipe) (State, chan error) {
-	runEvent := eventMessage{
-		event: run,
-		done:  make(chan error),
-	}
-	p.eventc <- runEvent
-	return Ready, runEvent.done
-}
-
-// Pause sends a pause event into pipe
-func Pause(p *Pipe) (State, chan error) {
-	pauseEvent := eventMessage{
-		event: pause,
-		done:  make(chan error),
-	}
-	p.eventc <- pauseEvent
-	return Paused, pauseEvent.done
-}
-
-// Resume sends a resume event into pipe
-func Resume(p *Pipe) (State, chan error) {
-	resumeEvent := eventMessage{
-		event: resume,
-		done:  make(chan error),
-	}
-	p.eventc <- resumeEvent
-	return Ready, resumeEvent.done
-}
-
-// Wait for state transition or first error to occur
-func (p *Pipe) Wait(s State) error {
-	for msg := range p.transitionc {
-		if msg.err != nil {
-			p.log.Debug(fmt.Sprintf("%v received signal: %v with error: %v", p, msg.State, msg.err))
-			return msg.err
-		}
-		if msg.State == s {
-			p.log.Debug(fmt.Sprintf("%v received state: %T", p, msg.State))
-			return nil
-		}
-	}
-	return nil
-}
-
-// WaitAsync allows to wait for state transition or first error occurance through the returned channel
-func (p *Pipe) WaitAsync(s State) <-chan error {
-	errc := make(chan error)
-	go func() {
-		err := p.Wait(s)
-		if err != nil {
-			errc <- err
-		} else {
-			close(errc)
-		}
-	}()
-	return errc
-}
-
 // Push new params into pipe
 func (p *Pipe) Push(values ...phono.Param) {
 	if len(values) == 0 {
@@ -325,34 +266,6 @@ func (p *Pipe) Close() {
 		recover()
 	}()
 	close(p.eventc)
-}
-
-// Begin executes a passed action and waits till first error or till the passed function receive a done signal
-func (p *Pipe) Begin(fn actionFn) (State, error) {
-	s, errc := fn(p)
-	if errc == nil {
-		return s, nil
-	}
-	for err := range errc {
-		if err != nil {
-			return s, err
-		}
-	}
-	return s, nil
-}
-
-// Do begins an action and waits for returned state
-func (p *Pipe) Do(fn actionFn) error {
-	s, errc := fn(p)
-	if errc == nil {
-		return p.Wait(s)
-	}
-	for err := range errc {
-		if err != nil {
-			return err
-		}
-	}
-	return p.Wait(s)
 }
 
 // merge error channels
