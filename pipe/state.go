@@ -80,7 +80,7 @@ const (
 )
 
 // Run sends a run event into pipe.
-func Run(p *Pipe) chan error {
+func (p *Pipe) Run() chan error {
 	runEvent := eventMessage{
 		event: run,
 		target: target{
@@ -93,7 +93,7 @@ func Run(p *Pipe) chan error {
 }
 
 // Pause sends a pause event into pipe.
-func Pause(p *Pipe) chan error {
+func (p *Pipe) Pause() chan error {
 	pauseEvent := eventMessage{
 		event: pause,
 		target: target{
@@ -106,7 +106,7 @@ func Pause(p *Pipe) chan error {
 }
 
 // Resume sends a resume event into pipe.
-func Resume(p *Pipe) chan error {
+func (p *Pipe) Resume() chan error {
 	resumeEvent := eventMessage{
 		event: resume,
 		target: target{
@@ -119,20 +119,13 @@ func Resume(p *Pipe) chan error {
 }
 
 // Wait for state transition or first error to occur.
-func (p *Pipe) Wait(d chan error) error {
+func Wait(d chan error) error {
 	for err := range d {
 		if err != nil {
-			p.log.Debug(fmt.Sprintf("%v received error: %v", p, err))
 			return err
 		}
 	}
-	p.log.Debug(fmt.Sprintf("%v wait is done", p))
 	return nil
-}
-
-// Do begins an action and waits for returned state
-func (p *Pipe) Do(fn actionFn) error {
-	return p.Wait(fn(p))
 }
 
 // idle is used to listen to pipe's channels which are relevant for idle state.

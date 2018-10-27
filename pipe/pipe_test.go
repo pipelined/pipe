@@ -50,12 +50,13 @@ func TestPipeActions(t *testing.T) {
 	)
 
 	// test wrong state for new pipe
-	err := p.Do(pipe.Pause)
-	assert.NotNil(t, err)
+	errc := p.Pause()
+	assert.NotNil(t, errc)
+	err := pipe.Wait(errc)
 	require.Equal(t, pipe.ErrInvalidState, err)
 
 	// test pipe run
-	errc := pipe.Run(p)
+	errc = p.Run()
 	require.NotNil(t, errc)
 
 	// test push new opptions
@@ -63,9 +64,9 @@ func TestPipeActions(t *testing.T) {
 
 	// time.Sleep(time.Millisecond * 10)
 	// test pipe pause
-	errc = pipe.Pause(p)
+	errc = p.Pause()
 	require.NotNil(t, err)
-	err = p.Wait(errc)
+	err = pipe.Wait(errc)
 	require.Nil(t, err)
 
 	mc := p.Measure(pump.ID())
@@ -73,17 +74,17 @@ func TestPipeActions(t *testing.T) {
 	assert.NotNil(t, measure)
 
 	// test pipe resume
-	errc = pipe.Resume(p)
+	errc = p.Resume()
 	require.NotNil(t, errc)
-	err = p.Wait(errc)
+	err = pipe.Wait(errc)
 	require.Nil(t, err)
 
 	// test rerun
 	p.Push(pump.LimitParam(200))
 	assert.Nil(t, err)
-	errc = pipe.Run(p)
+	errc = p.Run()
 	require.NotNil(t, errc)
-	err = p.Wait(errc)
+	err = pipe.Wait(errc)
 	require.Nil(t, err)
 	p.Close()
 }
@@ -111,7 +112,7 @@ func TestPipe(t *testing.T) {
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),
 	)
-	err := p.Do(pipe.Run)
+	err := pipe.Wait(p.Run())
 	assert.Nil(t, err)
 
 	messageCount, samplesCount := pump.Count()
@@ -187,9 +188,9 @@ func TestMetrics(t *testing.T) {
 	}
 
 	start := time.Now()
-	pipe.Run(p)
+	p.Run()
 	time.Sleep(measureTests.interval / 2)
-	pipe.Pause(p)
+	p.Pause()
 	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
 	// measure diring pausing
 	for m := range mc {
