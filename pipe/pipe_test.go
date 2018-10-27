@@ -30,7 +30,6 @@ var measureTests = struct {
 }
 
 func TestPipeActions(t *testing.T) {
-
 	pump := &mock.Pump{
 		UID:         phono.NewUID(),
 		Limit:       1000,
@@ -51,24 +50,22 @@ func TestPipeActions(t *testing.T) {
 	)
 
 	// test wrong state for new pipe
-	sig, err := p.Begin(pipe.Pause)
+	err := p.Do(pipe.Pause)
 	assert.NotNil(t, err)
 	require.Equal(t, pipe.ErrInvalidState, err)
 
 	// test pipe run
-	sig, err = p.Begin(pipe.Run)
-	require.Nil(t, err)
-	err = p.Wait(pipe.Running)
-	require.Nil(t, err)
+	errc := pipe.Run(p)
+	require.NotNil(t, errc)
 
 	// test push new opptions
 	p.Push(pump.LimitParam(200))
 
 	// time.Sleep(time.Millisecond * 10)
 	// test pipe pause
-	sig, err = p.Begin(pipe.Pause)
-	require.Nil(t, err)
-	err = p.Wait(sig)
+	errc = pipe.Pause(p)
+	require.NotNil(t, err)
+	err = p.Wait(errc)
 	require.Nil(t, err)
 
 	mc := p.Measure(pump.ID())
@@ -76,18 +73,17 @@ func TestPipeActions(t *testing.T) {
 	assert.NotNil(t, measure)
 
 	// test pipe resume
-	sig, err = p.Begin(pipe.Resume)
+	errc = pipe.Resume(p)
+	require.NotNil(t, errc)
+	err = p.Wait(errc)
 	require.Nil(t, err)
-	err = p.Wait(pipe.Running)
-	err = p.Wait(pipe.Ready)
 
 	// test rerun
 	p.Push(pump.LimitParam(200))
 	assert.Nil(t, err)
-	sig, err = p.Begin(pipe.Run)
-	require.Nil(t, err)
-	done := p.WaitAsync(sig)
-	err = <-done
+	errc = pipe.Run(p)
+	require.NotNil(t, errc)
+	err = p.Wait(errc)
 	require.Nil(t, err)
 	p.Close()
 }
@@ -191,9 +187,9 @@ func TestMetrics(t *testing.T) {
 	}
 
 	start := time.Now()
-	p.Begin(pipe.Run)
+	pipe.Run(p)
 	time.Sleep(measureTests.interval / 2)
-	p.Begin(pipe.Pause)
+	pipe.Pause(p)
 	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
 	// measure diring pausing
 	for m := range mc {
