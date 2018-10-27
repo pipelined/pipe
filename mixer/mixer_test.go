@@ -78,7 +78,6 @@ func TestMixer(t *testing.T) {
 		pipe.WithSinks(mix),
 	)
 
-	var err error
 	for _, test := range tests {
 		track1.Push(
 			pump1.LimitParam(test.Limit),
@@ -89,16 +88,16 @@ func TestMixer(t *testing.T) {
 			pump2.ValueParam(test.value2),
 		)
 
-		_, err = track1.Begin(pipe.Run)
-		assert.Nil(t, err)
-		_, err = track2.Begin(pipe.Run)
-		assert.Nil(t, err)
-		_, err = playback.Begin(pipe.Run)
-		assert.Nil(t, err)
+		track1errc := pipe.Run(track1)
+		assert.NotNil(t, track1errc)
+		track2errc := pipe.Run(track2)
+		assert.NotNil(t, track2errc)
+		playbackerrc := pipe.Run(playback)
+		assert.NotNil(t, playbackerrc)
 
-		track1.Wait(pipe.Ready)
-		track2.Wait(pipe.Ready)
-		playback.Wait(pipe.Ready)
+		track1.Wait(track1errc)
+		track2.Wait(track2errc)
+		playback.Wait(playbackerrc)
 		for i := range sink.Buffer {
 			for _, val := range sink.Buffer[i] {
 				assert.Equal(t, test.sum, val)
@@ -142,16 +141,19 @@ func TestWavMixer(t *testing.T) {
 		pipe.WithSinks(s),
 	)
 
-	track1.Begin(pipe.Run)
-	// defer track1.Close()
-	track2.Begin(pipe.Run)
-	// defer track2.Close()
-	playback.Begin(pipe.Run)
-	// defer playback.Close()
+	track1errc := pipe.Run(track1)
+	assert.NotNil(t, track1errc)
+	track2errc := pipe.Run(track2)
+	assert.NotNil(t, track2errc)
+	playbackerrc := pipe.Run(playback)
+	assert.NotNil(t, playbackerrc)
 
-	track1.Wait(pipe.Ready)
-	track2.Wait(pipe.Ready)
-	playback.Wait(pipe.Ready)
+	err := track1.Wait(track1errc)
+	assert.Nil(t, err)
+	err = track2.Wait(track2errc)
+	assert.Nil(t, err)
+	err = playback.Wait(playbackerrc)
+	assert.Nil(t, err)
 
 	track1.Close()
 	track2.Close()

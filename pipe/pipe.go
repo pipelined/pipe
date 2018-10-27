@@ -40,12 +40,12 @@ type Pipe struct {
 	processors []*processRunner
 	sinks      []*sinkRunner
 
-	metrics     map[string]measurable  // metrics holds all references to measurable components
-	params      params                 //cahced params
-	feedback    params                 //cached feedback
-	errc        chan error             // errors channel
-	eventc      chan eventMessage      // event channel
-	transitionc chan transitionMessage // transitions channel
+	metrics  map[string]measurable // metrics holds all references to measurable components
+	params   params                //cahced params
+	feedback params                //cached feedback
+	errc     chan error            // errors channel
+	eventc   chan eventMessage     // event channel
+	// transitionc chan transitionMessage // transitions channel
 
 	providerc chan struct{} // ask for new message request
 	consumerc chan message  // emission of messages
@@ -57,36 +57,6 @@ type Pipe struct {
 // returns phono.ParamFunc, which can be executed later
 type Option func(p *Pipe) phono.ParamFunc
 
-// actionFn is an action function which causes a pipe state change
-// chan error is closed when state is changed
-type actionFn func(p *Pipe) (State, chan error)
-
-// event identifies the type of event
-type event int
-
-// eventMessage is passed into pipe's event channel when user does some action
-type eventMessage struct {
-	event
-	done      chan error
-	params    params
-	callbacks []string
-}
-
-// transitionMessage is sent when pipe changes the state
-type transitionMessage struct {
-	State
-	err error
-}
-
-// types of events
-const (
-	run event = iota
-	pause
-	resume
-	push
-	measure
-)
-
 // ErrInvalidState is returned if pipe method cannot be executed at this moment.
 var ErrInvalidState = errors.New("Invalid state")
 
@@ -97,26 +67,26 @@ var ErrComponentNoID = errors.New("Component have no ID value")
 // returned pipe is in ready state
 func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 	p := &Pipe{
-		UID:         phono.NewUID(),
-		sampleRate:  sampleRate,
-		log:         log.GetLogger(),
-		processors:  make([]*processRunner, 0),
-		sinks:       make([]*sinkRunner, 0),
-		metrics:     make(map[string]measurable),
-		params:      make(map[string][]phono.ParamFunc),
-		feedback:    make(map[string][]phono.ParamFunc),
-		eventc:      make(chan eventMessage, 1),
-		transitionc: make(chan transitionMessage, 100),
-		providerc:   make(chan struct{}),
-		consumerc:   make(chan message),
+		UID:        phono.NewUID(),
+		sampleRate: sampleRate,
+		log:        log.GetLogger(),
+		processors: make([]*processRunner, 0),
+		sinks:      make([]*sinkRunner, 0),
+		metrics:    make(map[string]measurable),
+		params:     make(map[string][]phono.ParamFunc),
+		feedback:   make(map[string][]phono.ParamFunc),
+		eventc:     make(chan eventMessage, 1),
+		providerc:  make(chan struct{}),
+		consumerc:  make(chan message),
 	}
 	for _, option := range options {
 		option(p)()
 	}
 	go func() {
-		var state State = Ready
-		for state != nil {
-			state = state.listen(p)
+		var s State = Ready
+		t := target{}
+		for s != nil {
+			s, t = s.listen(p, t)
 		}
 	}()
 	return p
