@@ -110,7 +110,7 @@ func WithPump(pump phono.Pump) Option {
 		return func() {
 			r := &pumpRunner{
 				Pump:       pump,
-				Flusher:    flusher(p),
+				Flusher:    flusher(pump),
 				measurable: newMetric(pump.ID(), p.sampleRate, counters.pump...),
 			}
 			p.metrics[r.ID()] = r
@@ -276,11 +276,7 @@ func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc, err := s.run(p.ID(), broadcasts[i])
-		if err != nil {
-			p.log.Debug(fmt.Sprintf("%v failed to start sink %v error: %v", p, s.ID(), err))
-			return nil, err
-		}
+		errc := s.run(p.ID(), broadcasts[i])
 		errcList = append(errcList, errc)
 	}
 

@@ -207,8 +207,40 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		p.cancelFn = cancelFn
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
+		// build all runners first.
+		// build pump.
+		err := p.pump.build(p.ID())
+		if err != nil {
+			p.log.Debug(fmt.Sprintf("%v failed to build pump %v error: %v", p, p.pump.ID(), err))
+			e.target.errc <- err
+			p.cancelFn()
+			return s
+		}
+
+		// build processors.
+		for _, proc := range p.processors {
+			err := proc.build(p.ID())
+			if err != nil {
+				p.log.Debug(fmt.Sprintf("%v failed to build proc %v error: %v", p, proc.ID(), err))
+				e.target.errc <- err
+				p.cancelFn()
+				return s
+			}
+		}
+
+		// build sinks.
+		for _, sink := range p.sinks {
+			err := sink.build(p.ID())
+			if err != nil {
+				p.log.Debug(fmt.Sprintf("%v failed to build sink %v error: %v", p, sink.ID(), err))
+				e.target.errc <- err
+				p.cancelFn()
+				return s
+			}
+		}
+
 		// start pump
-		out, errc, err := p.pump.run(ctx, p.ID(), p.source())
+		out, errc := p.pump.run(ctx, p.ID(), p.source())
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to start pump %v error: %v", p, p.pump.ID(), err))
 			e.target.errc <- err
@@ -219,7 +251,7 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 
 		// start chained processesing
 		for _, proc := range p.processors {
-			out, errc, err = proc.run(p.ID(), out)
+			out, errc = proc.run(p.ID(), out)
 			if err != nil {
 				p.log.Debug(fmt.Sprintf("%v failed to start processor %v error: %v", p, proc.ID(), err))
 				e.target.errc <- err
