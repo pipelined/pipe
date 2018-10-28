@@ -66,8 +66,7 @@ func (f *frame) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) 
 }
 
 const (
-	defaultBufferLimit = 256
-	maxInputs          = 1024
+	maxInputs = 1024
 )
 
 // New returns new mixer.
@@ -79,7 +78,7 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 		done:        make(map[string]*input),
 		numChannels: nc,
 		bufferSize:  bs,
-		in:          make(chan *inMessage, 1),
+		in:          make(chan *inMessage, maxInputs),
 		frame:       &frame{},
 	}
 	return m
@@ -173,8 +172,6 @@ func (m *Mixer) Pump(sourceID string) (phono.PumpFunc, error) {
 }
 
 func (m *Mixer) sendFrame(f *frame) {
-	m.Lock()
 	m.frame = f
-	m.Unlock()
 	m.ready <- f
 }
