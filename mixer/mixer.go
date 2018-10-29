@@ -1,7 +1,6 @@
 package mixer
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/dudk/phono"
@@ -14,7 +13,6 @@ type Mixer struct {
 	log.Logger
 	numChannels phono.NumChannels
 	bufferSize  phono.BufferSize
-	open        chan string       // channel to send signals about new inputs
 	ready       chan *frame       // channel to send frames ready for mix
 	in          chan *inMessage   // channel to send incoming messages
 	inputs      map[string]*input // inputs sinking data
@@ -33,7 +31,6 @@ type inMessage struct {
 // input represents a mixer input and is getting created everytime Sink method is called.
 type input struct {
 	*frame
-	received int64
 }
 
 // frame represents a slice of samples to mix
@@ -69,8 +66,7 @@ func (f *frame) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) 
 }
 
 const (
-	defaultBufferLimit = 256
-	maxInputs          = 1024
+	maxInputs = 1024
 )
 
 // New returns new mixer.
@@ -82,15 +78,18 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 		done:        make(map[string]*input),
 		numChannels: nc,
 		bufferSize:  bs,
-		open:        make(chan string, maxInputs),
-		in:          make(chan *inMessage, defaultBufferLimit),
+		in:          make(chan *inMessage, maxInputs),
+		frame:       &frame{},
 	}
 	return m
 }
 
 // Sink processes the single input.
 func (m *Mixer) Sink(sourceID string) (phono.SinkFunc, error) {
-	m.open <- sourceID
+	m.Lock()
+	m.inputs[sourceID] = &input{frame: m.frame}
+	m.frame.expected = len(m.inputs)
+	m.Unlock()
 	return func(b phono.Buffer) error {
 		m.in <- &inMessage{sourceID: sourceID, Buffer: b}
 		return nil
@@ -102,6 +101,7 @@ func (m *Mixer) Flush(sourceID string) error {
 	m.Lock()
 	defer m.Unlock()
 	if sourceID == m.outputID {
+		m.frame = &frame{}
 		return nil
 	}
 	m.in <- &inMessage{sourceID: sourceID}
@@ -113,68 +113,49 @@ func (m *Mixer) Pump(sourceID string) (phono.PumpFunc, error) {
 	m.Lock()
 	m.outputID = sourceID
 	m.Unlock()
-	// new frame
-	m.frame = &frame{}
 
 	// new out channel
-	m.ready = make(chan *frame, defaultBufferLimit)
+	m.ready = make(chan *frame, 1)
 
 	// reset old inputs
 	for sourceID := range m.done {
 		delete(m.done, sourceID)
-		m.open <- sourceID
 	}
 
-	// this goroutine lives while pump works
+	// this goroutine lives while pump works.
+	// TODO: prevent leaking.
 	go func() {
-		for {
-			select {
-			// first add all new inputs
-			case sourceID := <-m.open:
-				fmt.Println("NEW INPUT for ", sourceID)
-				m.inputs[sourceID] = &input{frame: m.frame}
-				m.frame.expected = len(m.inputs)
-				fmt.Printf("INPUTS: %+v\n", m.inputs)
-			// now start processing
-			default:
-				for msg := range m.in {
-					// buffer is nil only when input is closed
-					if msg.Buffer != nil {
-						input := m.inputs[msg.sourceID]
-						input.received++
-						// first sink call
-						// get frame from mixer
-						if input.frame == nil {
-							input.frame = m.frame
-						}
+		for msg := range m.in {
+			m.Lock()
+			input := m.inputs[msg.sourceID]
+			m.Unlock()
+			// buffer is nil only when input is closed
+			if msg.Buffer != nil {
+				input.frame.buffers = append(input.frame.buffers, msg.Buffer)
+				if input.frame.next == nil {
+					input.frame.next = &frame{expected: len(m.inputs)}
+				}
 
-						input.frame.buffers = append(input.frame.buffers, msg.Buffer)
-						if input.frame.next == nil {
-							input.frame.next = &frame{expected: len(m.inputs)}
-						}
-
-						if input.frame.isReady() {
-							m.sendFrame(input.frame)
-						}
-						// proceed input to next frame
-						input.frame = input.frame.next
-					} else {
-						input := m.inputs[msg.sourceID]
-						fmt.Printf("sourceID %v input %v\n", msg.sourceID, input)
-						// lower expectations for each next frame
-						for f := input.frame; f != nil; f = f.next {
-							f.expected--
-							if f.expected > 0 && f.isReady() {
-								m.sendFrame(input.frame)
-							}
-						}
-						m.done[msg.sourceID] = input
-						delete(m.inputs, msg.sourceID)
-						if len(m.inputs) == 0 {
-							close(m.ready)
-							return
-						}
+				if input.frame.isReady() {
+					m.sendFrame(input.frame)
+				}
+				// proceed input to next frame
+				input.frame = input.frame.next
+			} else {
+				// lower expectations for each next frame
+				for f := input.frame; f != nil; f = f.next {
+					f.expected--
+					if f.expected > 0 && f.isReady() {
+						m.sendFrame(input.frame)
 					}
+				}
+				m.done[msg.sourceID] = input
+				m.Lock()
+				delete(m.inputs, msg.sourceID)
+				m.Unlock()
+				if len(m.inputs) == 0 {
+					close(m.ready)
+					return
 				}
 			}
 		}

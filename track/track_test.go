@@ -150,7 +150,7 @@ func TestTrackWavSlices(t *testing.T) {
 		pipe.WithPump(wavPump),
 		pipe.WithSinks(asset),
 	)
-	_ = p1.Do(pipe.Run)
+	_ = pipe.Wait(p1.Run())
 
 	wavSink, err := wav.NewSink(
 		test.Out.Track,
@@ -170,7 +170,7 @@ func TestTrackWavSlices(t *testing.T) {
 		pipe.WithPump(track),
 		pipe.WithSinks(wavSink),
 	)
-	_ = p2.Do(pipe.Run)
+	_ = pipe.Wait(p2.Run())
 }
 
 func TestSliceOverlaps(t *testing.T) {
@@ -194,7 +194,7 @@ func TestSliceOverlaps(t *testing.T) {
 			p.Push(track.BufferSizeParam(test.BufferSize))
 		}
 
-		_ = p.Do(pipe.Run)
+		_ = pipe.Wait(p.Run())
 		assert.Equal(t, len(test.result), len(sink.Buffer[0]), test.msg)
 		for i, v := range sink.Buffer[0] {
 			assert.Equal(t, test.result[i], v, "Test: %v Index: %v Full expected: %v Full result:%v", test.msg, i, test.result, sink.Buffer[0])
