@@ -11,6 +11,7 @@ type pumpRunner struct {
 	phono.Pump
 	measurable
 	Flusher
+	fn  phono.PumpFunc
 	out chan message
 }
 
@@ -19,6 +20,7 @@ type processRunner struct {
 	phono.Processor
 	measurable
 	Flusher
+	fn  phono.ProcessFunc
 	in  <-chan message
 	out chan message
 }
@@ -28,6 +30,7 @@ type sinkRunner struct {
 	phono.Sink
 	measurable
 	Flusher
+	fn phono.SinkFunc
 	in <-chan message
 }
 
@@ -64,42 +67,48 @@ func flusher(i interface{}) Flusher {
 	return nil
 }
 
-// run the Pump runner.
-func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMessageFunc) (<-chan message, <-chan error, error) {
-	p.measurable.Reset()
-	pumpFn, err := p.Pump.Pump(sourceID)
+// build creates the closure. it's separated from run to have pre-run
+// logic executed in correct order for all components.
+func (r *pumpRunner) build(sourceID string) (err error) {
+	r.fn, err = r.Pump.Pump(sourceID)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
+	return nil
+}
+
+// run the Pump runner.
+func (r *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMessageFunc) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
+	r.measurable.Reset()
 	go func() {
 		defer close(out)
 		defer close(errc)
 		defer func() {
-			if p.Flusher != nil {
-				err := p.Flusher.Flush(sourceID)
+			if r.Flusher != nil {
+				err := r.Flusher.Flush(sourceID)
 				if err != nil {
 					errc <- err
 				}
 			}
 		}()
-		defer p.measurable.FinishMeasure()
-		p.measurable.Latency()
+		defer r.measurable.FinishMeasure()
+		r.measurable.Latency()
 		var err error
 		for {
 			m := newMessage()
-			m.applyTo(p.ID())
-			m.Buffer, err = pumpFn()
+			m.applyTo(r.ID())
+			m.Buffer, err = r.fn()
 			if err != nil {
 				if err != phono.ErrEOP {
 					errc <- err
 				}
 				return
 			}
-			p.Counter(OutputCounter).Advance(m.Buffer)
-			p.Latency()
-			m.feedback.applyTo(p.ID())
+			r.Counter(OutputCounter).Advance(m.Buffer)
+			r.Latency()
+			m.feedback.applyTo(r.ID())
 			select {
 			case <-ctx.Done():
 				return
@@ -108,32 +117,38 @@ func (p *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMes
 			}
 		}
 	}()
-	return out, errc, nil
+	return out, errc
+}
+
+// build creates the closure. it's separated from run to have pre-run
+// logic executed in correct order for all components.
+func (r *processRunner) build(sourceID string) (err error) {
+	r.fn, err = r.Processor.Process(sourceID)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // run the Processor runner.
-func (p *processRunner) run(sourceID string, in <-chan message) (<-chan message, <-chan error, error) {
-	p.measurable.Reset()
-	processFn, err := p.Process(sourceID)
-	if err != nil {
-		return nil, nil, err
-	}
+func (r *processRunner) run(sourceID string, in <-chan message) (<-chan message, <-chan error) {
 	errc := make(chan error, 1)
-	p.in = in
-	p.out = make(chan message)
+	r.in = in
+	r.out = make(chan message)
+	r.measurable.Reset()
 	go func() {
-		defer close(p.out)
+		defer close(r.out)
 		defer close(errc)
 		defer func() {
-			if p.Flusher != nil {
-				err := p.Flusher.Flush(sourceID)
+			if r.Flusher != nil {
+				err := r.Flusher.Flush(sourceID)
 				if err != nil {
 					errc <- err
 				}
 			}
 		}()
-		defer p.measurable.FinishMeasure()
-		p.measurable.Latency()
+		defer r.measurable.FinishMeasure()
+		r.measurable.Latency()
 		var err error
 		for in != nil {
 			select {
@@ -141,60 +156,66 @@ func (p *processRunner) run(sourceID string, in <-chan message) (<-chan message,
 				if !ok {
 					return
 				}
-				m.applyTo(p.Processor.ID())
-				m.Buffer, err = processFn(m.Buffer)
+				m.applyTo(r.Processor.ID())
+				m.Buffer, err = r.fn(m.Buffer)
 				if err != nil {
 					errc <- err
 					return
 				}
-				p.Counter(OutputCounter).Advance(m.Buffer)
-				p.Latency()
-				m.feedback.applyTo(p.ID())
-				p.out <- m
+				r.Counter(OutputCounter).Advance(m.Buffer)
+				r.Latency()
+				m.feedback.applyTo(r.ID())
+				r.out <- m
 			}
 		}
 	}()
-	return p.out, errc, nil
+	return r.out, errc
+}
+
+// build creates the closure. it's separated from run to have pre-run
+// logic executed in correct order for all components.
+func (r *sinkRunner) build(sourceID string) (err error) {
+	r.fn, err = r.Sink.Sink(sourceID)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // run the sink runner.
-func (s *sinkRunner) run(sourceID string, in <-chan message) (<-chan error, error) {
-	s.measurable.Reset()
-	sinkFn, err := s.Sink.Sink(sourceID)
-	if err != nil {
-		return nil, err
-	}
+func (r *sinkRunner) run(sourceID string, in <-chan message) <-chan error {
 	errc := make(chan error, 1)
+	r.measurable.Reset()
 	go func() {
 		defer close(errc)
 		defer func() {
-			if s.Flusher != nil {
-				err := s.Flusher.Flush(sourceID)
+			if r.Flusher != nil {
+				err := r.Flusher.Flush(sourceID)
 				if err != nil {
 					errc <- err
 				}
 			}
 		}()
-		defer s.measurable.FinishMeasure()
-		s.measurable.Latency()
+		defer r.measurable.FinishMeasure()
+		r.measurable.Latency()
 		for in != nil {
 			select {
 			case m, ok := <-in:
 				if !ok {
 					return
 				}
-				m.params.applyTo(s.Sink.ID())
-				err = sinkFn(m.Buffer)
+				m.params.applyTo(r.Sink.ID())
+				err := r.fn(m.Buffer)
 				if err != nil {
 					errc <- err
 					return
 				}
-				s.Counter(OutputCounter).Advance(m.Buffer)
-				s.Latency()
-				m.feedback.applyTo(s.ID())
+				r.Counter(OutputCounter).Advance(m.Buffer)
+				r.Latency()
+				m.feedback.applyTo(r.ID())
 			}
 		}
 	}()
 
-	return errc, nil
+	return errc
 }
