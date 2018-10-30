@@ -12,6 +12,7 @@ require (
 	github.com/rs/xid v1.2.1
 	github.com/sirupsen/logrus v1.0.6
 	github.com/stretchr/testify v1.2.2
+	go.uber.org/goleak v0.10.0
 	golang.org/x/crypto v0.0.0-20180910181607-0e37d006457b
 	golang.org/x/net v0.0.0-20180911220305-26e67e76b6c3 // indirect
 	golang.org/x/sys v0.0.0-20180909124046-d0be0721c37e

@@ -3,6 +3,7 @@
 package portaudio_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dudk/phono/pipe"
@@ -31,6 +32,6 @@ func TestSink(t *testing.T) {
 		pipe.WithSinks(sink),
 	)
 
-	err = pipe.Wait(playback.Run())
+	err = pipe.Wait(playback.Run(context.Background()))
 	assert.Nil(t, err)
 }

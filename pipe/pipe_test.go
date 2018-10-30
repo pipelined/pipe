@@ -1,6 +1,7 @@
 package pipe_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
+	"go.uber.org/goleak"
 )
 
 const (
@@ -27,6 +29,10 @@ var measureTests = struct {
 	Limit:       10,
 	BufferSize:  10,
 	NumChannels: 1,
+}
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
 }
 
 func TestPipeActions(t *testing.T) {
@@ -56,7 +62,7 @@ func TestPipeActions(t *testing.T) {
 	require.Equal(t, pipe.ErrInvalidState, err)
 
 	// test pipe run
-	errc = p.Run()
+	errc = p.Run(context.Background())
 	require.NotNil(t, errc)
 
 	// test push new opptions
@@ -82,7 +88,7 @@ func TestPipeActions(t *testing.T) {
 	// test rerun
 	p.Push(pump.LimitParam(200))
 	assert.Nil(t, err)
-	errc = p.Run()
+	errc = p.Run(context.Background())
 	require.NotNil(t, errc)
 	err = pipe.Wait(errc)
 	require.Nil(t, err)
@@ -112,7 +118,7 @@ func TestPipe(t *testing.T) {
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),
 	)
-	err := pipe.Wait(p.Run())
+	err := pipe.Wait(p.Run(context.Background()))
 	assert.Nil(t, err)
 
 	messageCount, samplesCount := pump.Count()
@@ -137,6 +143,7 @@ func TestMetricsEmpty(t *testing.T) {
 	p := pipe.New(sampleRate)
 	mc := p.Measure()
 	assert.Nil(t, mc)
+	p.Close()
 }
 
 func TestMetricsBadID(t *testing.T) {
@@ -144,6 +151,7 @@ func TestMetricsBadID(t *testing.T) {
 	p := pipe.New(sampleRate, pipe.WithProcessors(proc))
 	mc := p.Measure(proc.ID() + "bad")
 	assert.Nil(t, mc)
+	p.Close()
 }
 
 func TestMetrics(t *testing.T) {
@@ -188,9 +196,10 @@ func TestMetrics(t *testing.T) {
 	}
 
 	start := time.Now()
-	p.Run()
+	p.Run(context.Background())
 	time.Sleep(measureTests.interval / 2)
-	p.Pause()
+	err := pipe.Wait(p.Pause())
+	assert.Nil(t, err)
 	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
 	// measure diring pausing
 	for m := range mc {
@@ -210,4 +219,7 @@ func TestMetrics(t *testing.T) {
 			t.Errorf("Measure with empty id")
 		}
 	}
+	err = pipe.Wait(p.Resume())
+	assert.Nil(t, err)
+	p.Close()
 }

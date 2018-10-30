@@ -58,10 +58,10 @@ type Pipe struct {
 type Option func(p *Pipe) phono.ParamFunc
 
 // ErrInvalidState is returned if pipe method cannot be executed at this moment.
-var ErrInvalidState = errors.New("Invalid state")
+var ErrInvalidState = errors.New("invalid state")
 
 // ErrComponentNoID is used to cause a panic when new component without ID is added to pipe.
-var ErrComponentNoID = errors.New("Component have no ID value")
+var ErrComponentNoID = errors.New("component have no ID value")
 
 // New creates a new pipe and applies provided options
 // returned pipe is in ready state
@@ -239,6 +239,7 @@ func (p *Pipe) Close() {
 }
 
 // merge error channels
+// TODO: prevent leaking.
 func mergeErrors(errcList ...<-chan error) chan error {
 	var wg sync.WaitGroup
 	out := make(chan error, len(errcList))
@@ -265,6 +266,7 @@ func mergeErrors(errcList ...<-chan error) chan error {
 }
 
 // broadcastToSinks passes messages to all sinks
+// TODO: prevent leaking.
 func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
@@ -321,14 +323,6 @@ func (p *Pipe) source() newMessageFunc {
 		msg := <-p.consumerc
 		msg.sourceID = p.ID()
 		return msg
-	}
-}
-
-// stop the pipe and clean up resources
-// consequent calls do nothing
-func (p *Pipe) close() {
-	if p.cancelFn != nil {
-		p.cancelFn()
 	}
 }
 
