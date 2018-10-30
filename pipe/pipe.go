@@ -87,6 +87,7 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 		t := target{}
 		for s != nil {
 			s, t = s.listen(p, t)
+			p.log.Debug(fmt.Sprintf("%v is %T", p, s))
 		}
 	}()
 	return p
