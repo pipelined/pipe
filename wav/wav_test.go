@@ -1,6 +1,7 @@
 package wav_test
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"testing"
@@ -58,13 +59,13 @@ func TestWavPipe(t *testing.T) {
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),
 		)
-		err = pipe.Wait(p.Run())
+		err = pipe.Wait(p.Run(context.Background()))
 		assert.Nil(t, err)
 		messageCount, sampleCount := processor.Count()
 		assert.Equal(t, test.messages, messageCount)
 		assert.Equal(t, test.samples, sampleCount)
 
-		err = pipe.Wait(p.Run())
+		err = pipe.Wait(p.Run(context.Background()))
 		assert.Equal(t, phono.ErrSingleUseReused, err)
 	}
 }

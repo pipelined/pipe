@@ -1,6 +1,7 @@
 package mock_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -60,7 +61,7 @@ func TestPipe(t *testing.T) {
 			pump.NumChannelsParam(test.NumChannels),
 			pump.ValueParam(test.value),
 		)
-		err := pipe.Wait(p.Run())
+		err := pipe.Wait(p.Run(context.Background()))
 		assert.Nil(t, err)
 
 		messageCount, samplesCount := pump.Count()

@@ -1,6 +1,7 @@
 package mixer_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -88,11 +89,11 @@ func TestMixer(t *testing.T) {
 			pump2.ValueParam(test.value2),
 		)
 
-		track1errc := track1.Run()
+		track1errc := track1.Run(context.Background())
 		assert.NotNil(t, track1errc)
-		track2errc := track2.Run()
+		track2errc := track2.Run(context.Background())
 		assert.NotNil(t, track2errc)
-		playbackerrc := playback.Run()
+		playbackerrc := playback.Run(context.Background())
 		assert.NotNil(t, playbackerrc)
 
 		err := pipe.Wait(track1errc)
@@ -144,11 +145,11 @@ func TestWavMixer(t *testing.T) {
 		pipe.WithSinks(s),
 	)
 
-	track1errc := track1.Run()
+	track1errc := track1.Run(context.Background())
 	assert.NotNil(t, track1errc)
-	track2errc := track2.Run()
+	track2errc := track2.Run(context.Background())
 	assert.NotNil(t, track2errc)
-	playbackerrc := playback.Run()
+	playbackerrc := playback.Run(context.Background())
 	assert.NotNil(t, playbackerrc)
 
 	err := pipe.Wait(track1errc)

@@ -23,7 +23,6 @@ type idleState interface {
 type activeState interface {
 	State
 	sendMessage(*Pipe) State
-	handleError(*Pipe, error) State
 }
 
 // states
@@ -58,9 +57,10 @@ type event int
 
 // eventMessage is passed into pipe's event channel when user does some action.
 type eventMessage struct {
-	event              // event type.
-	params    params   // new params.
-	callbacks []string // ids of components which need to be called.
+	context.Context          // context for event.
+	event                    // event type.
+	params          params   // new params.
+	callbacks       []string // ids of components which need to be called.
 	target
 }
 
@@ -80,9 +80,10 @@ const (
 )
 
 // Run sends a run event into pipe.
-func (p *Pipe) Run() chan error {
+func (p *Pipe) Run(ctx context.Context) chan error {
 	runEvent := eventMessage{
-		event: run,
+		Context: ctx,
+		event:   run,
 		target: target{
 			State: Ready,
 			errc:  make(chan error, 1),
@@ -136,19 +137,18 @@ func (p *Pipe) idle(s idleState, t target) (State, target) {
 	}
 	for {
 		var newState State
-		var e eventMessage
-		var ok bool
 		select {
-		case e, ok = <-p.eventc:
+		case e, ok := <-p.eventc:
 			if !ok {
-				p.close()
+				interrupt(p.cancelFn, t)
 				return nil, t
 			}
 			newState = s.transition(p, e)
-		}
-		if e.hasTarget() {
-			t.reach()
-			t = e.target
+			// new target is received
+			if e.hasTarget() {
+				t.reach()
+				t = e.target
+			}
 		}
 		if s != newState {
 			return newState, t
@@ -163,23 +163,25 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 	}
 	for {
 		var newState State
-		var e eventMessage
-		var ok bool
 		select {
-		case e, ok = <-p.eventc:
+		case e, ok := <-p.eventc:
 			if !ok {
-				p.close()
+				interrupt(p.cancelFn, t)
 				return nil, t
 			}
 			newState = s.transition(p, e)
+			// new target is received
+			if e.hasTarget() {
+				t.reach()
+				t = e.target
+			}
 		case <-p.providerc:
 			newState = s.sendMessage(p)
-		case err := <-p.errc:
-			newState = s.handleError(p, err)
-		}
-		if e.hasTarget() {
-			t.reach()
-			t = e.target
+		case err, ok := <-p.errc:
+			if ok {
+				handleError(p.cancelFn, t, err)
+			}
+			return Ready, t
 		}
 		if s != newState {
 			return newState, t
@@ -203,8 +205,6 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		}
 		return s
 	case run:
-		ctx, cancelFn := context.WithCancel(context.Background())
-		p.cancelFn = cancelFn
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 
 		// build all runners first.
@@ -213,7 +213,6 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 		if err != nil {
 			p.log.Debug(fmt.Sprintf("%v failed to build pump %v error: %v", p, p.pump.ID(), err))
 			e.target.errc <- err
-			p.cancelFn()
 			return s
 		}
 
@@ -223,7 +222,6 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 			if err != nil {
 				p.log.Debug(fmt.Sprintf("%v failed to build proc %v error: %v", p, proc.ID(), err))
 				e.target.errc <- err
-				p.cancelFn()
 				return s
 			}
 		}
@@ -234,10 +232,12 @@ func (s ready) transition(p *Pipe, e eventMessage) State {
 			if err != nil {
 				p.log.Debug(fmt.Sprintf("%v failed to build sink %v error: %v", p, sink.ID(), err))
 				e.target.errc <- err
-				p.cancelFn()
 				return s
 			}
 		}
+
+		ctx, cancelFn := context.WithCancel(e.Context)
+		p.cancelFn = cancelFn
 
 		// start pump
 		out, errc := p.pump.run(ctx, p.ID(), p.source())
@@ -301,11 +301,15 @@ func (s running) sendMessage(p *Pipe) State {
 	return s
 }
 
-func (s running) handleError(p *Pipe, err error) State {
-	if err != nil {
-		p.cancelFn()
+func handleError(fn context.CancelFunc, t target, err error) {
+	if fn != nil {
+		fn()
 	}
-	return Ready
+	if t.errc != nil {
+		t.errc <- err
+	} else {
+		panic(err)
+	}
 }
 
 func (s pausing) listen(p *Pipe, t target) (State, target) {
@@ -343,13 +347,6 @@ func (s pausing) sendMessage(p *Pipe) State {
 	return Paused
 }
 
-func (s pausing) handleError(p *Pipe, err error) State {
-	if err != nil {
-		p.cancelFn()
-	}
-	return Ready
-}
-
 func (s paused) listen(p *Pipe, t target) (State, target) {
 	return p.idle(s, t)
 }
@@ -385,4 +382,13 @@ func (t target) reach() target {
 		t.errc = nil
 	}
 	return t
+}
+
+// interrupt the pipe and clean up resources.
+// consequent calls do nothing.
+func interrupt(fn context.CancelFunc, t target) {
+	if fn != nil {
+		fn()
+	}
+	t.reach()
 }

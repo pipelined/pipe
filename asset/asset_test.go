@@ -1,6 +1,7 @@
 package asset_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dudk/phono"
@@ -60,7 +61,7 @@ func TestPipe(t *testing.T) {
 			pump.NumChannelsParam(test.NumChannels),
 			pump.ValueParam(test.value),
 		)
-		err := pipe.Wait(p.Run())
+		err := pipe.Wait(p.Run(context.Background()))
 		assert.Nil(t, err)
 
 		messageCount, samplesCount := pump.Count()
@@ -79,7 +80,7 @@ func TestPipe(t *testing.T) {
 				assert.Equal(t, test.value, sink.Buffer[i][j])
 			}
 		}
-		err = pipe.Wait(p.Run())
+		err = pipe.Wait(p.Run(context.Background()))
 		assert.NotNil(t, err)
 		assert.Equal(t, phono.ErrSingleUseReused, err)
 	}
