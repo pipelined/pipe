@@ -141,12 +141,12 @@ func (p *Pipe) idle(s idleState, t target) (State, target) {
 		select {
 		case e, ok := <-p.eventc:
 			if !ok {
-				interrupt(p.cancelFn, t)
+				interrupt(p.cancelFn)
 				return nil, t
 			}
 			newState, err = s.transition(p, e)
 			if err != nil {
-				handleError(p.cancelFn, e.target, err)
+				handleError(e.target, err)
 			} else if e.hasTarget() {
 				t.dismiss()
 				t = e.target
@@ -166,12 +166,12 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 		select {
 		case e, ok := <-p.eventc:
 			if !ok {
-				interrupt(p.cancelFn, t)
+				interrupt(p.cancelFn)
 				return nil, t
 			}
 			newState, err = s.transition(p, e)
 			if err != nil {
-				handleError(p.cancelFn, e.target, err)
+				handleError(e.target, err)
 			} else if e.hasTarget() {
 				t.dismiss()
 				t = e.target
@@ -180,7 +180,8 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 			newState = s.sendMessage(p)
 		case err, ok := <-p.errc:
 			if ok {
-				handleError(p.cancelFn, t, err)
+				interrupt(p.cancelFn)
+				handleError(t, err)
 			}
 			return Ready, t
 		}
@@ -360,18 +361,14 @@ func (t target) dismiss() target {
 
 // interrupt the pipe and clean up resources.
 // consequent calls do nothing.
-func interrupt(fn context.CancelFunc, t target) {
+func interrupt(fn context.CancelFunc) {
 	if fn != nil {
 		fn()
 	}
-	t.dismiss()
 }
 
 // handleError pushes error into target. panic happens if no target defined.
-func handleError(fn context.CancelFunc, t target, err error) {
-	if fn != nil {
-		fn()
-	}
+func handleError(t target, err error) {
 	if t.errc != nil {
 		t.errc <- err
 	} else {
