@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/mock"
@@ -35,73 +34,13 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
-func TestPipeActions(t *testing.T) {
-	pump := &mock.Pump{
-		UID:         phono.NewUID(),
-		Limit:       1000,
-		Interval:    0,
-		NumChannels: 1,
-	}
-
-	proc := &mock.Processor{UID: phono.NewUID()}
-	sink := &mock.Sink{UID: phono.NewUID()}
-
-	// new pipe
-	p := pipe.New(
-		sampleRate,
-		pipe.WithName("Pipe"),
-		pipe.WithPump(pump),
-		pipe.WithProcessors(proc),
-		pipe.WithSinks(sink),
-	)
-
-	// test wrong state for new pipe
-	errc := p.Pause()
-	assert.NotNil(t, errc)
-	err := pipe.Wait(errc)
-	require.Equal(t, pipe.ErrInvalidState, err)
-
-	// test pipe run
-	errc = p.Run(context.Background())
-	require.NotNil(t, errc)
-
-	// test push new opptions
-	p.Push(pump.LimitParam(200))
-
-	// time.Sleep(time.Millisecond * 10)
-	// test pipe pause
-	errc = p.Pause()
-	require.NotNil(t, err)
-	err = pipe.Wait(errc)
-	require.Nil(t, err)
-
-	mc := p.Measure(pump.ID())
-	measure := <-mc
-	assert.NotNil(t, measure)
-
-	// test pipe resume
-	errc = p.Resume()
-	require.NotNil(t, errc)
-	err = pipe.Wait(errc)
-	require.Nil(t, err)
-
-	// test rerun
-	p.Push(pump.LimitParam(200))
-	assert.Nil(t, err)
-	errc = p.Run(context.Background())
-	require.NotNil(t, errc)
-	err = pipe.Wait(errc)
-	require.Nil(t, err)
-	p.Close()
-}
-
 func TestPipe(t *testing.T) {
-	messages := int64(1000)
+	messages := int64(5)
 	samples := int64(10)
 	pump := &mock.Pump{
 		UID:         phono.NewUID(),
 		Limit:       mock.Limit(messages),
-		Interval:    0,
+		Interval:    10 * time.Microsecond,
 		BufferSize:  phono.BufferSize(samples),
 		NumChannels: 1,
 	}
@@ -118,25 +57,106 @@ func TestPipe(t *testing.T) {
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),
 	)
-	err := pipe.Wait(p.Run(context.Background()))
+	testRun(t, p)
+	testPause(t, p)
+	testResume(t, p)
+	p.Close()
+}
+
+// Test Run method for all states.
+func testRun(t *testing.T, p *pipe.Pipe) {
+	ctx := context.Background()
+	// run while ready
+	runc := p.Run(ctx)
+	assert.NotNil(t, runc)
+	err := pipe.Wait(runc)
 	assert.Nil(t, err)
 
-	messageCount, samplesCount := pump.Count()
-	assert.Equal(t, messages, messageCount)
-	assert.Equal(t, samples*messages, samplesCount)
+	// run while running
+	runc = p.Run(ctx)
+	err = pipe.Wait(p.Run(ctx))
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	err = pipe.Wait(runc)
+	assert.Nil(t, err)
 
-	messageCount, samplesCount = proc1.Count()
-	assert.Equal(t, messages, messageCount)
-	assert.Equal(t, samples*messages, samplesCount)
+	// run while pausing
+	runc = p.Run(ctx)
+	pausec := p.Pause()
+	// pause should cancel run channel
+	err = pipe.Wait(runc)
+	assert.Nil(t, err)
+	// pausing
+	err = pipe.Wait(p.Run(ctx))
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	_ = pipe.Wait(pausec)
 
-	messageCount, samplesCount = sink1.Count()
-	assert.Equal(t, messages, messageCount)
-	assert.Equal(t, samples*messages, samplesCount)
-	mc := p.Measure(pump.ID())
-	measure := <-mc
-	assert.NotNil(t, measure)
-	p.Close()
-	p.Close()
+	// run while paused
+	err = pipe.Wait(p.Run(ctx))
+	assert.Equal(t, pipe.ErrInvalidState, err)
+
+	_ = pipe.Wait(p.Resume())
+}
+
+// Test Run method for all states.
+func testPause(t *testing.T, p *pipe.Pipe) {
+	// pause while ready
+	errc := p.Pause()
+	assert.NotNil(t, errc)
+	err := pipe.Wait(errc)
+	assert.Equal(t, pipe.ErrInvalidState, err)
+
+	// pause while running
+	_ = p.Run(context.Background())
+	errc = p.Pause()
+	assert.NotNil(t, errc)
+	err = pipe.Wait(errc)
+	assert.Nil(t, err)
+
+	// pause while pausing
+	_ = p.Run(context.Background())
+	pausec := p.Pause()
+	assert.NotNil(t, pausec)
+	err = pipe.Wait(p.Pause())
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	err = pipe.Wait(pausec)
+
+	// pause while paused
+	err = pipe.Wait(p.Pause())
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	_ = pipe.Wait(p.Resume())
+}
+
+// Test resume method for all states.
+func testResume(t *testing.T, p *pipe.Pipe) {
+	// resume while ready
+	errc := p.Resume()
+	assert.NotNil(t, errc)
+	err := pipe.Wait(errc)
+	assert.Equal(t, pipe.ErrInvalidState, err)
+
+	// resume while running
+	runc := p.Run(context.Background())
+	errc = p.Resume()
+	err = pipe.Wait(errc)
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	err = pipe.Wait(runc)
+
+	// resume while pausing
+	runc = p.Run(context.Background())
+	pausec := p.Pause()
+	errc = p.Resume()
+	err = pipe.Wait(errc)
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	err = pipe.Wait(pausec)
+	assert.Nil(t, err)
+	// resume while paused
+	err = pipe.Wait(p.Resume())
+	assert.Nil(t, err)
+}
+
+func testPipePauseSuccess(t *testing.T, p *pipe.Pipe) {
+	err := pipe.Wait(p.Pause())
+	assert.Nil(t, err)
 }
 
 func TestMetricsEmpty(t *testing.T) {
