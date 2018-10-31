@@ -89,6 +89,8 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 			s, t = s.listen(p, t)
 			p.log.Debug(fmt.Sprintf("%v is %T", p, s))
 		}
+		// cancel last pending target
+		t.dismiss()
 	}()
 	return p
 }
