@@ -80,6 +80,7 @@ const (
 )
 
 // Run sends a run event into pipe.
+// Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Run(ctx context.Context) chan error {
 	runEvent := eventMessage{
 		Context: ctx,
@@ -94,6 +95,7 @@ func (p *Pipe) Run(ctx context.Context) chan error {
 }
 
 // Pause sends a pause event into pipe.
+// Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Pause() chan error {
 	pauseEvent := eventMessage{
 		event: pause,
@@ -107,6 +109,7 @@ func (p *Pipe) Pause() chan error {
 }
 
 // Resume sends a resume event into pipe.
+// Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Resume() chan error {
 	resumeEvent := eventMessage{
 		event: resume,

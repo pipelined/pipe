@@ -166,7 +166,8 @@ func WithSinks(sinks ...phono.Sink) Option {
 	}
 }
 
-// Push new params into pipe
+// Push new params into pipe.
+// Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Push(values ...phono.Param) {
 	if len(values) == 0 {
 		return
@@ -183,6 +184,7 @@ func (p *Pipe) Push(values ...phono.Param) {
 // state is idle, otherwise it's returned once it's reached destination within pipe.
 // Result channel has buffer sized to found components. Order of measures can differ from
 // requested order due to pipeline configuration.
+// Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	if len(p.metrics) == 0 {
 		return nil
@@ -233,7 +235,7 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	return mc
 }
 
-// Close must be called to clean up pipe's resources
+// Close must be called to clean up pipe's resources.
 func (p *Pipe) Close() {
 	defer func() {
 		recover()
@@ -241,7 +243,7 @@ func (p *Pipe) Close() {
 	close(p.eventc)
 }
 
-// merge error channels
+// merge error channels.
 // TODO: prevent leaking.
 func mergeErrors(errcList ...<-chan error) chan error {
 	var wg sync.WaitGroup
@@ -268,7 +270,7 @@ func mergeErrors(errcList ...<-chan error) chan error {
 	return out
 }
 
-// broadcastToSinks passes messages to all sinks
+// broadcastToSinks passes messages to all sinks.
 // TODO: prevent leaking.
 func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 	//init errcList for sinks error channels
@@ -302,8 +304,8 @@ func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 	return errcList, nil
 }
 
-// newMessage creates a new message with cached params
-// if new params are pushed into pipe - next message will contain them
+// newMessage creates a new message with cached params.
+// if new params are pushed into pipe - next message will contain them.
 func (p *Pipe) newMessage() message {
 	m := message{}
 	if len(p.params) > 0 {
@@ -329,7 +331,7 @@ func (p *Pipe) source() newMessageFunc {
 	}
 }
 
-// Convert the event to a string
+// Convert the event to a string.
 func (e event) String() string {
 	switch e {
 	case run:
@@ -344,7 +346,7 @@ func (e event) String() string {
 	return "unknown"
 }
 
-// Convert pipe to string. If name is included if has value
+// Convert pipe to string. If name is included if has value.
 func (p *Pipe) String() string {
 	if p.name == "" {
 		return p.ID()
