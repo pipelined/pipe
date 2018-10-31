@@ -146,7 +146,7 @@ func (p *Pipe) idle(s idleState, t target) (State, target) {
 			}
 			newState, err = s.transition(p, e)
 			if err != nil {
-				handleError(e.target, err)
+				e.target.handle(err)
 			} else if e.hasTarget() {
 				t.dismiss()
 				t = e.target
@@ -171,7 +171,7 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 			}
 			newState, err = s.transition(p, e)
 			if err != nil {
-				handleError(e.target, err)
+				e.target.handle(err)
 			} else if e.hasTarget() {
 				t.dismiss()
 				t = e.target
@@ -181,7 +181,7 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 		case err, ok := <-p.errc:
 			if ok {
 				interrupt(p.cancelFn)
-				handleError(t, err)
+				t.handle(err)
 			}
 			return Ready, t
 		}
@@ -368,7 +368,7 @@ func interrupt(fn context.CancelFunc) {
 }
 
 // handleError pushes error into target. panic happens if no target defined.
-func handleError(t target, err error) {
+func (t target) handle(err error) {
 	if t.errc != nil {
 		t.errc <- err
 	} else {
