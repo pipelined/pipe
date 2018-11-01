@@ -1,7 +1,6 @@
 package pipe_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -35,21 +34,17 @@ func TestMain(m *testing.M) {
 }
 
 func TestPipe(t *testing.T) {
-	messages := int64(5)
-	samples := int64(10)
 	pump := &mock.Pump{
 		UID:         phono.NewUID(),
-		Limit:       mock.Limit(messages),
+		Limit:       5,
 		Interval:    10 * time.Microsecond,
-		BufferSize:  phono.BufferSize(samples),
+		BufferSize:  10,
 		NumChannels: 1,
 	}
-
 	proc1 := &mock.Processor{UID: phono.NewUID()}
 	proc2 := &mock.Processor{UID: phono.NewUID()}
 	sink1 := &mock.Sink{UID: phono.NewUID()}
 	sink2 := &mock.Sink{UID: phono.NewUID()}
-	// new pipe
 	p := pipe.New(
 		sampleRate,
 		pipe.WithName("Pipe"),
@@ -57,6 +52,7 @@ func TestPipe(t *testing.T) {
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),
 	)
+
 	testRun(t, p)
 	testPause(t, p)
 	testResume(t, p)
@@ -65,33 +61,32 @@ func TestPipe(t *testing.T) {
 
 // Test Run method for all states.
 func testRun(t *testing.T, p *pipe.Pipe) {
-	ctx := context.Background()
 	// run while ready
-	runc := p.Run(ctx)
+	runc := p.Run()
 	assert.NotNil(t, runc)
 	err := pipe.Wait(runc)
 	assert.Nil(t, err)
 
 	// run while running
-	runc = p.Run(ctx)
-	err = pipe.Wait(p.Run(ctx))
+	runc = p.Run()
+	err = pipe.Wait(p.Run())
 	assert.Equal(t, pipe.ErrInvalidState, err)
 	err = pipe.Wait(runc)
 	assert.Nil(t, err)
 
 	// run while pausing
-	runc = p.Run(ctx)
+	runc = p.Run()
 	pausec := p.Pause()
 	// pause should cancel run channel
 	err = pipe.Wait(runc)
 	assert.Nil(t, err)
 	// pausing
-	err = pipe.Wait(p.Run(ctx))
+	err = pipe.Wait(p.Run())
 	assert.Equal(t, pipe.ErrInvalidState, err)
 	_ = pipe.Wait(pausec)
 
 	// run while paused
-	err = pipe.Wait(p.Run(ctx))
+	err = pipe.Wait(p.Run())
 	assert.Equal(t, pipe.ErrInvalidState, err)
 
 	_ = pipe.Wait(p.Resume())
@@ -106,14 +101,14 @@ func testPause(t *testing.T, p *pipe.Pipe) {
 	assert.Equal(t, pipe.ErrInvalidState, err)
 
 	// pause while running
-	_ = p.Run(context.Background())
+	_ = p.Run()
 	errc = p.Pause()
 	assert.NotNil(t, errc)
 	err = pipe.Wait(errc)
 	assert.Nil(t, err)
 
 	// pause while pausing
-	_ = p.Run(context.Background())
+	_ = p.Run()
 	pausec := p.Pause()
 	assert.NotNil(t, pausec)
 	err = pipe.Wait(p.Pause())
@@ -135,14 +130,14 @@ func testResume(t *testing.T, p *pipe.Pipe) {
 	assert.Equal(t, pipe.ErrInvalidState, err)
 
 	// resume while running
-	runc := p.Run(context.Background())
+	runc := p.Run()
 	errc = p.Resume()
 	err = pipe.Wait(errc)
 	assert.Equal(t, pipe.ErrInvalidState, err)
 	err = pipe.Wait(runc)
 
 	// resume while pausing
-	runc = p.Run(context.Background())
+	runc = p.Run()
 	pausec := p.Pause()
 	errc = p.Resume()
 	err = pipe.Wait(errc)
@@ -154,9 +149,31 @@ func testResume(t *testing.T, p *pipe.Pipe) {
 	assert.Nil(t, err)
 }
 
-func testPipePauseSuccess(t *testing.T, p *pipe.Pipe) {
-	err := pipe.Wait(p.Pause())
-	assert.Nil(t, err)
+// To test leaks we need to call close method with all possible circumstances.
+func TestLeaks(t *testing.T) {
+	pump := &mock.Pump{
+		UID:         phono.NewUID(),
+		Limit:       5,
+		Interval:    10 * time.Microsecond,
+		BufferSize:  10,
+		NumChannels: 1,
+	}
+	proc1 := &mock.Processor{UID: phono.NewUID()}
+	proc2 := &mock.Processor{UID: phono.NewUID()}
+	sink1 := &mock.Sink{UID: phono.NewUID()}
+	sink2 := &mock.Sink{UID: phono.NewUID()}
+	p := pipe.New(
+		sampleRate,
+		pipe.WithName("Pipe"),
+		pipe.WithPump(pump),
+		pipe.WithProcessors(proc1, proc2),
+		pipe.WithSinks(sink1, sink2),
+	)
+
+	// start the test
+	_ = p.Run()
+	p.Close()
+	goleak.VerifyNoLeaks(t)
 }
 
 func TestMetricsEmpty(t *testing.T) {
@@ -216,7 +233,7 @@ func TestMetrics(t *testing.T) {
 	}
 
 	start := time.Now()
-	p.Run(context.Background())
+	p.Run()
 	time.Sleep(measureTests.interval / 2)
 	err := pipe.Wait(p.Pause())
 	assert.Nil(t, err)

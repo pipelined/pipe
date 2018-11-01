@@ -1,8 +1,6 @@
 package pipe
 
 import (
-	"context"
-
 	"github.com/dudk/phono"
 )
 
@@ -78,7 +76,7 @@ func (r *pumpRunner) build(sourceID string) (err error) {
 }
 
 // run the Pump runner.
-func (r *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMessageFunc) (<-chan message, <-chan error) {
+func (r *pumpRunner) run(cancel chan struct{}, sourceID string, newMessage newMessageFunc) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
 	r.measurable.Reset()
@@ -96,8 +94,13 @@ func (r *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMes
 		defer r.measurable.FinishMeasure()
 		r.measurable.Latency()
 		var err error
+		var m message
 		for {
-			m := newMessage()
+			select {
+			case m = <-newMessage():
+			case <-cancel:
+				return
+			}
 			m.applyTo(r.ID())
 			m.Buffer, err = r.fn()
 			if err != nil {
@@ -110,7 +113,7 @@ func (r *pumpRunner) run(ctx context.Context, sourceID string, newMessage newMes
 			r.Latency()
 			m.feedback.applyTo(r.ID())
 			select {
-			case <-ctx.Done():
+			case <-cancel:
 				return
 			default:
 				out <- m
