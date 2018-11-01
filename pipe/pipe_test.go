@@ -136,15 +136,10 @@ func testResume(t *testing.T, p *pipe.Pipe) {
 	assert.Equal(t, pipe.ErrInvalidState, err)
 	err = pipe.Wait(runc)
 
-	// resume while pausing
-	runc = p.Run()
-	pausec := p.Pause()
-	errc = p.Resume()
-	err = pipe.Wait(errc)
-	assert.Equal(t, pipe.ErrInvalidState, err)
-	err = pipe.Wait(pausec)
-	assert.Nil(t, err)
 	// resume while paused
+	_ = p.Run()
+	pausec := p.Pause()
+	_ = pipe.Wait(pausec)
 	err = pipe.Wait(p.Resume())
 	assert.Nil(t, err)
 }
