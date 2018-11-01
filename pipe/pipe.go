@@ -1,7 +1,6 @@
 package pipe
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -20,7 +19,7 @@ type message struct {
 
 // NewMessageFunc is a message-producer function
 // sourceID expected to be pump's id
-type newMessageFunc func() message
+type newMessageFunc func() chan message
 
 // params represent a set of parameters mapped to ID of their receivers.
 type params map[string][]phono.ParamFunc
@@ -34,7 +33,8 @@ type Pipe struct {
 	phono.UID
 	name       string
 	sampleRate phono.SampleRate
-	cancelFn   context.CancelFunc
+	// cancelFn   context.CancelFunc
+	cancel chan struct{}
 
 	pump       *pumpRunner
 	processors []*processRunner
@@ -185,6 +185,7 @@ func (p *Pipe) Push(values ...phono.Param) {
 // Result channel has buffer sized to found components. Order of measures can differ from
 // requested order due to pipeline configuration.
 // Calling this method after pipe is closed causes a panic.
+// TODO: prevent leak.
 func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	if len(p.metrics) == 0 {
 		return nil
@@ -294,9 +295,15 @@ func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 				close(broadcasts[i])
 			}
 		}()
-		for buf := range in {
+		for msg := range in {
 			for i := range broadcasts {
-				broadcasts[i] <- buf
+				m := message{
+					sourceID: msg.sourceID,
+					Buffer:   msg.Buffer,
+					params:   msg.params.detach(p.sinks[i].ID()),
+					feedback: msg.feedback.detach(p.sinks[i].ID()),
+				}
+				broadcasts[i] <- m
 			}
 		}
 	}()
@@ -307,7 +314,7 @@ func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 // newMessage creates a new message with cached params.
 // if new params are pushed into pipe - next message will contain them.
 func (p *Pipe) newMessage() message {
-	m := message{}
+	m := message{sourceID: p.ID()}
 	if len(p.params) > 0 {
 		m.params = p.params
 		p.params = make(map[string][]phono.ParamFunc)
@@ -322,12 +329,12 @@ func (p *Pipe) newMessage() message {
 // soure returns a default message producer which will be sent to pump.
 func (p *Pipe) source() newMessageFunc {
 	// if pipe paused this call will block
-	return func() message {
+	return func() chan message {
 		var do struct{}
 		p.providerc <- do
-		msg := <-p.consumerc
-		msg.sourceID = p.ID()
-		return msg
+		// msg := <-p.consumerc
+		// msg.sourceID = p.ID()
+		return p.consumerc
 	}
 }
 
@@ -391,4 +398,16 @@ func (p params) merge(source params) params {
 		}
 	}
 	return p
+}
+
+func (p params) detach(id string) params {
+	if p == nil {
+		return nil
+	}
+	if v, ok := p[id]; ok {
+		d := params(make(map[string][]phono.ParamFunc))
+		d[id] = v
+		return d
+	}
+	return nil
 }

@@ -1,7 +1,6 @@
 package pipe
 
 import (
-	"context"
 	"sync"
 
 	"github.com/dudk/phono"
@@ -57,10 +56,10 @@ type event int
 
 // eventMessage is passed into pipe's event channel when user does some action.
 type eventMessage struct {
-	context.Context          // context for event.
-	event                    // event type.
-	params          params   // new params.
-	callbacks       []string // ids of components which need to be called.
+	// context.Context          // context for event.
+	event              // event type.
+	params    params   // new params.
+	callbacks []string // ids of components which need to be called.
 	target
 }
 
@@ -81,10 +80,10 @@ const (
 
 // Run sends a run event into pipe.
 // Calling this method after pipe is closed causes a panic.
-func (p *Pipe) Run(ctx context.Context) chan error {
+func (p *Pipe) Run() chan error {
 	runEvent := eventMessage{
-		Context: ctx,
-		event:   run,
+		// Context: ctx,
+		event: run,
 		target: target{
 			State: Ready,
 			errc:  make(chan error, 1),
@@ -144,7 +143,7 @@ func (p *Pipe) idle(s idleState, t target) (State, target) {
 		select {
 		case e, ok := <-p.eventc:
 			if !ok {
-				interrupt(p.cancelFn)
+				interrupt(p.cancel)
 				return nil, t
 			}
 			newState, err = s.transition(p, e)
@@ -169,7 +168,7 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 		select {
 		case e, ok := <-p.eventc:
 			if !ok {
-				interrupt(p.cancelFn)
+				interrupt(p.cancel)
 				return nil, t
 			}
 			newState, err = s.transition(p, e)
@@ -183,7 +182,7 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 			newState = s.sendMessage(p)
 		case err, ok := <-p.errc:
 			if ok {
-				interrupt(p.cancelFn)
+				interrupt(p.cancel)
 				t.handle(err)
 			}
 			return Ready, t
@@ -234,13 +233,13 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 		}
 
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
-		ctx, cancelFn := context.WithCancel(e.Context)
-		p.cancelFn = cancelFn
-
+		// _, cancelFn := context.WithCancel(e.Context)
+		// p.cancelFn = cancelFn
+		p.cancel = make(chan struct{})
 		// start pump
-		out, errc := p.pump.run(ctx, p.ID(), p.source())
+		out, errc := p.pump.run(p.cancel, p.ID(), p.source())
 		if err != nil {
-			p.cancelFn()
+			interrupt(p.cancel)
 			return s, err
 		}
 		errcList = append(errcList, errc)
@@ -249,7 +248,7 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 		for _, proc := range p.processors {
 			out, errc = proc.run(p.ID(), out)
 			if err != nil {
-				p.cancelFn()
+				interrupt(p.cancel)
 				return s, err
 			}
 			errcList = append(errcList, errc)
@@ -257,7 +256,7 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 
 		sinkErrcList, err := p.broadcastToSinks(out)
 		if err != nil {
-			p.cancelFn()
+			interrupt(p.cancel)
 			return s, err
 		}
 		errcList = append(errcList, sinkErrcList...)
@@ -364,10 +363,8 @@ func (t target) dismiss() target {
 
 // interrupt the pipe and clean up resources.
 // consequent calls do nothing.
-func interrupt(fn context.CancelFunc) {
-	if fn != nil {
-		fn()
-	}
+func interrupt(cancel chan struct{}) {
+	close(cancel)
 }
 
 // handleError pushes error into target. panic happens if no target defined.
