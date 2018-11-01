@@ -33,8 +33,7 @@ type Pipe struct {
 	phono.UID
 	name       string
 	sampleRate phono.SampleRate
-	// cancelFn   context.CancelFunc
-	cancel chan struct{}
+	cancel     chan struct{}
 
 	pump       *pumpRunner
 	processors []*processRunner
@@ -45,7 +44,6 @@ type Pipe struct {
 	feedback params                //cached feedback
 	errc     chan error            // errors channel
 	eventc   chan eventMessage     // event channel
-	// transitionc chan transitionMessage // transitions channel
 
 	providerc chan struct{} // ask for new message request
 	consumerc chan message  // emission of messages
@@ -332,8 +330,6 @@ func (p *Pipe) source() newMessageFunc {
 	return func() chan message {
 		var do struct{}
 		p.providerc <- do
-		// msg := <-p.consumerc
-		// msg.sourceID = p.ID()
 		return p.consumerc
 	}
 }

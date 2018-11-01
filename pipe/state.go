@@ -9,7 +9,6 @@ import (
 // State identifies one of the possible states pipe can be in
 type State interface {
 	listen(*Pipe, target) (State, target)
-	// TODO: add indication that transition failed
 	transition(*Pipe, eventMessage) (State, error)
 }
 
@@ -56,7 +55,6 @@ type event int
 
 // eventMessage is passed into pipe's event channel when user does some action.
 type eventMessage struct {
-	// context.Context          // context for event.
 	event              // event type.
 	params    params   // new params.
 	callbacks []string // ids of components which need to be called.
@@ -82,7 +80,6 @@ const (
 // Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Run() chan error {
 	runEvent := eventMessage{
-		// Context: ctx,
 		event: run,
 		target: target{
 			State: Ready,
@@ -233,8 +230,6 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 		}
 
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
-		// _, cancelFn := context.WithCancel(e.Context)
-		// p.cancelFn = cancelFn
 		p.cancel = make(chan struct{})
 		// start pump
 		out, errc := p.pump.run(p.cancel, p.ID(), p.source())
