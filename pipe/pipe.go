@@ -17,10 +17,6 @@ type message struct {
 	feedback     params //feedback are params applied after processing happened
 }
 
-// NewMessageFunc is a message-producer function
-// sourceID expected to be pump's id
-type newMessageFunc func() chan message
-
 // params represent a set of parameters mapped to ID of their receivers.
 type params map[string][]phono.ParamFunc
 
@@ -45,8 +41,8 @@ type Pipe struct {
 	errc     chan error            // errors channel
 	eventc   chan eventMessage     // event channel
 
-	providerc chan struct{} // ask for new message request
-	consumerc chan message  // emission of messages
+	provide chan struct{} // ask for new message request
+	consume chan message  // emission of messages
 
 	log log.Logger
 }
@@ -74,8 +70,9 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 		params:     make(map[string][]phono.ParamFunc),
 		feedback:   make(map[string][]phono.ParamFunc),
 		eventc:     make(chan eventMessage, 1),
-		providerc:  make(chan struct{}),
-		consumerc:  make(chan message),
+		provide:    make(chan struct{}),
+		consume:    make(chan message),
+		cancel:     make(chan struct{}),
 	}
 	for _, option := range options {
 		option(p)()
@@ -243,15 +240,18 @@ func (p *Pipe) Close() {
 }
 
 // merge error channels.
-// TODO: prevent leaking.
-func mergeErrors(errcList ...<-chan error) chan error {
+func mergeErrors(cancel chan struct{}, errcList ...<-chan error) chan error {
 	var wg sync.WaitGroup
 	out := make(chan error, len(errcList))
 
 	//function to wait for error channel
-	output := func(c <-chan error) {
-		for n := range c {
-			out <- n
+	output := func(errc <-chan error) {
+		select {
+		case e, ok := <-errc:
+			if ok {
+				out <- e
+			}
+		case <-cancel:
 		}
 		wg.Done()
 	}
@@ -322,16 +322,6 @@ func (p *Pipe) newMessage() message {
 		p.feedback = make(map[string][]phono.ParamFunc)
 	}
 	return m
-}
-
-// soure returns a default message producer which will be sent to pump.
-func (p *Pipe) source() newMessageFunc {
-	// if pipe paused this call will block
-	return func() chan message {
-		var do struct{}
-		p.providerc <- do
-		return p.consumerc
-	}
 }
 
 // Convert the event to a string.

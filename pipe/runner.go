@@ -51,6 +51,8 @@ var counters = struct {
 	sink:      []string{OutputCounter},
 }
 
+var do struct{}
+
 const (
 	// OutputCounter is a key for output counter within metric.
 	// It calculates regular total output per component.
@@ -76,7 +78,7 @@ func (r *pumpRunner) build(sourceID string) (err error) {
 }
 
 // run the Pump runner.
-func (r *pumpRunner) run(cancel chan struct{}, sourceID string, newMessage newMessageFunc) (<-chan message, <-chan error) {
+func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
 	r.measurable.Reset()
@@ -96,8 +98,15 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, newMessage newMe
 		var err error
 		var m message
 		for {
+			// request new message
 			select {
-			case m = <-newMessage():
+			case provide <- do:
+			case <-cancel:
+				return
+			}
+
+			select {
+			case m = <-consume:
 			case <-cancel:
 				return
 			}
