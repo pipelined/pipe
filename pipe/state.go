@@ -175,7 +175,7 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 				t.dismiss()
 				t = e.target
 			}
-		case <-p.providerc:
+		case <-p.provide:
 			newState = s.sendMessage(p)
 		case err, ok := <-p.errc:
 			if ok {
@@ -230,9 +230,8 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 		}
 
 		errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
-		p.cancel = make(chan struct{})
 		// start pump
-		out, errc := p.pump.run(p.cancel, p.ID(), p.source())
+		out, errc := p.pump.run(p.cancel, p.ID(), p.provide, p.consume)
 		if err != nil {
 			interrupt(p.cancel)
 			return s, err
@@ -255,7 +254,7 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 			return s, err
 		}
 		errcList = append(errcList, sinkErrcList...)
-		p.errc = mergeErrors(errcList...)
+		p.errc = mergeErrors(p.cancel, errcList...)
 		return Running, err
 	}
 	return s, ErrInvalidState
@@ -282,7 +281,7 @@ func (s running) transition(p *Pipe, e eventMessage) (State, error) {
 }
 
 func (s running) sendMessage(p *Pipe) State {
-	p.consumerc <- p.newMessage()
+	p.consume <- p.newMessage()
 	return s
 }
 
@@ -315,7 +314,7 @@ func (s pausing) sendMessage(p *Pipe) State {
 		param := phono.ReceivedBy(&wg, sink.ID())
 		m.feedback = m.feedback.add(param)
 	}
-	p.consumerc <- m
+	p.consume <- m
 	wg.Wait()
 	return Paused
 }
