@@ -105,13 +105,15 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 				return
 			}
 
+			// receive new message
 			select {
 			case m = <-consume:
 			case <-cancel:
 				return
 			}
-			m.applyTo(r.ID())
-			m.Buffer, err = r.fn()
+
+			m.applyTo(r.ID())      // apply params
+			m.Buffer, err = r.fn() // pump new buffer
 			if err != nil {
 				if err != phono.ErrEOP {
 					errc <- err
@@ -120,12 +122,13 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			}
 			r.Counter(OutputCounter).Advance(m.Buffer)
 			r.Latency()
-			m.feedback.applyTo(r.ID())
+			m.feedback.applyTo(r.ID()) // apply feedback
+
+			// push message further
 			select {
+			case out <- m:
 			case <-cancel:
 				return
-			default:
-				out <- m
 			}
 		}
 	}()
@@ -162,7 +165,7 @@ func (r *processRunner) run(sourceID string, in <-chan message) (<-chan message,
 		defer r.measurable.FinishMeasure()
 		r.measurable.Latency()
 		var err error
-		for in != nil {
+		for {
 			select {
 			case m, ok := <-in:
 				if !ok {
@@ -210,7 +213,7 @@ func (r *sinkRunner) run(sourceID string, in <-chan message) <-chan error {
 		}()
 		defer r.measurable.FinishMeasure()
 		r.measurable.Latency()
-		for in != nil {
+		for {
 			select {
 			case m, ok := <-in:
 				if !ok {
