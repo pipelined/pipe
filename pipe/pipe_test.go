@@ -29,9 +29,9 @@ var measureTests = struct {
 	NumChannels: 1,
 }
 
-func TestMain(m *testing.M) {
-	// goleak.VerifyTestMain(m)
-}
+// func TestMain(m *testing.M) {
+// 	// goleak.VerifyTestMain(m)
+// }
 
 func TestPipe(t *testing.T) {
 	pump := &mock.Pump{
@@ -146,6 +146,25 @@ func testResume(t *testing.T, p *pipe.Pipe) {
 
 // To test leaks we need to call close method with all possible circumstances.
 func TestLeaks(t *testing.T) {
+	p := newPipe()
+	// close while running
+	errc := p.Run()
+	p.Close()
+	goleak.VerifyNoLeaks(t)
+	// assert.Nil(t, goleak.FindLeaks())
+	err := pipe.Wait(errc)
+	assert.Nil(t, err)
+
+	// close while pausing
+	p = newPipe()
+	_ = p.Run()
+	// _ = p.Pause()
+	p.Close()
+	// goleak.VerifyNoLeaks(t)
+}
+
+// This is a workaround for data race of mocks
+func newPipe() *pipe.Pipe {
 	pump := &mock.Pump{
 		UID:         phono.NewUID(),
 		Limit:       5,
@@ -157,18 +176,14 @@ func TestLeaks(t *testing.T) {
 	proc2 := &mock.Processor{UID: phono.NewUID()}
 	sink1 := &mock.Sink{UID: phono.NewUID()}
 	sink2 := &mock.Sink{UID: phono.NewUID()}
-	p := pipe.New(
+
+	return pipe.New(
 		sampleRate,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),
 	)
-
-	// start the test
-	_ = p.Run()
-	p.Close()
-	goleak.VerifyNoLeaks(t)
 }
 
 func TestMetricsEmpty(t *testing.T) {
