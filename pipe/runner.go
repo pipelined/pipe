@@ -146,7 +146,7 @@ func (r *processRunner) build(sourceID string) (err error) {
 }
 
 // run the Processor runner.
-func (r *processRunner) run(sourceID string, in <-chan message) (<-chan message, <-chan error) {
+func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan message) (<-chan message, <-chan error) {
 	errc := make(chan error, 1)
 	r.in = in
 	r.out = make(chan message)
@@ -165,22 +165,34 @@ func (r *processRunner) run(sourceID string, in <-chan message) (<-chan message,
 		defer r.measurable.FinishMeasure()
 		r.measurable.Latency()
 		var err error
+		var m message
+		var ok bool
 		for {
+			// retrieve new message
 			select {
-			case m, ok := <-in:
+			case m, ok = <-in:
 				if !ok {
 					return
 				}
-				m.applyTo(r.Processor.ID())
-				m.Buffer, err = r.fn(m.Buffer)
-				if err != nil {
-					errc <- err
-					return
-				}
-				r.Counter(OutputCounter).Advance(m.Buffer)
-				r.Latency()
-				m.feedback.applyTo(r.ID())
-				r.out <- m
+			case <-cancel:
+				return
+			}
+
+			m.applyTo(r.Processor.ID())    // apply params
+			m.Buffer, err = r.fn(m.Buffer) // process new buffer
+			if err != nil {
+				errc <- err
+				return
+			}
+			r.Counter(OutputCounter).Advance(m.Buffer)
+			r.Latency()
+			m.feedback.applyTo(r.ID()) // apply feedback
+
+			// send message further
+			select {
+			case r.out <- m:
+			case <-cancel:
+				return
 			}
 		}
 	}()
@@ -198,7 +210,7 @@ func (r *sinkRunner) build(sourceID string) (err error) {
 }
 
 // run the sink runner.
-func (r *sinkRunner) run(sourceID string, in <-chan message) <-chan error {
+func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message) <-chan error {
 	errc := make(chan error, 1)
 	r.measurable.Reset()
 	go func() {
@@ -213,22 +225,28 @@ func (r *sinkRunner) run(sourceID string, in <-chan message) <-chan error {
 		}()
 		defer r.measurable.FinishMeasure()
 		r.measurable.Latency()
+		var m message
+		var ok bool
 		for {
+			// receive new message
 			select {
-			case m, ok := <-in:
+			case m, ok = <-in:
 				if !ok {
 					return
 				}
-				m.params.applyTo(r.Sink.ID())
-				err := r.fn(m.Buffer)
-				if err != nil {
-					errc <- err
-					return
-				}
-				r.Counter(OutputCounter).Advance(m.Buffer)
-				r.Latency()
-				m.feedback.applyTo(r.ID())
+			case <-cancel:
+				return
 			}
+
+			m.params.applyTo(r.Sink.ID()) // apply params
+			err := r.fn(m.Buffer)         // sink a buffer
+			if err != nil {
+				errc <- err
+				return
+			}
+			r.Counter(OutputCounter).Advance(m.Buffer)
+			r.Latency()
+			m.feedback.applyTo(r.ID()) // apply feedback
 		}
 	}()
 

@@ -240,7 +240,7 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 
 		// start chained processesing
 		for _, proc := range p.processors {
-			out, errc = proc.run(p.ID(), out)
+			out, errc = proc.run(p.cancel, p.ID(), out)
 			if err != nil {
 				interrupt(p.cancel)
 				return s, err
@@ -258,6 +258,75 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 		return Running, err
 	}
 	return s, ErrInvalidState
+}
+
+// broadcastToSinks passes messages to all sinks.
+func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
+	//init errcList for sinks error channels
+	errcList := make([]<-chan error, 0, len(p.sinks))
+	//list of channels for broadcast
+	broadcasts := make([]chan message, len(p.sinks))
+	for i := range broadcasts {
+		broadcasts[i] = make(chan message)
+	}
+
+	//start broadcast
+	for i, s := range p.sinks {
+		errc := s.run(p.cancel, p.ID(), broadcasts[i])
+		errcList = append(errcList, errc)
+	}
+
+	go func() {
+		//close broadcasts on return
+		defer func() {
+			for i := range broadcasts {
+				close(broadcasts[i])
+			}
+		}()
+		for msg := range in {
+			for i := range broadcasts {
+				m := message{
+					sourceID: msg.sourceID,
+					Buffer:   msg.Buffer,
+					params:   msg.params.detach(p.sinks[i].ID()),
+					feedback: msg.feedback.detach(p.sinks[i].ID()),
+				}
+				broadcasts[i] <- m
+			}
+		}
+	}()
+
+	return errcList, nil
+}
+
+// merge error channels from all components into one.
+func mergeErrors(cancel chan struct{}, errcList ...<-chan error) (errc chan error) {
+	var wg sync.WaitGroup
+	errc = make(chan error, len(errcList))
+
+	//function to wait for error channel
+	output := func(ec <-chan error) {
+		select {
+		case e, ok := <-ec:
+			if ok {
+				errc <- e
+			}
+		case <-cancel:
+		}
+		wg.Done()
+	}
+	wg.Add(len(errcList))
+	for _, ec := range errcList {
+		go output(ec)
+	}
+
+	//wait and close out
+	go func() {
+		wg.Wait()
+		close(errc)
+	}()
+
+	return
 }
 
 func (s running) listen(p *Pipe, t target) (State, target) {
