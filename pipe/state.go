@@ -254,7 +254,7 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 			return s, err
 		}
 		errcList = append(errcList, sinkErrcList...)
-		p.errc = mergeErrors(p.cancel, errcList...)
+		p.errc = mergeErrors(errcList...)
 		return Running, err
 	}
 	return s, ErrInvalidState
@@ -300,18 +300,14 @@ func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 }
 
 // merge error channels from all components into one.
-func mergeErrors(cancel chan struct{}, errcList ...<-chan error) (errc chan error) {
+func mergeErrors(errcList ...<-chan error) (errc chan error) {
 	var wg sync.WaitGroup
 	errc = make(chan error, len(errcList))
 
 	//function to wait for error channel
 	output := func(ec <-chan error) {
-		select {
-		case e, ok := <-ec:
-			if ok {
-				errc <- e
-			}
-		case <-cancel:
+		for e := range ec {
+			errc <- e
 		}
 		wg.Done()
 	}
