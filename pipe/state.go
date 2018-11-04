@@ -1,6 +1,7 @@
 package pipe
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/dudk/phono"
@@ -74,6 +75,7 @@ const (
 	resume
 	push
 	measure
+	cancel
 )
 
 // Run sends a run event into pipe.
@@ -118,6 +120,19 @@ func (p *Pipe) Resume() chan error {
 	return resumeEvent.target.errc
 }
 
+// Close must be called to clean up pipe's resources.
+func (p *Pipe) Close() chan error {
+	resumeEvent := eventMessage{
+		event: cancel,
+		target: target{
+			State: Ready,
+			errc:  make(chan error, 1),
+		},
+	}
+	p.eventc <- resumeEvent
+	return resumeEvent.target.errc
+}
+
 // Wait for state transition or first error to occur.
 func Wait(d chan error) error {
 	for err := range d {
@@ -126,6 +141,19 @@ func Wait(d chan error) error {
 		}
 	}
 	return nil
+}
+
+// loop listens until nil state is returned.
+func (p *Pipe) loop() {
+	var s State = Ready
+	t := target{}
+	for s != nil {
+		s, t = s.listen(p, t)
+		p.log.Debug(fmt.Sprintf("%v is %T", p, s))
+	}
+	// cancel last pending target
+	t.dismiss()
+	close(p.eventc)
 }
 
 // idle is used to listen to pipe's channels which are relevant for idle state.
@@ -138,11 +166,7 @@ func (p *Pipe) idle(s idleState, t target) (State, target) {
 		var newState State
 		var err error
 		select {
-		case e, ok := <-p.eventc:
-			if !ok {
-				interrupt(p.cancel)
-				return nil, t
-			}
+		case e := <-p.eventc:
 			newState, err = s.transition(p, e)
 			if err != nil {
 				e.target.handle(err)
@@ -163,11 +187,7 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 		var newState State
 		var err error
 		select {
-		case e, ok := <-p.eventc:
-			if !ok {
-				interrupt(p.cancel)
-				return nil, t
-			}
+		case e := <-p.eventc:
 			newState, err = s.transition(p, e)
 			if err != nil {
 				e.target.handle(err)
@@ -196,6 +216,9 @@ func (s ready) listen(p *Pipe, t target) (State, target) {
 
 func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 	switch e.event {
+	case cancel:
+		interrupt(p.cancel)
+		return nil, nil
 	case push:
 		e.params.applyTo(p.ID())
 		p.params = p.params.merge(e.params)
@@ -331,6 +354,10 @@ func (s running) listen(p *Pipe, t target) (State, target) {
 
 func (s running) transition(p *Pipe, e eventMessage) (State, error) {
 	switch e.event {
+	case cancel:
+		interrupt(p.cancel)
+		err := Wait(p.errc)
+		return nil, err
 	case measure:
 		e.params.applyTo(p.ID())
 		p.feedback = p.feedback.merge(e.params)
@@ -356,6 +383,10 @@ func (s pausing) listen(p *Pipe, t target) (State, target) {
 
 func (s pausing) transition(p *Pipe, e eventMessage) (State, error) {
 	switch e.event {
+	case cancel:
+		interrupt(p.cancel)
+		err := Wait(p.errc)
+		return nil, err
 	case measure:
 		e.params.applyTo(p.ID())
 		p.feedback = p.feedback.merge(e.params)
@@ -390,6 +421,10 @@ func (s paused) listen(p *Pipe, t target) (State, target) {
 
 func (s paused) transition(p *Pipe, e eventMessage) (State, error) {
 	switch e.event {
+	case cancel:
+		interrupt(p.cancel)
+		err := Wait(p.errc)
+		return nil, err
 	case push:
 		e.params.applyTo(p.ID())
 		p.params = p.params.merge(e.params)
@@ -407,7 +442,7 @@ func (s paused) transition(p *Pipe, e eventMessage) (State, error) {
 
 // hasTarget checks if event contaions target.
 func (e eventMessage) hasTarget() bool {
-	return e.target.State != nil
+	return e.target.errc != nil
 }
 
 // reach closes error channel and cancel waiting of target.

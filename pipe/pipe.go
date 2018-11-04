@@ -77,16 +77,7 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 	for _, option := range options {
 		option(p)()
 	}
-	go func() {
-		var s State = Ready
-		t := target{}
-		for s != nil {
-			s, t = s.listen(p, t)
-			p.log.Debug(fmt.Sprintf("%v is %T", p, s))
-		}
-		// cancel last pending target
-		t.dismiss()
-	}()
+	go p.loop()
 	return p
 }
 
@@ -229,14 +220,6 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	}()
 	p.eventc <- em
 	return mc
-}
-
-// Close must be called to clean up pipe's resources.
-func (p *Pipe) Close() {
-	defer func() {
-		recover()
-	}()
-	close(p.eventc)
 }
 
 // newMessage creates a new message with cached params.
