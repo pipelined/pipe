@@ -2,6 +2,7 @@ package mock_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -78,4 +79,42 @@ func TestPipe(t *testing.T) {
 		assert.Equal(t, test.NumChannels, sink.Buffer.NumChannels())
 		assert.Equal(t, phono.BufferSize(test.samples), sink.Buffer.Size())
 	}
+}
+
+func TestComponentsReuse(t *testing.T) {
+	pump := &mock.Pump{
+		UID:         phono.NewUID(),
+		Limit:       5,
+		Interval:    10 * time.Microsecond,
+		BufferSize:  10,
+		NumChannels: 1,
+	}
+	proc1 := &mock.Processor{UID: phono.NewUID()}
+	proc2 := &mock.Processor{UID: phono.NewUID()}
+	sink1 := &mock.Sink{UID: phono.NewUID()}
+	sink2 := &mock.Sink{UID: phono.NewUID()}
+
+	p := pipe.New(
+		sampleRate,
+		pipe.WithName("Pipe"),
+		pipe.WithPump(pump),
+		pipe.WithProcessors(proc1, proc2),
+		pipe.WithSinks(sink1, sink2),
+	)
+
+	err := pipe.Wait(p.Run())
+	assert.Nil(t, err)
+	err = pipe.Wait(p.Close())
+	assert.Nil(t, err)
+	p = pipe.New(
+		sampleRate,
+		pipe.WithName("Pipe"),
+		pipe.WithPump(pump),
+		pipe.WithProcessors(proc1, proc2),
+		pipe.WithSinks(sink1, sink2),
+	)
+	err = pipe.Wait(p.Run())
+	assert.Nil(t, err)
+	err = pipe.Wait(p.Close())
+	assert.Nil(t, err)
 }
