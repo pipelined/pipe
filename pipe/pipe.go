@@ -99,7 +99,8 @@ func WithPump(pump phono.Pump) Option {
 		return func() {
 			r := &pumpRunner{
 				Pump:       pump,
-				Flusher:    flusher(pump),
+				flush:      flusher(pump),
+				interrupt:  interrupter(pump),
 				measurable: newMetric(pump.ID(), p.sampleRate, counters.pump...),
 			}
 			p.metrics[r.ID()] = r
@@ -120,7 +121,8 @@ func WithProcessors(processors ...phono.Processor) Option {
 			for i := range processors {
 				r := &processRunner{
 					Processor:  processors[i],
-					Flusher:    flusher(processors[i]),
+					flush:      flusher(processors[i]),
+					interrupt:  interrupter(processors[i]),
 					measurable: newMetric(processors[i].ID(), p.sampleRate, counters.processor...),
 				}
 				p.metrics[r.ID()] = r
@@ -142,7 +144,8 @@ func WithSinks(sinks ...phono.Sink) Option {
 			for i := range sinks {
 				r := &sinkRunner{
 					Sink:       sinks[i],
-					Flusher:    flusher(sinks[i]),
+					flush:      flusher(sinks[i]),
+					interrupt:  interrupter(sinks[i]),
 					measurable: newMetric(sinks[i].ID(), p.sampleRate, counters.sink...),
 				}
 				p.metrics[r.ID()] = r
