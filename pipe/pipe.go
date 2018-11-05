@@ -3,7 +3,6 @@ package pipe
 import (
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/log"
@@ -174,7 +173,6 @@ func (p *Pipe) Push(values ...phono.Param) {
 // Result channel has buffer sized to found components. Order of measures can differ from
 // requested order due to pipeline configuration.
 // Calling this method after pipe is closed causes a panic.
-// TODO: prevent leak.
 func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	if len(p.metrics) == 0 {
 		return nil
@@ -195,32 +193,41 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 		}
 	} else {
 		em.callbacks = make([]string, 0, len(p.metrics))
-		// get all if nothin is passed
+		// get all if nothing is passed
 		for id := range p.metrics {
 			em.callbacks = append(em.callbacks, id)
 		}
 	}
-	// waitgroup to close metrics channel
-	var wg sync.WaitGroup
-	wg.Add(len(em.callbacks))
-	// measures channel
-	mc := make(chan Measure, len(em.callbacks))
+
+	done := make(chan struct{}, len(em.callbacks)) // done chan to close metrics channel
+	mc := make(chan Measure, len(em.callbacks))    // measures channel
+
 	for _, id := range em.callbacks {
 		m := p.metrics[id]
 		param := phono.Param{
 			ID: id,
 			Apply: func() {
+				var do struct{}
 				mc <- m.Measure()
-				wg.Done()
+				done <- do
 			},
 		}
 		em.params = em.params.add(param)
 	}
+
 	//wait and close
-	go func() {
-		wg.Wait()
+	go func(requested int) {
+		received := 0
+		for received < requested {
+			select {
+			case <-done:
+				received++
+			case <-p.cancel:
+				return
+			}
+		}
 		close(mc)
-	}()
+	}(len(em.callbacks))
 	p.eventc <- em
 	return mc
 }

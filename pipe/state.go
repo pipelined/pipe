@@ -399,6 +399,7 @@ func (s pausing) transition(p *Pipe, e eventMessage) (State, error) {
 	return s, ErrInvalidState
 }
 
+// send message with pause signal.
 func (s pausing) sendMessage(p *Pipe) State {
 	m := p.newMessage()
 	if len(m.feedback) == 0 {

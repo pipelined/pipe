@@ -237,7 +237,6 @@ func TestMetrics(t *testing.T) {
 
 	start := time.Now()
 	p.Run()
-	time.Sleep(measureTests.interval / 2)
 	err := pipe.Wait(p.Pause())
 	assert.Nil(t, err)
 	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
@@ -246,11 +245,6 @@ func TestMetrics(t *testing.T) {
 		assert.NotNil(t, m)
 		assert.True(t, start.Before(m.Start))
 		assert.True(t, measureTests.interval < m.Elapsed)
-		for _, c := range m.Counters {
-			assert.Equal(t, int64(2), c.Messages())
-			assert.Equal(t, int64(measureTests.BufferSize)*2, c.Samples())
-			assert.Equal(t, sampleRate.DurationOf(int64(measureTests.BufferSize))*2, c.Duration())
-		}
 		switch m.ID {
 		case pump.ID():
 		case proc.ID():
@@ -261,5 +255,9 @@ func TestMetrics(t *testing.T) {
 	}
 	err = pipe.Wait(p.Resume())
 	assert.Nil(t, err)
+
+	p.Run()
+	mc = p.Measure()
 	_ = pipe.Wait(p.Close())
+	goleak.VerifyNoLeaks(t)
 }
