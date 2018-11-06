@@ -5,11 +5,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
+	"go.uber.org/goleak"
 )
 
 const (
@@ -29,114 +29,161 @@ var measureTests = struct {
 	NumChannels: 1,
 }
 
-func TestPipeActions(t *testing.T) {
-	pump := &mock.Pump{
-		UID:         phono.NewUID(),
-		Limit:       1000,
-		Interval:    0,
-		NumChannels: 1,
-	}
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
-	proc := &mock.Processor{UID: phono.NewUID()}
-	sink := &mock.Sink{UID: phono.NewUID()}
+// Test Run method for all states.
+func TestRun(t *testing.T) {
+	// run while ready
+	p := newPipe()
+	runc := p.Run()
+	assert.NotNil(t, runc)
+	err := pipe.Wait(runc)
+	assert.Nil(t, err)
 
-	// new pipe
-	p := pipe.New(
-		sampleRate,
-		pipe.WithName("Pipe"),
-		pipe.WithPump(pump),
-		pipe.WithProcessors(proc),
-		pipe.WithSinks(sink),
-	)
+	// run while running
+	runc = p.Run()
+	err = pipe.Wait(p.Run())
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	err = pipe.Wait(runc)
+	assert.Nil(t, err)
 
-	// test wrong state for new pipe
+	// run while pausing
+	runc = p.Run()
+	pausec := p.Pause()
+	// pause should cancel run channel
+	err = pipe.Wait(runc)
+	assert.Nil(t, err)
+	// pausing
+	err = pipe.Wait(p.Run())
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	_ = pipe.Wait(pausec)
+
+	// run while paused
+	err = pipe.Wait(p.Run())
+	assert.Equal(t, pipe.ErrInvalidState, err)
+
+	_ = pipe.Wait(p.Resume())
+	_ = pipe.Wait(p.Close())
+}
+
+// Test Run method for all states.
+func TestPause(t *testing.T) {
+	p := newPipe()
+	// pause while ready
 	errc := p.Pause()
 	assert.NotNil(t, errc)
 	err := pipe.Wait(errc)
-	require.Equal(t, pipe.ErrInvalidState, err)
+	assert.Equal(t, pipe.ErrInvalidState, err)
 
-	// test pipe run
-	errc = p.Run()
-	require.NotNil(t, errc)
-
-	// test push new opptions
-	p.Push(pump.LimitParam(200))
-
-	// time.Sleep(time.Millisecond * 10)
-	// test pipe pause
+	// pause while running
+	_ = p.Run()
 	errc = p.Pause()
-	require.NotNil(t, err)
+	assert.NotNil(t, errc)
 	err = pipe.Wait(errc)
-	require.Nil(t, err)
-
-	mc := p.Measure(pump.ID())
-	measure := <-mc
-	assert.NotNil(t, measure)
-
-	// test pipe resume
-	errc = p.Resume()
-	require.NotNil(t, errc)
-	err = pipe.Wait(errc)
-	require.Nil(t, err)
-
-	// test rerun
-	p.Push(pump.LimitParam(200))
 	assert.Nil(t, err)
-	errc = p.Run()
-	require.NotNil(t, errc)
-	err = pipe.Wait(errc)
-	require.Nil(t, err)
-	p.Close()
+
+	// pause while pausing
+	_ = p.Run()
+	pausec := p.Pause()
+	assert.NotNil(t, pausec)
+	err = pipe.Wait(p.Pause())
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	err = pipe.Wait(pausec)
+
+	// pause while paused
+	err = pipe.Wait(p.Pause())
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	_ = pipe.Wait(p.Resume())
+	_ = pipe.Wait(p.Close())
 }
 
-func TestPipe(t *testing.T) {
-	messages := int64(1000)
-	samples := int64(10)
+// Test resume method for all states.
+func TestResume(t *testing.T) {
+	p := newPipe()
+	// resume while ready
+	errc := p.Resume()
+	assert.NotNil(t, errc)
+	err := pipe.Wait(errc)
+	assert.Equal(t, pipe.ErrInvalidState, err)
+
+	// resume while running
+	runc := p.Run()
+	errc = p.Resume()
+	err = pipe.Wait(errc)
+	assert.Equal(t, pipe.ErrInvalidState, err)
+	err = pipe.Wait(runc)
+
+	// resume while paused
+	_ = p.Run()
+	pausec := p.Pause()
+	_ = pipe.Wait(pausec)
+	err = pipe.Wait(p.Resume())
+	assert.Nil(t, err)
+	_ = pipe.Wait(p.Close())
+}
+
+// To test leaks we need to call close method with all possible circumstances.
+func TestLeaks(t *testing.T) {
+	// close while ready
+	p := newPipe()
+	err := pipe.Wait(p.Close())
+	assert.Nil(t, err)
+	goleak.VerifyNoLeaks(t)
+
+	// close while running
+	p = newPipe()
+	_ = p.Run()
+	err = pipe.Wait(p.Close())
+	assert.Nil(t, err)
+	goleak.VerifyNoLeaks(t)
+
+	// close while pausing
+	p = newPipe()
+	_ = p.Run()
+	_ = p.Pause()
+	err = pipe.Wait(p.Close())
+	assert.Nil(t, err)
+	goleak.VerifyNoLeaks(t)
+
+	// close while paused
+	p = newPipe()
+	_ = p.Run()
+	_ = pipe.Wait(p.Pause())
+	err = pipe.Wait(p.Close())
+	assert.Nil(t, err)
+	goleak.VerifyNoLeaks(t)
+}
+
+// This is a constructor of test pipe
+func newPipe() *pipe.Pipe {
 	pump := &mock.Pump{
 		UID:         phono.NewUID(),
-		Limit:       mock.Limit(messages),
-		Interval:    0,
-		BufferSize:  phono.BufferSize(samples),
+		Limit:       5,
+		Interval:    10 * time.Microsecond,
+		BufferSize:  10,
 		NumChannels: 1,
 	}
-
 	proc1 := &mock.Processor{UID: phono.NewUID()}
 	proc2 := &mock.Processor{UID: phono.NewUID()}
 	sink1 := &mock.Sink{UID: phono.NewUID()}
 	sink2 := &mock.Sink{UID: phono.NewUID()}
-	// new pipe
-	p := pipe.New(
+
+	return pipe.New(
 		sampleRate,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),
 	)
-	err := pipe.Wait(p.Run())
-	assert.Nil(t, err)
-
-	messageCount, samplesCount := pump.Count()
-	assert.Equal(t, messages, messageCount)
-	assert.Equal(t, samples*messages, samplesCount)
-
-	messageCount, samplesCount = proc1.Count()
-	assert.Equal(t, messages, messageCount)
-	assert.Equal(t, samples*messages, samplesCount)
-
-	messageCount, samplesCount = sink1.Count()
-	assert.Equal(t, messages, messageCount)
-	assert.Equal(t, samples*messages, samplesCount)
-	mc := p.Measure(pump.ID())
-	measure := <-mc
-	assert.NotNil(t, measure)
-	p.Close()
-	p.Close()
 }
 
 func TestMetricsEmpty(t *testing.T) {
 	p := pipe.New(sampleRate)
 	mc := p.Measure()
 	assert.Nil(t, mc)
+	_ = pipe.Wait(p.Close())
 }
 
 func TestMetricsBadID(t *testing.T) {
@@ -144,6 +191,7 @@ func TestMetricsBadID(t *testing.T) {
 	p := pipe.New(sampleRate, pipe.WithProcessors(proc))
 	mc := p.Measure(proc.ID() + "bad")
 	assert.Nil(t, mc)
+	_ = pipe.Wait(p.Close())
 }
 
 func TestMetrics(t *testing.T) {
@@ -189,19 +237,14 @@ func TestMetrics(t *testing.T) {
 
 	start := time.Now()
 	p.Run()
-	time.Sleep(measureTests.interval / 2)
-	p.Pause()
+	err := pipe.Wait(p.Pause())
+	assert.Nil(t, err)
 	mc = p.Measure(pump.ID(), proc.ID(), sink.ID())
 	// measure diring pausing
 	for m := range mc {
 		assert.NotNil(t, m)
 		assert.True(t, start.Before(m.Start))
 		assert.True(t, measureTests.interval < m.Elapsed)
-		for _, c := range m.Counters {
-			assert.Equal(t, int64(2), c.Messages())
-			assert.Equal(t, int64(measureTests.BufferSize)*2, c.Samples())
-			assert.Equal(t, sampleRate.DurationOf(int64(measureTests.BufferSize))*2, c.Duration())
-		}
 		switch m.ID {
 		case pump.ID():
 		case proc.ID():
@@ -210,4 +253,11 @@ func TestMetrics(t *testing.T) {
 			t.Errorf("Measure with empty id")
 		}
 	}
+	err = pipe.Wait(p.Resume())
+	assert.Nil(t, err)
+
+	p.Run()
+	mc = p.Measure()
+	_ = pipe.Wait(p.Close())
+	goleak.VerifyNoLeaks(t)
 }

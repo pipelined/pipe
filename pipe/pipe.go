@@ -1,10 +1,8 @@
 package pipe
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/log"
@@ -18,10 +16,6 @@ type message struct {
 	feedback     params //feedback are params applied after processing happened
 }
 
-// NewMessageFunc is a message-producer function
-// sourceID expected to be pump's id
-type newMessageFunc func() message
-
 // params represent a set of parameters mapped to ID of their receivers.
 type params map[string][]phono.ParamFunc
 
@@ -34,7 +28,7 @@ type Pipe struct {
 	phono.UID
 	name       string
 	sampleRate phono.SampleRate
-	cancelFn   context.CancelFunc
+	cancel     chan struct{}
 
 	pump       *pumpRunner
 	processors []*processRunner
@@ -45,10 +39,9 @@ type Pipe struct {
 	feedback params                //cached feedback
 	errc     chan error            // errors channel
 	eventc   chan eventMessage     // event channel
-	// transitionc chan transitionMessage // transitions channel
 
-	providerc chan struct{} // ask for new message request
-	consumerc chan message  // emission of messages
+	provide chan struct{} // ask for new message request
+	consume chan message  // emission of messages
 
 	log log.Logger
 }
@@ -58,10 +51,10 @@ type Pipe struct {
 type Option func(p *Pipe) phono.ParamFunc
 
 // ErrInvalidState is returned if pipe method cannot be executed at this moment.
-var ErrInvalidState = errors.New("Invalid state")
+var ErrInvalidState = errors.New("invalid state")
 
 // ErrComponentNoID is used to cause a panic when new component without ID is added to pipe.
-var ErrComponentNoID = errors.New("Component have no ID value")
+var ErrComponentNoID = errors.New("component have no ID value")
 
 // New creates a new pipe and applies provided options
 // returned pipe is in ready state
@@ -76,19 +69,14 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 		params:     make(map[string][]phono.ParamFunc),
 		feedback:   make(map[string][]phono.ParamFunc),
 		eventc:     make(chan eventMessage, 1),
-		providerc:  make(chan struct{}),
-		consumerc:  make(chan message),
+		provide:    make(chan struct{}),
+		consume:    make(chan message),
+		cancel:     make(chan struct{}),
 	}
 	for _, option := range options {
 		option(p)()
 	}
-	go func() {
-		var s State = Ready
-		t := target{}
-		for s != nil {
-			s, t = s.listen(p, t)
-		}
-	}()
+	go p.loop()
 	return p
 }
 
@@ -110,7 +98,8 @@ func WithPump(pump phono.Pump) Option {
 		return func() {
 			r := &pumpRunner{
 				Pump:       pump,
-				Flusher:    flusher(pump),
+				flush:      flusher(pump),
+				interrupt:  interrupter(pump),
 				measurable: newMetric(pump.ID(), p.sampleRate, counters.pump...),
 			}
 			p.metrics[r.ID()] = r
@@ -131,7 +120,8 @@ func WithProcessors(processors ...phono.Processor) Option {
 			for i := range processors {
 				r := &processRunner{
 					Processor:  processors[i],
-					Flusher:    flusher(processors[i]),
+					flush:      flusher(processors[i]),
+					interrupt:  interrupter(processors[i]),
 					measurable: newMetric(processors[i].ID(), p.sampleRate, counters.processor...),
 				}
 				p.metrics[r.ID()] = r
@@ -153,7 +143,8 @@ func WithSinks(sinks ...phono.Sink) Option {
 			for i := range sinks {
 				r := &sinkRunner{
 					Sink:       sinks[i],
-					Flusher:    flusher(sinks[i]),
+					flush:      flusher(sinks[i]),
+					interrupt:  interrupter(sinks[i]),
 					measurable: newMetric(sinks[i].ID(), p.sampleRate, counters.sink...),
 				}
 				p.metrics[r.ID()] = r
@@ -163,7 +154,8 @@ func WithSinks(sinks ...phono.Sink) Option {
 	}
 }
 
-// Push new params into pipe
+// Push new params into pipe.
+// Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Push(values ...phono.Param) {
 	if len(values) == 0 {
 		return
@@ -180,6 +172,7 @@ func (p *Pipe) Push(values ...phono.Param) {
 // state is idle, otherwise it's returned once it's reached destination within pipe.
 // Result channel has buffer sized to found components. Order of measures can differ from
 // requested order due to pipeline configuration.
+// Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	if len(p.metrics) == 0 {
 		return nil
@@ -200,107 +193,49 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 		}
 	} else {
 		em.callbacks = make([]string, 0, len(p.metrics))
-		// get all if nothin is passed
+		// get all if nothing is passed
 		for id := range p.metrics {
 			em.callbacks = append(em.callbacks, id)
 		}
 	}
-	// waitgroup to close metrics channel
-	var wg sync.WaitGroup
-	wg.Add(len(em.callbacks))
-	// measures channel
-	mc := make(chan Measure, len(em.callbacks))
+
+	done := make(chan struct{}, len(em.callbacks)) // done chan to close metrics channel
+	mc := make(chan Measure, len(em.callbacks))    // measures channel
+
 	for _, id := range em.callbacks {
 		m := p.metrics[id]
 		param := phono.Param{
 			ID: id,
 			Apply: func() {
+				var do struct{}
 				mc <- m.Measure()
-				wg.Done()
+				done <- do
 			},
 		}
 		em.params = em.params.add(param)
 	}
+
 	//wait and close
-	go func() {
-		wg.Wait()
+	go func(requested int) {
+		received := 0
+		for received < requested {
+			select {
+			case <-done:
+				received++
+			case <-p.cancel:
+				return
+			}
+		}
 		close(mc)
-	}()
+	}(len(em.callbacks))
 	p.eventc <- em
 	return mc
 }
 
-// Close must be called to clean up pipe's resources
-func (p *Pipe) Close() {
-	defer func() {
-		recover()
-	}()
-	close(p.eventc)
-}
-
-// merge error channels
-func mergeErrors(errcList ...<-chan error) chan error {
-	var wg sync.WaitGroup
-	out := make(chan error, len(errcList))
-
-	//function to wait for error channel
-	output := func(c <-chan error) {
-		for n := range c {
-			out <- n
-		}
-		wg.Done()
-	}
-	wg.Add(len(errcList))
-	for _, e := range errcList {
-		go output(e)
-	}
-
-	//wait and close out
-	go func() {
-		wg.Wait()
-		close(out)
-	}()
-
-	return out
-}
-
-// broadcastToSinks passes messages to all sinks
-func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
-	//init errcList for sinks error channels
-	errcList := make([]<-chan error, 0, len(p.sinks))
-	//list of channels for broadcast
-	broadcasts := make([]chan message, len(p.sinks))
-	for i := range broadcasts {
-		broadcasts[i] = make(chan message)
-	}
-
-	//start broadcast
-	for i, s := range p.sinks {
-		errc := s.run(p.ID(), broadcasts[i])
-		errcList = append(errcList, errc)
-	}
-
-	go func() {
-		//close broadcasts on return
-		defer func() {
-			for i := range broadcasts {
-				close(broadcasts[i])
-			}
-		}()
-		for buf := range in {
-			for i := range broadcasts {
-				broadcasts[i] <- buf
-			}
-		}
-	}()
-
-	return errcList, nil
-}
-
-// newMessage creates a new message with cached params
-// if new params are pushed into pipe - next message will contain them
+// newMessage creates a new message with cached params.
+// if new params are pushed into pipe - next message will contain them.
 func (p *Pipe) newMessage() message {
-	m := message{}
+	m := message{sourceID: p.ID()}
 	if len(p.params) > 0 {
 		m.params = p.params
 		p.params = make(map[string][]phono.ParamFunc)
@@ -312,27 +247,7 @@ func (p *Pipe) newMessage() message {
 	return m
 }
 
-// soure returns a default message producer which will be sent to pump.
-func (p *Pipe) source() newMessageFunc {
-	// if pipe paused this call will block
-	return func() message {
-		var do struct{}
-		p.providerc <- do
-		msg := <-p.consumerc
-		msg.sourceID = p.ID()
-		return msg
-	}
-}
-
-// stop the pipe and clean up resources
-// consequent calls do nothing
-func (p *Pipe) close() {
-	if p.cancelFn != nil {
-		p.cancelFn()
-	}
-}
-
-// Convert the event to a string
+// Convert the event to a string.
 func (e event) String() string {
 	switch e {
 	case run:
@@ -347,7 +262,7 @@ func (e event) String() string {
 	return "unknown"
 }
 
-// Convert pipe to string. If name is included if has value
+// Convert pipe to string. If name is included if has value.
 func (p *Pipe) String() string {
 	if p.name == "" {
 		return p.ID()
@@ -392,4 +307,16 @@ func (p params) merge(source params) params {
 		}
 	}
 	return p
+}
+
+func (p params) detach(id string) params {
+	if p == nil {
+		return nil
+	}
+	if v, ok := p[id]; ok {
+		d := params(make(map[string][]phono.ParamFunc))
+		d[id] = v
+		return d
+	}
+	return nil
 }
