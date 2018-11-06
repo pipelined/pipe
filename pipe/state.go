@@ -314,7 +314,11 @@ func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 					params:   msg.params.detach(p.sinks[i].ID()),
 					feedback: msg.feedback.detach(p.sinks[i].ID()),
 				}
-				broadcasts[i] <- m
+				select {
+				case broadcasts[i] <- m:
+				case <-p.cancel:
+					return
+				}
 			}
 		}
 	}()
