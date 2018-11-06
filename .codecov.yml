@@ -1,0 +1,7 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 80
+        base: auto 
+    patch: off
