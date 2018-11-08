@@ -3,6 +3,7 @@
 [![Build Status](https://travis-ci.org/dudk/phono.svg?branch=master)](https://travis-ci.org/dudk/phono)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dudk/phono)](https://goreportcard.com/report/github.com/dudk/phono)
 [![codecov](https://codecov.io/gh/dudk/phono/branch/master/graph/badge.svg)](https://codecov.io/gh/dudk/phono)
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fdudk%2Fphono.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fdudk%2Fphono?ref=badge_shield)
 
 `phono` is a framework for floating point signal processing. It utilizes [pipeline](https://blog.golang.org/pipelines) pattern to build fast, asynchronomous and easy-to-extend pipes for sound processing. Each pipe consists of one Pump, zero or multiple Processors and one or more Sinks. Phono also offers a friendly API for new pipe components implementations.
 
@@ -44,3 +45,7 @@ Please, note that since `phono` is in active development stage, all packages are
 ## Contributing
 
 For a complete guide to contributing to `phono`, see the [Contribution giude](https://github.com/dudk/phono/blob/master/CONTRIBUTING.md)
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fdudk%2Fphono.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fdudk%2Fphono?ref=badge_large)
