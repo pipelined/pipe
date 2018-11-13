@@ -38,7 +38,7 @@ type Pipe struct {
 	params   params                //cahced params
 	feedback params                //cached feedback
 	errc     chan error            // errors channel
-	eventc   chan eventMessage     // event channel
+	events   chan eventMessage     // event channel
 
 	provide chan struct{} // ask for new message request
 	consume chan message  // emission of messages
@@ -68,7 +68,7 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 		metrics:    make(map[string]measurable),
 		params:     make(map[string][]phono.ParamFunc),
 		feedback:   make(map[string][]phono.ParamFunc),
-		eventc:     make(chan eventMessage, 1),
+		events:     make(chan eventMessage, 1),
 		provide:    make(chan struct{}),
 		consume:    make(chan message),
 		cancel:     make(chan struct{}),
@@ -161,7 +161,7 @@ func (p *Pipe) Push(values ...phono.Param) {
 		return
 	}
 	params := params(make(map[string][]phono.ParamFunc))
-	p.eventc <- eventMessage{
+	p.events <- eventMessage{
 		event:  push,
 		params: params.add(values...),
 	}
@@ -228,7 +228,7 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 		}
 		close(mc)
 	}(len(em.callbacks))
-	p.eventc <- em
+	p.events <- em
 	return mc
 }
 
