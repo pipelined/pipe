@@ -28,7 +28,6 @@ type Pipe struct {
 	phono.UID
 	name       string
 	sampleRate phono.SampleRate
-	cancel     chan struct{}
 
 	pump       *pumpRunner
 	processors []*processRunner
@@ -39,6 +38,7 @@ type Pipe struct {
 	feedback params                //cached feedback
 	errc     chan error            // errors channel
 	events   chan eventMessage     // event channel
+	cancel   chan struct{}         // cancellation channel
 
 	provide chan struct{} // ask for new message request
 	consume chan message  // emission of messages
@@ -69,9 +69,9 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 		params:     make(map[string][]phono.ParamFunc),
 		feedback:   make(map[string][]phono.ParamFunc),
 		events:     make(chan eventMessage, 1),
+		cancel:     make(chan struct{}),
 		provide:    make(chan struct{}),
 		consume:    make(chan message),
-		cancel:     make(chan struct{}),
 	}
 	for _, option := range options {
 		option(p)()
