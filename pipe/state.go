@@ -88,7 +88,7 @@ func (p *Pipe) Run() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	p.eventc <- runEvent
+	p.events <- runEvent
 	return runEvent.target.errc
 }
 
@@ -102,7 +102,7 @@ func (p *Pipe) Pause() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	p.eventc <- pauseEvent
+	p.events <- pauseEvent
 	return pauseEvent.target.errc
 }
 
@@ -116,7 +116,7 @@ func (p *Pipe) Resume() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	p.eventc <- resumeEvent
+	p.events <- resumeEvent
 	return resumeEvent.target.errc
 }
 
@@ -129,7 +129,7 @@ func (p *Pipe) Close() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	p.eventc <- resumeEvent
+	p.events <- resumeEvent
 	return resumeEvent.target.errc
 }
 
@@ -153,7 +153,7 @@ func (p *Pipe) loop() {
 	}
 	// cancel last pending target
 	t.dismiss()
-	close(p.eventc)
+	close(p.events)
 }
 
 // idle is used to listen to pipe's channels which are relevant for idle state.
@@ -166,7 +166,7 @@ func (p *Pipe) idle(s idleState, t target) (State, target) {
 		var newState State
 		var err error
 		select {
-		case e := <-p.eventc:
+		case e := <-p.events:
 			newState, err = s.transition(p, e)
 			if err != nil {
 				e.target.handle(err)
@@ -187,7 +187,7 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 		var newState State
 		var err error
 		select {
-		case e := <-p.eventc:
+		case e := <-p.events:
 			newState, err = s.transition(p, e)
 			if err != nil {
 				e.target.handle(err)
