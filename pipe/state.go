@@ -7,21 +7,21 @@ import (
 	"github.com/dudk/phono"
 )
 
-// State identifies one of the possible states pipe can be in.
-type State interface {
-	listen(*Pipe, target) (State, target)
-	transition(*Pipe, eventMessage) (State, error)
+// state identifies one of the possible states pipe can be in.
+type state interface {
+	listen(*Pipe, target) (state, target)
+	transition(*Pipe, eventMessage) (state, error)
 }
 
 // idleState identifies that the pipe is ONLY waiting for user to send an event.
 type idleState interface {
-	State
+	state
 }
 
 // activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
 type activeState interface {
-	State
-	sendMessage(*Pipe) State
+	state
+	sendMessage(*Pipe) state
 }
 
 // states
@@ -64,7 +64,7 @@ type eventMessage struct {
 
 // target identifies which state is expected from pipe.
 type target struct {
-	State idleState  // end state for this event.
+	state idleState  // end state for this event.
 	errc  chan error // channel to send errors. it's closed when target state is reached.
 }
 
@@ -84,7 +84,7 @@ func (p *Pipe) Run() chan error {
 	runEvent := eventMessage{
 		event: run,
 		target: target{
-			State: ready,
+			state: ready,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -98,7 +98,7 @@ func (p *Pipe) Pause() chan error {
 	pauseEvent := eventMessage{
 		event: pause,
 		target: target{
-			State: paused,
+			state: paused,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -112,7 +112,7 @@ func (p *Pipe) Resume() chan error {
 	resumeEvent := eventMessage{
 		event: resume,
 		target: target{
-			State: ready,
+			state: ready,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -125,7 +125,7 @@ func (p *Pipe) Close() chan error {
 	resumeEvent := eventMessage{
 		event: cancel,
 		target: target{
-			State: ready,
+			state: ready,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -145,7 +145,7 @@ func Wait(d chan error) error {
 
 // loop listens until nil state is returned.
 func (p *Pipe) loop() {
-	var s State = ready
+	var s state = ready
 	t := target{}
 	for s != nil {
 		s, t = s.listen(p, t)
@@ -158,12 +158,12 @@ func (p *Pipe) loop() {
 
 // idle is used to listen to pipe's channels which are relevant for idle state.
 // s is the new state, t is the target state and d channel to notify target transition.
-func (p *Pipe) idle(s idleState, t target) (State, target) {
-	if s == t.State || s == ready {
+func (p *Pipe) idle(s idleState, t target) (state, target) {
+	if s == t.state || s == ready {
 		t = t.dismiss()
 	}
 	for {
-		var newState State
+		var newState state
 		var err error
 		select {
 		case e := <-p.events:
@@ -182,9 +182,9 @@ func (p *Pipe) idle(s idleState, t target) (State, target) {
 }
 
 // active is used to listen to pipe's channels which are relevant for active state.
-func (p *Pipe) active(s activeState, t target) (State, target) {
+func (p *Pipe) active(s activeState, t target) (state, target) {
 	for {
-		var newState State
+		var newState state
 		var err error
 		select {
 		case e := <-p.events:
@@ -210,11 +210,11 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 	}
 }
 
-func (s idleReady) listen(p *Pipe, t target) (State, target) {
+func (s idleReady) listen(p *Pipe, t target) (state, target) {
 	return p.idle(s, t)
 }
 
-func (s idleReady) transition(p *Pipe, e eventMessage) (State, error) {
+func (s idleReady) transition(p *Pipe, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
 		interrupt(p.cancel)
@@ -352,11 +352,11 @@ func mergeErrors(errcList ...<-chan error) (errc chan error) {
 	return
 }
 
-func (s activeRunning) listen(p *Pipe, t target) (State, target) {
+func (s activeRunning) listen(p *Pipe, t target) (state, target) {
 	return p.active(s, t)
 }
 
-func (s activeRunning) transition(p *Pipe, e eventMessage) (State, error) {
+func (s activeRunning) transition(p *Pipe, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
 		interrupt(p.cancel)
@@ -376,16 +376,16 @@ func (s activeRunning) transition(p *Pipe, e eventMessage) (State, error) {
 	return s, ErrInvalidState
 }
 
-func (s activeRunning) sendMessage(p *Pipe) State {
+func (s activeRunning) sendMessage(p *Pipe) state {
 	p.consume <- p.newMessage()
 	return s
 }
 
-func (s activePausing) listen(p *Pipe, t target) (State, target) {
+func (s activePausing) listen(p *Pipe, t target) (state, target) {
 	return p.active(s, t)
 }
 
-func (s activePausing) transition(p *Pipe, e eventMessage) (State, error) {
+func (s activePausing) transition(p *Pipe, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
 		interrupt(p.cancel)
@@ -404,7 +404,7 @@ func (s activePausing) transition(p *Pipe, e eventMessage) (State, error) {
 }
 
 // send message with pause signal.
-func (s activePausing) sendMessage(p *Pipe) State {
+func (s activePausing) sendMessage(p *Pipe) state {
 	m := p.newMessage()
 	if len(m.feedback) == 0 {
 		m.feedback = make(map[string][]phono.ParamFunc)
@@ -420,11 +420,11 @@ func (s activePausing) sendMessage(p *Pipe) State {
 	return paused
 }
 
-func (s idlePaused) listen(p *Pipe, t target) (State, target) {
+func (s idlePaused) listen(p *Pipe, t target) (state, target) {
 	return p.idle(s, t)
 }
 
-func (s idlePaused) transition(p *Pipe, e eventMessage) (State, error) {
+func (s idlePaused) transition(p *Pipe, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
 		interrupt(p.cancel)
@@ -452,8 +452,8 @@ func (e eventMessage) hasTarget() bool {
 
 // reach closes error channel and cancel waiting of target.
 func (t target) dismiss() target {
-	if t.State != nil {
-		t.State = nil
+	if t.state != nil {
+		t.state = nil
 		close(t.errc)
 		t.errc = nil
 	}
