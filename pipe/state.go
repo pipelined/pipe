@@ -7,18 +7,18 @@ import (
 	"github.com/dudk/phono"
 )
 
-// State identifies one of the possible states pipe can be in
+// State identifies one of the possible states pipe can be in.
 type State interface {
 	listen(*Pipe, target) (State, target)
 	transition(*Pipe, eventMessage) (State, error)
 }
 
-// idleState identifies that the pipe is ONLY waiting for user to send an event
+// idleState identifies that the pipe is ONLY waiting for user to send an event.
 type idleState interface {
 	State
 }
 
-// activeState identifies that the pipe is processing signals and also is waiting for user to send an event
+// activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
 type activeState interface {
 	State
 	sendMessage(*Pipe) State
@@ -26,25 +26,25 @@ type activeState interface {
 
 // states
 type (
-	ready   struct{}
-	running struct{}
-	pausing struct{}
-	paused  struct{}
+	idleReady     struct{}
+	activeRunning struct{}
+	activePausing struct{}
+	idlePaused    struct{}
 )
 
 // states variables
 var (
 	// Ready [idle] state means that pipe can be started.
-	Ready ready
+	ready idleReady
 
 	// Running [active] state means that pipe is executing at the moment.
-	Running running
+	running activeRunning
 
 	// Paused [idle] state means that pipe is paused and can be resumed.
-	Paused paused
+	paused idlePaused
 
 	// Pausing [active] state means that pause event was sent, but still not reached all sinks.
-	Pausing pausing
+	pausing activePausing
 )
 
 // actionFn is an action function which causes a pipe state change
@@ -84,7 +84,7 @@ func (p *Pipe) Run() chan error {
 	runEvent := eventMessage{
 		event: run,
 		target: target{
-			State: Ready,
+			State: ready,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -98,7 +98,7 @@ func (p *Pipe) Pause() chan error {
 	pauseEvent := eventMessage{
 		event: pause,
 		target: target{
-			State: Paused,
+			State: paused,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -112,7 +112,7 @@ func (p *Pipe) Resume() chan error {
 	resumeEvent := eventMessage{
 		event: resume,
 		target: target{
-			State: Ready,
+			State: ready,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -125,7 +125,7 @@ func (p *Pipe) Close() chan error {
 	resumeEvent := eventMessage{
 		event: cancel,
 		target: target{
-			State: Ready,
+			State: ready,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -145,7 +145,7 @@ func Wait(d chan error) error {
 
 // loop listens until nil state is returned.
 func (p *Pipe) loop() {
-	var s State = Ready
+	var s State = ready
 	t := target{}
 	for s != nil {
 		s, t = s.listen(p, t)
@@ -159,7 +159,7 @@ func (p *Pipe) loop() {
 // idle is used to listen to pipe's channels which are relevant for idle state.
 // s is the new state, t is the target state and d channel to notify target transition.
 func (p *Pipe) idle(s idleState, t target) (State, target) {
-	if s == t.State || s == Ready {
+	if s == t.State || s == ready {
 		t = t.dismiss()
 	}
 	for {
@@ -202,7 +202,7 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 				interrupt(p.cancel)
 				t.handle(err)
 			}
-			return Ready, t
+			return ready, t
 		}
 		if s != newState {
 			return newState, t
@@ -210,11 +210,11 @@ func (p *Pipe) active(s activeState, t target) (State, target) {
 	}
 }
 
-func (s ready) listen(p *Pipe, t target) (State, target) {
+func (s idleReady) listen(p *Pipe, t target) (State, target) {
 	return p.idle(s, t)
 }
 
-func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
+func (s idleReady) transition(p *Pipe, e eventMessage) (State, error) {
 	switch e.event {
 	case cancel:
 		interrupt(p.cancel)
@@ -278,7 +278,7 @@ func (s ready) transition(p *Pipe, e eventMessage) (State, error) {
 		}
 		errcList = append(errcList, sinkErrcList...)
 		p.errc = mergeErrors(errcList...)
-		return Running, err
+		return running, err
 	}
 	return s, ErrInvalidState
 }
@@ -352,11 +352,11 @@ func mergeErrors(errcList ...<-chan error) (errc chan error) {
 	return
 }
 
-func (s running) listen(p *Pipe, t target) (State, target) {
+func (s activeRunning) listen(p *Pipe, t target) (State, target) {
 	return p.active(s, t)
 }
 
-func (s running) transition(p *Pipe, e eventMessage) (State, error) {
+func (s activeRunning) transition(p *Pipe, e eventMessage) (State, error) {
 	switch e.event {
 	case cancel:
 		interrupt(p.cancel)
@@ -371,21 +371,21 @@ func (s running) transition(p *Pipe, e eventMessage) (State, error) {
 		p.params = p.params.merge(e.params)
 		return s, nil
 	case pause:
-		return Pausing, nil
+		return pausing, nil
 	}
 	return s, ErrInvalidState
 }
 
-func (s running) sendMessage(p *Pipe) State {
+func (s activeRunning) sendMessage(p *Pipe) State {
 	p.consume <- p.newMessage()
 	return s
 }
 
-func (s pausing) listen(p *Pipe, t target) (State, target) {
+func (s activePausing) listen(p *Pipe, t target) (State, target) {
 	return p.active(s, t)
 }
 
-func (s pausing) transition(p *Pipe, e eventMessage) (State, error) {
+func (s activePausing) transition(p *Pipe, e eventMessage) (State, error) {
 	switch e.event {
 	case cancel:
 		interrupt(p.cancel)
@@ -404,7 +404,7 @@ func (s pausing) transition(p *Pipe, e eventMessage) (State, error) {
 }
 
 // send message with pause signal.
-func (s pausing) sendMessage(p *Pipe) State {
+func (s activePausing) sendMessage(p *Pipe) State {
 	m := p.newMessage()
 	if len(m.feedback) == 0 {
 		m.feedback = make(map[string][]phono.ParamFunc)
@@ -417,14 +417,14 @@ func (s pausing) sendMessage(p *Pipe) State {
 	}
 	p.consume <- m
 	wg.Wait()
-	return Paused
+	return paused
 }
 
-func (s paused) listen(p *Pipe, t target) (State, target) {
+func (s idlePaused) listen(p *Pipe, t target) (State, target) {
 	return p.idle(s, t)
 }
 
-func (s paused) transition(p *Pipe, e eventMessage) (State, error) {
+func (s idlePaused) transition(p *Pipe, e eventMessage) (State, error) {
 	switch e.event {
 	case cancel:
 		interrupt(p.cancel)
@@ -440,7 +440,7 @@ func (s paused) transition(p *Pipe, e eventMessage) (State, error) {
 		}
 		return s, nil
 	case resume:
-		return Running, nil
+		return running, nil
 	}
 	return s, ErrInvalidState
 }
