@@ -56,8 +56,8 @@ var ErrInvalidState = errors.New("invalid state")
 // ErrComponentNoID is used to cause a panic when new component without ID is added to pipe.
 var ErrComponentNoID = errors.New("component have no ID value")
 
-// New creates a new pipe and applies provided options
-// returned pipe is in ready state
+// New creates a new pipe and applies provided options.
+// Returned pipe is in Ready state.
 func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 	p := &Pipe{
 		UID:        phono.NewUID(),
