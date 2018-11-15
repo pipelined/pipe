@@ -53,17 +53,17 @@ func three() {
 	)
 	defer out.Close()
 
-	track1Done, err := track1.Begin(pipe.Run)
+	track1Errc := track1.Run()
 	check(err)
-	track2Done, err := track2.Begin(pipe.Run)
+	track2Errc := track2.Run()
 	check(err)
-	outDone, err := out.Begin(pipe.Run)
+	outErrc := out.Run()
 	check(err)
 
-	err = track1.Wait(track1Done)
+	err = pipe.Wait(track1Errc)
 	check(err)
-	err = track2.Wait(track2Done)
+	err = pipe.Wait(track2Errc)
 	check(err)
-	err = out.Wait(outDone)
+	err = pipe.Wait(outErrc)
 	check(err)
 }

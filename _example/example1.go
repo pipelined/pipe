@@ -38,6 +38,6 @@ func one() {
 	defer p.Close()
 
 	// run pipe
-	err = p.Do(pipe.Run)
+	err = pipe.Wait(p.Run())
 	check(err)
 }
