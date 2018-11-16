@@ -3,6 +3,7 @@ package pipe
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/log"
@@ -230,6 +231,129 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	}(len(em.components))
 	p.events <- em
 	return mc
+}
+
+// start starts the execution of pipe.
+func (p *Pipe) start() error {
+	// build all runners first.
+	// build pump.
+	err := p.pump.build(p.ID())
+	if err != nil {
+		return err
+	}
+
+	// build processors.
+	for _, proc := range p.processors {
+		err := proc.build(p.ID())
+		if err != nil {
+			return err
+		}
+	}
+
+	// build sinks.
+	for _, sink := range p.sinks {
+		err := sink.build(p.ID())
+		if err != nil {
+			return err
+		}
+	}
+
+	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
+	// start pump
+	out, errc := p.pump.run(p.cancel, p.ID(), p.provide, p.consume)
+	if err != nil {
+		interrupt(p.cancel)
+		return err
+	}
+	errcList = append(errcList, errc)
+
+	// start chained processesing
+	for _, proc := range p.processors {
+		out, errc = proc.run(p.cancel, p.ID(), out)
+		if err != nil {
+			interrupt(p.cancel)
+			return err
+		}
+		errcList = append(errcList, errc)
+	}
+
+	sinkErrcList, err := p.broadcastToSinks(out)
+	if err != nil {
+		interrupt(p.cancel)
+		return err
+	}
+	errcList = append(errcList, sinkErrcList...)
+	p.errc = mergeErrors(errcList...)
+	return nil
+}
+
+// broadcastToSinks passes messages to all sinks.
+func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
+	//init errcList for sinks error channels
+	errcList := make([]<-chan error, 0, len(p.sinks))
+	//list of channels for broadcast
+	broadcasts := make([]chan message, len(p.sinks))
+	for i := range broadcasts {
+		broadcasts[i] = make(chan message)
+	}
+
+	//start broadcast
+	for i, s := range p.sinks {
+		errc := s.run(p.cancel, p.ID(), broadcasts[i])
+		errcList = append(errcList, errc)
+	}
+
+	go func() {
+		//close broadcasts on return
+		defer func() {
+			for i := range broadcasts {
+				close(broadcasts[i])
+			}
+		}()
+		for msg := range in {
+			for i := range broadcasts {
+				m := message{
+					sourceID: msg.sourceID,
+					Buffer:   msg.Buffer,
+					params:   msg.params.detach(p.sinks[i].ID()),
+					feedback: msg.feedback.detach(p.sinks[i].ID()),
+				}
+				select {
+				case broadcasts[i] <- m:
+				case <-p.cancel:
+					return
+				}
+			}
+		}
+	}()
+
+	return errcList, nil
+}
+
+// merge error channels from all components into one.
+func mergeErrors(errcList ...<-chan error) (errc chan error) {
+	var wg sync.WaitGroup
+	errc = make(chan error, len(errcList))
+
+	//function to wait for error channel
+	output := func(ec <-chan error) {
+		for e := range ec {
+			errc <- e
+		}
+		wg.Done()
+	}
+	wg.Add(len(errcList))
+	for _, ec := range errcList {
+		go output(ec)
+	}
+
+	//wait and close out
+	go func() {
+		wg.Wait()
+		close(errc)
+	}()
+
+	return
 }
 
 // newMessage creates a new message with cached params.
