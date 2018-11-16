@@ -34,17 +34,10 @@ type (
 
 // states variables
 var (
-	// Ready [idle] state means that pipe can be started.
-	ready idleReady
-
-	// Running [active] state means that pipe is executing at the moment.
-	running activeRunning
-
-	// Paused [idle] state means that pipe is paused and can be resumed.
-	paused idlePaused
-
-	// Pausing [active] state means that pause event was sent, but still not reached all sinks.
-	pausing activePausing
+	ready   idleReady     // Ready means that pipe can be started.
+	running activeRunning // Running means that pipe is executing at the moment.
+	paused  idlePaused    // Paused means that pipe is paused and can be resumed.
+	pausing activePausing // Pausing means that pause event was sent, but still not reached all sinks.
 )
 
 // actionFn is an action function which causes a pipe state change
@@ -56,9 +49,9 @@ type event int
 
 // eventMessage is passed into pipe's event channel when user does some action.
 type eventMessage struct {
-	event              // event type.
-	params    params   // new params.
-	callbacks []string // ids of components which need to be called.
+	event               // event type.
+	params     params   // new params.
+	components []string // ids of components which need to be called.
 	target
 }
 
@@ -224,7 +217,7 @@ func (s idleReady) transition(p *Pipe, e eventMessage) (state, error) {
 		p.params = p.params.merge(e.params)
 		return s, nil
 	case measure:
-		for _, id := range e.callbacks {
+		for _, id := range e.components {
 			e.params.applyTo(id)
 		}
 		return s, nil
@@ -435,7 +428,7 @@ func (s idlePaused) transition(p *Pipe, e eventMessage) (state, error) {
 		p.params = p.params.merge(e.params)
 		return s, nil
 	case measure:
-		for _, id := range e.callbacks {
+		for _, id := range e.components {
 			e.params.applyTo(id)
 		}
 		return s, nil
