@@ -179,30 +179,30 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 	}
 	em := eventMessage{event: measure, params: make(map[string][]phono.ParamFunc)}
 	if len(ids) > 0 {
-		em.callbacks = make([]string, 0, len(ids))
+		em.components = make([]string, 0, len(ids))
 		// check if passed ids are part of the pipe
 		for _, id := range ids {
 			_, ok := p.metrics[id]
 			if ok {
-				em.callbacks = append(em.callbacks, id)
+				em.components = append(em.components, id)
 			}
 		}
 		// no components found
-		if len(em.callbacks) == 0 {
+		if len(em.components) == 0 {
 			return nil
 		}
 	} else {
-		em.callbacks = make([]string, 0, len(p.metrics))
+		em.components = make([]string, 0, len(p.metrics))
 		// get all if nothing is passed
 		for id := range p.metrics {
-			em.callbacks = append(em.callbacks, id)
+			em.components = append(em.components, id)
 		}
 	}
 
-	done := make(chan struct{}, len(em.callbacks)) // done chan to close metrics channel
-	mc := make(chan Measure, len(em.callbacks))    // measures channel
+	done := make(chan struct{}, len(em.components)) // done chan to close metrics channel
+	mc := make(chan Measure, len(em.components))    // measures channel
 
-	for _, id := range em.callbacks {
+	for _, id := range em.components {
 		m := p.metrics[id]
 		param := phono.Param{
 			ID: id,
@@ -227,7 +227,7 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 			}
 		}
 		close(mc)
-	}(len(em.callbacks))
+	}(len(em.components))
 	p.events <- em
 	return mc
 }
