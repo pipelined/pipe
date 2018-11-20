@@ -118,7 +118,7 @@ func (p *Pipe) Close() chan error {
 	resumeEvent := eventMessage{
 		event: cancel,
 		target: target{
-			state: ready,
+			state: nil,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -330,7 +330,7 @@ func (e eventMessage) hasTarget() bool {
 
 // reach closes error channel and cancel waiting of target.
 func (t target) dismiss() target {
-	if t.state != nil {
+	if t.errc != nil {
 		t.state = nil
 		close(t.errc)
 		t.errc = nil
