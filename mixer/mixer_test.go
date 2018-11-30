@@ -1,6 +1,7 @@
 package mixer_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -103,7 +104,7 @@ func TestMixer(t *testing.T) {
 		assert.Nil(t, err)
 		for i := range sink.Buffer {
 			for _, val := range sink.Buffer[i] {
-				assert.Equal(t, test.sum, val)
+				assert.Equal(t, test.sum, val, fmt.Sprintf("Message: %v\n", i))
 			}
 		}
 		messageCount, sampleCount := sink.Count()
