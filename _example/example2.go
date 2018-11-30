@@ -50,6 +50,6 @@ func two() {
 		pipe.WithSinks(wavSink),
 	)
 	defer p.Close()
-	err = p.Do(pipe.Run)
+	err = pipe.Wait(p.Run())
 	check(err)
 }

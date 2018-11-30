@@ -34,7 +34,7 @@ func four() {
 	)
 	defer importAsset.Close()
 
-	err = importAsset.Do(pipe.Run)
+	err = pipe.Wait(importAsset.Run())
 	check(err)
 
 	// track pump
@@ -67,5 +67,5 @@ func four() {
 		pipe.WithSinks(wavSink, paSink),
 	)
 
-	err = p.Do(pipe.Run)
+	err = pipe.Wait(p.Run())
 }
