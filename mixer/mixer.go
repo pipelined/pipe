@@ -1,7 +1,8 @@
 package mixer
 
 import (
-	"sync"
+	"fmt"
+	"sync/atomic"
 
 	"github.com/dudk/phono"
 	"github.com/dudk/phono/log"
@@ -13,14 +14,18 @@ type Mixer struct {
 	log.Logger
 	numChannels phono.NumChannels
 	bufferSize  phono.BufferSize
-	ready       chan *frame       // channel to send frames ready for mix
+	out         chan phono.Buffer // channel to send frames ready for mix
 	in          chan *inMessage   // channel to send incoming messages
-	inputs      map[string]*input // inputs sinking data
-	done        map[string]*input // output for pumping data
+	signals     map[string]*input // signals sinking data
+	// done        map[string]*input // output for pumping data
 	*frame
 
-	sync.Mutex
-	outputID string // id of the pipe which is output of mixer
+	// sync.Mutex
+	outputID atomic.Value // id of the pipe which is output of mixer
+
+	register      chan string // register new input signal, buffered
+	sinkcalls     int32       // incremented before send register
+	sinkcallsdone int32       // incremented after send register
 }
 
 type inMessage struct {
@@ -41,6 +46,7 @@ type frame struct {
 }
 
 func (f *frame) isReady() bool {
+	// fmt.Printf("Is ready: %v expected: %v got: %v", f, f.expected, len(f.buffers))
 	return f.expected == len(f.buffers)
 }
 
@@ -62,6 +68,7 @@ func (f *frame) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) 
 			result[nc] = append(result[nc], sum/signals)
 		}
 	}
+	f.buffers = nil
 	return result
 }
 
@@ -72,106 +79,168 @@ const (
 // New returns new mixer.
 func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
-		UID:         phono.NewUID(),
-		Logger:      log.GetLogger(),
-		inputs:      make(map[string]*input),
-		done:        make(map[string]*input),
+		UID:     phono.NewUID(),
+		Logger:  log.GetLogger(),
+		signals: make(map[string]*input),
+		// done:        make(map[string]*input),
 		numChannels: nc,
 		bufferSize:  bs,
-		in:          make(chan *inMessage, maxInputs),
-		frame:       &frame{},
+		in:          make(chan *inMessage, 1),
+
+		register: make(chan string, maxInputs),
 	}
 	return m
 }
 
-// Sink processes the single input.
-func (m *Mixer) Sink(sourceID string) (phono.SinkFunc, error) {
-	m.Lock()
-	m.inputs[sourceID] = &input{frame: m.frame}
-	m.frame.expected = len(m.inputs)
-	m.Unlock()
+// Sink registers new input signal.
+func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
+	// fmt.Printf("Registering input: %s\n", sourceID)
+	atomic.AddInt32(&m.sinkcalls, 1)
+	m.register <- inputID
+	// fmt.Printf("Registered input: %s\n", sourceID)
+	atomic.AddInt32(&m.sinkcallsdone, 1)
 	return func(b phono.Buffer) error {
-		m.in <- &inMessage{sourceID: sourceID, Buffer: b}
+		m.in <- &inMessage{sourceID: inputID, Buffer: b}
 		return nil
 	}, nil
 }
 
 // Flush mixer data for defined source.
 func (m *Mixer) Flush(sourceID string) error {
-	m.Lock()
-	defer m.Unlock()
-	if sourceID == m.outputID {
+	// m.Lock()
+	// defer m.Unlock()
+	if sourceID == m.outputID.Load().(string) {
 		m.frame = &frame{}
 		return nil
 	}
+	// fmt.Printf("Flushing %s\n", sourceID)
 	m.in <- &inMessage{sourceID: sourceID}
 	return nil
 }
 
 // Pump returns a pump function which allows to read the out channel.
 func (m *Mixer) Pump(sourceID string) (phono.PumpFunc, error) {
-	m.Lock()
-	m.outputID = sourceID
-	m.Unlock()
+	m.outputID.Store(sourceID)
 
 	// new out channel
-	m.ready = make(chan *frame, 1)
+	m.out = make(chan phono.Buffer, 1)
 
-	// reset old inputs
-	for sourceID := range m.done {
-		delete(m.done, sourceID)
-	}
+	// for msg := range m.in {
+	// 	m.Lock()
+	// 	input := m.signals[msg.sourceID]
+	// 	m.Unlock()
+	// 	// buffer is nil only when input is closed
+	// 	if msg.Buffer != nil {
+	// 		input.frame.buffers = append(input.frame.buffers, msg.Buffer)
+	// 		if input.frame.next == nil {
+	// 			input.frame.next = &frame{expected: len(m.signals)}
+	// 		}
 
-	// this goroutine lives while pump works.
-	// TODO: prevent leaking.
-	go func() {
-		for msg := range m.in {
-			m.Lock()
-			input := m.inputs[msg.sourceID]
-			m.Unlock()
-			// buffer is nil only when input is closed
-			if msg.Buffer != nil {
-				input.frame.buffers = append(input.frame.buffers, msg.Buffer)
-				if input.frame.next == nil {
-					input.frame.next = &frame{expected: len(m.inputs)}
-				}
-
-				if input.frame.isReady() {
-					m.sendFrame(input.frame)
-				}
-				// proceed input to next frame
-				input.frame = input.frame.next
-			} else {
-				// lower expectations for each next frame
-				for f := input.frame; f != nil; f = f.next {
-					f.expected--
-					if f.expected > 0 && f.isReady() {
-						m.sendFrame(input.frame)
-					}
-				}
-				m.done[msg.sourceID] = input
-				m.Lock()
-				delete(m.inputs, msg.sourceID)
-				m.Unlock()
-				if len(m.inputs) == 0 {
-					close(m.ready)
-					return
-				}
-			}
-		}
-	}()
+	// 		if input.frame.isReady() {
+	// 			m.sendFrame(input.frame)
+	// 		}
+	// 		// proceed input to next frame
+	// 		input.frame = input.frame.next
+	// 	} else {
+	// 		// lower expectations for each next frame
+	// 		for f := input.frame; f != nil; f = f.next {
+	// 			f.expected--
+	// 			if f.expected > 0 && f.isReady() {
+	// 				m.sendFrame(input.frame)
+	// 			}
+	// 		}
+	// 		m.done[msg.sourceID] = input
+	// 		m.Lock()
+	// 		delete(m.signals, msg.sourceID)
+	// 		m.Unlock()
+	// 		if len(m.signals) == 0 {
+	// 			close(m.ready)
+	// 			return
+	// 		}
+	// 	}
+	// }
+	go m.mix()
 	return func() (phono.Buffer, error) {
 		// receive new buffer
-		f, ok := <-m.ready
+		b, ok := <-m.out
+		// fmt.Printf("Ready frame: %v\n", f)
 		if !ok {
 			return nil, phono.ErrEOP
 		}
-		b := f.sum(m.numChannels, m.bufferSize)
+		// b := f.sum(m.numChannels, m.bufferSize)
 		return b, nil
 	}, nil
 }
 
-func (m *Mixer) sendFrame(f *frame) {
+func (m *Mixer) mix() {
+	// this goroutine lives while pump works.
+	// TODO: prevent leaking.
+
+	// first, add all scheduled inputs
+	for {
+		select {
+		case s := <-m.register:
+			m.signals[s] = &input{}
+		default:
+
+			// now we have all inputs, can initiate frames
+			m.frame = &frame{expected: len(m.signals)}
+			for k := range m.signals {
+				m.signals[k].frame = m.frame
+			}
+			if len(m.signals) < 2 {
+				fmt.Printf("Outer loop signals:%v expected: %v sc: %v scd: %v\n", m.signals, m.frame.expected, atomic.LoadInt32(&m.sinkcalls), atomic.LoadInt32(&m.sinkcallsdone))
+			}
+
+			// start main loop
+			for {
+				select {
+				// register new input
+				case s := <-m.register:
+					m.signals[s] = &input{}
+					m.signals[s].frame = m.frame
+					fmt.Printf("Loop signals:%v expected: %v\n", m.signals, m.frame.expected)
+				case msg := <-m.in:
+					s := m.signals[msg.sourceID]
+					if msg.Buffer != nil {
+
+						s.frame.buffers = append(s.frame.buffers, msg.Buffer)
+						if s.frame.isReady() {
+							m.send(s.frame)
+						}
+
+						// check if there is no next frame
+						if s.frame.next == nil {
+							s.frame.next = &frame{expected: len(m.signals)}
+						}
+						// proceed input to next frame
+						s.frame = s.frame.next
+					} else {
+						// lower expectations for each next frame
+						for f := s.frame; f != nil; f = f.next {
+							f.expected--
+							if f.expected > 0 && f.isReady() {
+								m.send(s.frame)
+							}
+						}
+						// m.done[msg.sourceID] = s
+						// m.Lock()
+						// fmt.Printf("Deleting %s\n", msg.sourceID)
+						delete(m.signals, msg.sourceID)
+						// m.Unlock()
+						if len(m.signals) == 0 {
+							close(m.out)
+							return
+						}
+					}
+
+				}
+			}
+		}
+	}
+}
+
+func (m *Mixer) send(f *frame) {
 	m.frame = f
-	m.ready <- f
+	m.out <- f.sum(m.numChannels, m.bufferSize)
 }
