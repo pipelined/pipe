@@ -8,31 +8,28 @@ import (
 type pumpRunner struct {
 	phono.Pump
 	measurable
-	flush     optionalFunc
-	interrupt optionalFunc
-	fn        phono.PumpFunc
-	out       chan message
+	fn  phono.PumpFunc
+	out chan message
+	hooks
 }
 
 // processRunner represents processor's runner.
 type processRunner struct {
 	phono.Processor
 	measurable
-	flush     optionalFunc
-	interrupt optionalFunc
-	fn        phono.ProcessFunc
-	in        <-chan message
-	out       chan message
+	fn  phono.ProcessFunc
+	in  <-chan message
+	out chan message
+	hooks
 }
 
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
 	phono.Sink
 	measurable
-	flush     optionalFunc
-	interrupt optionalFunc
-	fn        phono.SinkFunc
-	in        <-chan message
+	fn phono.SinkFunc
+	in <-chan message
+	hooks
 }
 
 // Flusher defines component that must flushed in the end of execution.
@@ -50,8 +47,24 @@ type Resetter interface {
 	Reset(string) error
 }
 
-// optionalFunc represents optional functions for components lyfecycle.
-type optionalFunc func(string) error
+// hook represents optional functions for components lyfecycle.
+type hook func(string) error
+
+// set of hooks for runners.
+type hooks struct {
+	flush     hook
+	interrupt hook
+	reset     hook
+}
+
+// bindHooks of component.
+func bindHooks(v interface{}) hooks {
+	return hooks{
+		flush:     flusher(v),
+		interrupt: interrupter(v),
+		reset:     resetter(v),
+	}
+}
 
 // counters is a structure for metrics initialization.
 var counters = struct {
@@ -73,7 +86,7 @@ const (
 )
 
 // flusher checks if interface implements Flusher and if so, return it.
-func flusher(i interface{}) optionalFunc {
+func flusher(i interface{}) hook {
 	if v, ok := i.(Flusher); ok {
 		return v.Flush
 	}
@@ -81,7 +94,7 @@ func flusher(i interface{}) optionalFunc {
 }
 
 // flusher checks if interface implements Flusher and if so, return it.
-func interrupter(i interface{}) optionalFunc {
+func interrupter(i interface{}) hook {
 	if v, ok := i.(Interrupter); ok {
 		return v.Interrupt
 	}
@@ -89,7 +102,7 @@ func interrupter(i interface{}) optionalFunc {
 }
 
 // flusher checks if interface implements Flusher and if so, return it.
-func resetter(i interface{}) optionalFunc {
+func resetter(i interface{}) hook {
 	if v, ok := i.(Resetter); ok {
 		return v.Reset
 	}
@@ -269,7 +282,7 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 }
 
 // call optional function with sourceID argument. if error happens, it will be send to errc.
-func call(fn optionalFunc, sourceID string, errc chan error) {
+func call(fn hook, sourceID string, errc chan error) {
 	if fn == nil {
 		return
 	}
