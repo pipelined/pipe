@@ -35,14 +35,19 @@ type sinkRunner struct {
 	in        <-chan message
 }
 
-// Flusher defines component that has to be flushed in the end of execution.
+// Flusher defines component that must flushed in the end of execution.
 type Flusher interface {
 	Flush(string) error
 }
 
-// Interrupter defines component which has custom interruption logic.
+// Interrupter defines component that has custom interruption logic.
 type Interrupter interface {
 	Interrupt(string) error
+}
+
+// Resetter defines component that must be resetted before consequent use.
+type Resetter interface {
+	Reset(string) error
 }
 
 // optionalFunc represents optional functions for components lyfecycle.
@@ -79,6 +84,14 @@ func flusher(i interface{}) optionalFunc {
 func interrupter(i interface{}) optionalFunc {
 	if v, ok := i.(Interrupter); ok {
 		return v.Interrupt
+	}
+	return nil
+}
+
+// flusher checks if interface implements Flusher and if so, return it.
+func resetter(i interface{}) optionalFunc {
+	if v, ok := i.(Resetter); ok {
+		return v.Reset
 	}
 	return nil
 }
