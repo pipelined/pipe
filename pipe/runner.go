@@ -128,6 +128,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 		defer close(out)
 		defer close(errc)
 		defer r.measurable.FinishMeasure()
+		call(r.reset, sourceID, errc) // reset hook
 		r.measurable.Latency()
 		var err error
 		var m message
@@ -136,7 +137,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			select {
 			case provide <- do:
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 
@@ -144,7 +145,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			select {
 			case m = <-consume:
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 
@@ -152,7 +153,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			m.Buffer, err = r.fn() // pump new buffer
 			if err != nil {
 				if err == phono.ErrEOP {
-					call(r.flush, sourceID, errc)
+					call(r.flush, sourceID, errc) // flush hook
 				} else {
 					errc <- err
 				}
@@ -166,7 +167,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			select {
 			case out <- m:
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 		}
@@ -194,6 +195,7 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 		defer close(r.out)
 		defer close(errc)
 		defer r.measurable.FinishMeasure()
+		call(r.reset, sourceID, errc) // reset hook
 		r.measurable.Latency()
 		var err error
 		var m message
@@ -203,11 +205,11 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 			select {
 			case m, ok = <-in:
 				if !ok {
-					call(r.flush, sourceID, errc)
+					call(r.flush, sourceID, errc) // flush hook
 					return
 				}
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 
@@ -225,7 +227,7 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 			select {
 			case r.out <- m:
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 		}
@@ -250,6 +252,7 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 	go func() {
 		defer close(errc)
 		defer r.measurable.FinishMeasure()
+		call(r.reset, sourceID, errc) // reset hook
 		r.measurable.Latency()
 		var m message
 		var ok bool
@@ -258,11 +261,11 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 			select {
 			case m, ok = <-in:
 				if !ok {
-					call(r.flush, sourceID, errc)
+					call(r.flush, sourceID, errc) // flush hook
 					return
 				}
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 
