@@ -6,16 +6,6 @@ import (
 	"github.com/dudk/phono"
 )
 
-const (
-	defaultBufferSize = 512
-	defaultSampleRate = 44100
-
-	// PumpMaxInterval is 2 seconds
-	PumpMaxInterval = 2000
-	// PumpDefaultLimit is 10 messages
-	PumpDefaultLimit = 10
-)
-
 // Param types
 type (
 	// Limit messages
@@ -25,7 +15,7 @@ type (
 // Pump mocks a pipe.Pump interface.
 type Pump struct {
 	phono.UID
-	Counter
+	counter
 	Interval time.Duration
 	Limit
 	Value float64
@@ -33,125 +23,145 @@ type Pump struct {
 	phono.NumChannels
 }
 
-// IntervalParam pushes new interval value for pump.
-func (p *Pump) IntervalParam(i time.Duration) phono.Param {
-	return phono.Param{
-		ID: p.ID(),
-		Apply: func() {
-			p.Interval = i
-		},
-	}
-}
-
-// LimitParam pushes new limit value for pump.
-func (p *Pump) LimitParam(l Limit) phono.Param {
-	return phono.Param{
-		ID: p.ID(),
-		Apply: func() {
-			p.Limit = l
-		},
-	}
-}
-
-// ValueParam pushes new signal value for pump.
-func (p *Pump) ValueParam(v float64) phono.Param {
-	return phono.Param{
-		ID: p.ID(),
-		Apply: func() {
-			p.Value = v
-		},
-	}
-}
-
-// NumChannelsParam pushes new number of channels for pump
-func (p *Pump) NumChannelsParam(nc phono.NumChannels) phono.Param {
-	return phono.Param{
-		ID: p.ID(),
-		Apply: func() {
-			p.NumChannels = nc
-		},
-	}
-}
-
-// Pump returns new buffer for pipe.
-func (p *Pump) Pump(string) (phono.PumpFunc, error) {
-	p.Reset()
-	return func() (phono.Buffer, error) {
-		if Limit(p.Counter.Messages()) >= p.Limit {
-			return nil, phono.ErrEOP
-		}
-		time.Sleep(p.Interval)
-
-		b := phono.Buffer(make([][]float64, p.NumChannels))
-		for i := range b {
-			b[i] = make([]float64, p.BufferSize)
-			for j := range b[i] {
-				b[i][j] = p.Value
-			}
-		}
-		p.Counter.Advance(b)
-		return b, nil
-	}, nil
+// Sink mocks up a pipe.Sink interface.
+// Buffer is not thread-safe, so should not be checked while pipe is running.
+type Sink struct {
+	phono.UID
+	counter
+	phono.Buffer
 }
 
 // Processor mocks a pipe.Processor interface.
 type Processor struct {
 	phono.UID
-	Counter
+	counter
 }
 
-// Process implementation for runner
-func (p *Processor) Process(string) (phono.ProcessFunc, error) {
-	p.Reset()
-	return func(b phono.Buffer) (phono.Buffer, error) {
-		p.Counter.Advance(b)
+// IntervalParam pushes new interval value for pump.
+func (m *Pump) IntervalParam(i time.Duration) phono.Param {
+	return phono.Param{
+		ID: m.ID(),
+		Apply: func() {
+			m.Interval = i
+		},
+	}
+}
+
+// LimitParam pushes new limit value for pump.
+func (m *Pump) LimitParam(l Limit) phono.Param {
+	return phono.Param{
+		ID: m.ID(),
+		Apply: func() {
+			m.Limit = l
+		},
+	}
+}
+
+// ValueParam pushes new signal value for pump.
+func (m *Pump) ValueParam(v float64) phono.Param {
+	return phono.Param{
+		ID: m.ID(),
+		Apply: func() {
+			m.Value = v
+		},
+	}
+}
+
+// NumChannelsParam pushes new number of channels for pump
+func (m *Pump) NumChannelsParam(nc phono.NumChannels) phono.Param {
+	return phono.Param{
+		ID: m.ID(),
+		Apply: func() {
+			m.NumChannels = nc
+		},
+	}
+}
+
+// Pump returns new buffer for pipe.
+func (m *Pump) Pump(string) (phono.PumpFunc, error) {
+	return func() (phono.Buffer, error) {
+		if Limit(m.Messages()) >= m.Limit {
+			return nil, phono.ErrEOP
+		}
+		time.Sleep(m.Interval)
+
+		b := phono.Buffer(make([][]float64, m.NumChannels))
+		for i := range b {
+			b[i] = make([]float64, m.BufferSize)
+			for j := range b[i] {
+				b[i][j] = m.Value
+			}
+		}
+		m.counter.Advance(b)
 		return b, nil
 	}, nil
 }
 
-// Sink mocks up a pipe.Sink interface.
-// Buffer is not thread-safe, so should not be checked while pipe is running.
-type Sink struct {
-	phono.UID
-	Counter
-	phono.Buffer
+// Reset implements pipe.Resetter.
+func (m *Pump) Reset(string) error {
+	m.reset()
+	return nil
+}
+
+// Process implementation for runner
+func (m *Processor) Process(string) (phono.ProcessFunc, error) {
+	return func(b phono.Buffer) (phono.Buffer, error) {
+		m.Advance(b)
+		return b, nil
+	}, nil
+}
+
+// Reset implements pipe.Resetter.
+func (m *Processor) Reset(string) error {
+	m.reset()
+	return nil
 }
 
 // Sink implementation for runner.
-func (s *Sink) Sink(string) (phono.SinkFunc, error) {
-	s.Buffer = nil
-	s.Reset()
+func (m *Sink) Sink(string) (phono.SinkFunc, error) {
 	return func(b phono.Buffer) error {
-		s.Buffer = s.Buffer.Append(b)
-		s.Counter.Advance(b)
+		m.Buffer = m.Buffer.Append(b)
+		m.Advance(b)
 		return nil
 	}, nil
 }
 
-// Counter counts messages and samples.
+// Reset implements pipe.Resetter.
+func (m *Sink) Reset(string) error {
+	m.Buffer = nil
+	m.reset()
+	return nil
+}
+
+// Reset resets counter's metrics.
+func (c *counter) reset() {
+	c.messages, c.samples = 0, 0
+}
+
+// counter counts messages and samples.
 // Duration is not zero only in context of measure.
-type Counter struct {
+type counter struct {
 	messages int64
 	samples  int64
 }
 
 // Advance counter's metrics.
-func (c *Counter) Advance(buf phono.Buffer) {
+func (c *counter) Advance(buf phono.Buffer) {
 	c.messages++
 	c.samples = c.samples + int64(buf.Size())
 }
 
 // Reset resets counter's metrics.
-func (c *Counter) Reset() {
+func (c *counter) Reset() {
 	c.messages, c.samples = 0, 0
 }
 
 // Count returns messages and samples metrics.
-func (c *Counter) Count() (int64, int64) {
+func (c *counter) Count() (int64, int64) {
 	return c.messages, c.samples
 }
 
 // Messages returns messages metrics.
-func (c *Counter) Messages() int64 {
+func (c *counter) Messages() int64 {
 	return c.messages
 }
