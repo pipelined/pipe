@@ -8,45 +8,63 @@ import (
 type pumpRunner struct {
 	phono.Pump
 	measurable
-	flush     optionalFunc
-	interrupt optionalFunc
-	fn        phono.PumpFunc
-	out       chan message
+	fn  phono.PumpFunc
+	out chan message
+	hooks
 }
 
 // processRunner represents processor's runner.
 type processRunner struct {
 	phono.Processor
 	measurable
-	flush     optionalFunc
-	interrupt optionalFunc
-	fn        phono.ProcessFunc
-	in        <-chan message
-	out       chan message
+	fn  phono.ProcessFunc
+	in  <-chan message
+	out chan message
+	hooks
 }
 
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
 	phono.Sink
 	measurable
-	flush     optionalFunc
-	interrupt optionalFunc
-	fn        phono.SinkFunc
-	in        <-chan message
+	fn phono.SinkFunc
+	in <-chan message
+	hooks
 }
 
-// Flusher defines component that has to be flushed in the end of execution.
+// Flusher defines component that must flushed in the end of execution.
 type Flusher interface {
 	Flush(string) error
 }
 
-// Interrupter defines component which has custom interruption logic.
+// Interrupter defines component that has custom interruption logic.
 type Interrupter interface {
 	Interrupt(string) error
 }
 
-// optionalFunc represents optional functions for components lyfecycle.
-type optionalFunc func(string) error
+// Resetter defines component that must be resetted before consequent use.
+type Resetter interface {
+	Reset(string) error
+}
+
+// hook represents optional functions for components lyfecycle.
+type hook func(string) error
+
+// set of hooks for runners.
+type hooks struct {
+	flush     hook
+	interrupt hook
+	reset     hook
+}
+
+// bindHooks of component.
+func bindHooks(v interface{}) hooks {
+	return hooks{
+		flush:     flusher(v),
+		interrupt: interrupter(v),
+		reset:     resetter(v),
+	}
+}
 
 // counters is a structure for metrics initialization.
 var counters = struct {
@@ -68,7 +86,7 @@ const (
 )
 
 // flusher checks if interface implements Flusher and if so, return it.
-func flusher(i interface{}) optionalFunc {
+func flusher(i interface{}) hook {
 	if v, ok := i.(Flusher); ok {
 		return v.Flush
 	}
@@ -76,9 +94,17 @@ func flusher(i interface{}) optionalFunc {
 }
 
 // flusher checks if interface implements Flusher and if so, return it.
-func interrupter(i interface{}) optionalFunc {
+func interrupter(i interface{}) hook {
 	if v, ok := i.(Interrupter); ok {
 		return v.Interrupt
+	}
+	return nil
+}
+
+// flusher checks if interface implements Flusher and if so, return it.
+func resetter(i interface{}) hook {
+	if v, ok := i.(Resetter); ok {
+		return v.Reset
 	}
 	return nil
 }
@@ -102,6 +128,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 		defer close(out)
 		defer close(errc)
 		defer r.measurable.FinishMeasure()
+		call(r.reset, sourceID, errc) // reset hook
 		r.measurable.Latency()
 		var err error
 		var m message
@@ -110,7 +137,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			select {
 			case provide <- do:
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 
@@ -118,7 +145,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			select {
 			case m = <-consume:
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 
@@ -126,7 +153,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			m.Buffer, err = r.fn() // pump new buffer
 			if err != nil {
 				if err == phono.ErrEOP {
-					call(r.flush, sourceID, errc)
+					call(r.flush, sourceID, errc) // flush hook
 				} else {
 					errc <- err
 				}
@@ -140,7 +167,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			select {
 			case out <- m:
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 		}
@@ -168,6 +195,7 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 		defer close(r.out)
 		defer close(errc)
 		defer r.measurable.FinishMeasure()
+		call(r.reset, sourceID, errc) // reset hook
 		r.measurable.Latency()
 		var err error
 		var m message
@@ -177,11 +205,11 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 			select {
 			case m, ok = <-in:
 				if !ok {
-					call(r.flush, sourceID, errc)
+					call(r.flush, sourceID, errc) // flush hook
 					return
 				}
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 
@@ -199,7 +227,7 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 			select {
 			case r.out <- m:
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 		}
@@ -224,6 +252,7 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 	go func() {
 		defer close(errc)
 		defer r.measurable.FinishMeasure()
+		call(r.reset, sourceID, errc) // reset hook
 		r.measurable.Latency()
 		var m message
 		var ok bool
@@ -232,11 +261,11 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 			select {
 			case m, ok = <-in:
 				if !ok {
-					call(r.flush, sourceID, errc)
+					call(r.flush, sourceID, errc) // flush hook
 					return
 				}
 			case <-cancel:
-				call(r.interrupt, sourceID, errc)
+				call(r.interrupt, sourceID, errc) // interrupt hook
 				return
 			}
 
@@ -256,7 +285,7 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 }
 
 // call optional function with sourceID argument. if error happens, it will be send to errc.
-func call(fn optionalFunc, sourceID string, errc chan error) {
+func call(fn hook, sourceID string, errc chan error) {
 	if fn == nil {
 		return
 	}
