@@ -61,7 +61,7 @@ type (
 	UID string
 
 	// ParamFunc represents a function which mutates the pipe element (e.g. Pump, Processor or Sink)
-	ParamFunc func()
+	ParamFunc func() error
 
 	// Param is a structure for delayed parameters apply
 	// used as return type in functions which enable Params support for different packages
@@ -113,8 +113,9 @@ func (id UID) ID() string {
 func ReceivedBy(wg *sync.WaitGroup, id string) Param {
 	return Param{
 		ID: id,
-		Apply: func() {
+		Apply: func() error {
 			wg.Done()
+			return nil
 		},
 	}
 }

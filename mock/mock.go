@@ -41,8 +41,9 @@ type Processor struct {
 func (m *Pump) IntervalParam(i time.Duration) phono.Param {
 	return phono.Param{
 		ID: m.ID(),
-		Apply: func() {
+		Apply: func() error {
 			m.Interval = i
+			return nil
 		},
 	}
 }
@@ -51,8 +52,9 @@ func (m *Pump) IntervalParam(i time.Duration) phono.Param {
 func (m *Pump) LimitParam(l Limit) phono.Param {
 	return phono.Param{
 		ID: m.ID(),
-		Apply: func() {
+		Apply: func() error {
 			m.Limit = l
+			return nil
 		},
 	}
 }
@@ -61,8 +63,9 @@ func (m *Pump) LimitParam(l Limit) phono.Param {
 func (m *Pump) ValueParam(v float64) phono.Param {
 	return phono.Param{
 		ID: m.ID(),
-		Apply: func() {
+		Apply: func() error {
 			m.Value = v
+			return nil
 		},
 	}
 }
@@ -71,8 +74,9 @@ func (m *Pump) ValueParam(v float64) phono.Param {
 func (m *Pump) NumChannelsParam(nc phono.NumChannels) phono.Param {
 	return phono.Param{
 		ID: m.ID(),
-		Apply: func() {
+		Apply: func() error {
 			m.NumChannels = nc
+			return nil
 		},
 	}
 }

@@ -84,8 +84,9 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 // WithName sets name to Pipe
 func WithName(n string) Option {
 	return func(p *Pipe) phono.ParamFunc {
-		return func() {
+		return func() error {
 			p.name = n
+			return nil
 		}
 	}
 }
@@ -96,7 +97,7 @@ func WithPump(pump phono.Pump) Option {
 		panic(ErrComponentNoID)
 	}
 	return func(p *Pipe) phono.ParamFunc {
-		return func() {
+		return func() error {
 			r := &pumpRunner{
 				Pump:       pump,
 				hooks:      bindHooks(pump),
@@ -104,6 +105,7 @@ func WithPump(pump phono.Pump) Option {
 			}
 			p.metrics[r.ID()] = r
 			p.pump = r
+			return nil
 		}
 	}
 }
@@ -116,7 +118,7 @@ func WithProcessors(processors ...phono.Processor) Option {
 		}
 	}
 	return func(p *Pipe) phono.ParamFunc {
-		return func() {
+		return func() error {
 			for i := range processors {
 				r := &processRunner{
 					Processor:  processors[i],
@@ -126,6 +128,7 @@ func WithProcessors(processors ...phono.Processor) Option {
 				p.metrics[r.ID()] = r
 				p.processors = append(p.processors, r)
 			}
+			return nil
 		}
 	}
 }
@@ -138,7 +141,7 @@ func WithSinks(sinks ...phono.Sink) Option {
 		}
 	}
 	return func(p *Pipe) phono.ParamFunc {
-		return func() {
+		return func() error {
 			for i := range sinks {
 				r := &sinkRunner{
 					Sink:       sinks[i],
@@ -148,6 +151,7 @@ func WithSinks(sinks ...phono.Sink) Option {
 				p.metrics[r.ID()] = r
 				p.sinks = append(p.sinks, r)
 			}
+			return nil
 		}
 	}
 }
@@ -204,10 +208,11 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 		m := p.metrics[id]
 		param := phono.Param{
 			ID: id,
-			Apply: func() {
+			Apply: func() error {
 				var do struct{}
 				mc <- m.Measure()
 				done <- do
+				return nil
 			},
 		}
 		em.params = em.params.add(param)

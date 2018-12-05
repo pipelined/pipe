@@ -52,8 +52,9 @@ func New(bs phono.BufferSize, nc phono.NumChannels) (t *Track) {
 func (t *Track) BufferSizeParam(bs phono.BufferSize) phono.Param {
 	return phono.Param{
 		ID: t.ID(),
-		Apply: func() {
+		Apply: func() error {
 			t.bs = bs
+			return nil
 		},
 	}
 }
