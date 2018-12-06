@@ -25,11 +25,12 @@ func TestSink(t *testing.T) {
 	sink := portaudio.NewSink(bufferSize, pump.WavSampleRate(), pump.WavNumChannels())
 	assert.Nil(t, err)
 
-	playback := pipe.New(
+	playback, err := pipe.New(
 		sampleRate,
 		pipe.WithPump(pump),
 		pipe.WithSinks(sink),
 	)
+	assert.Nil(t, err)
 
 	err = pipe.Wait(playback.Run())
 	assert.Nil(t, err)

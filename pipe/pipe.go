@@ -49,7 +49,7 @@ type Pipe struct {
 
 // Option provides a way to set parameters to pipe
 // returns phono.ParamFunc, which can be executed later
-type Option func(p *Pipe) phono.ParamFunc
+type Option func(p *Pipe) error
 
 // ErrInvalidState is returned if pipe method cannot be executed at this moment.
 var ErrInvalidState = errors.New("invalid state")
@@ -59,7 +59,7 @@ var ErrComponentNoID = errors.New("component have no ID value")
 
 // New creates a new pipe and applies provided options.
 // Returned pipe is in Ready state.
-func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
+func New(sampleRate phono.SampleRate, options ...Option) (*Pipe, error) {
 	p := &Pipe{
 		UID:        phono.NewUID(),
 		sampleRate: sampleRate,
@@ -75,18 +75,20 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 		consume:    make(chan message),
 	}
 	for _, option := range options {
-		option(p)()
+		err := option(p)
+		if err != nil {
+			return nil, err
+		}
 	}
 	go p.loop()
-	return p
+	return p, nil
 }
 
 // WithName sets name to Pipe
 func WithName(n string) Option {
-	return func(p *Pipe) phono.ParamFunc {
-		return func() {
-			p.name = n
-		}
+	return func(p *Pipe) error {
+		p.name = n
+		return nil
 	}
 }
 
@@ -95,16 +97,15 @@ func WithPump(pump phono.Pump) Option {
 	if pump.ID() == "" {
 		panic(ErrComponentNoID)
 	}
-	return func(p *Pipe) phono.ParamFunc {
-		return func() {
-			r := &pumpRunner{
-				Pump:       pump,
-				hooks:      bindHooks(pump),
-				measurable: newMetric(pump.ID(), p.sampleRate, counters.pump...),
-			}
-			p.metrics[r.ID()] = r
-			p.pump = r
+	return func(p *Pipe) error {
+		r := &pumpRunner{
+			Pump:       pump,
+			hooks:      bindHooks(pump),
+			measurable: newMetric(pump.ID(), p.sampleRate, counters.pump...),
 		}
+		p.metrics[r.ID()] = r
+		p.pump = r
+		return nil
 	}
 }
 
@@ -115,18 +116,17 @@ func WithProcessors(processors ...phono.Processor) Option {
 			panic(ErrComponentNoID)
 		}
 	}
-	return func(p *Pipe) phono.ParamFunc {
-		return func() {
-			for i := range processors {
-				r := &processRunner{
-					Processor:  processors[i],
-					hooks:      bindHooks(processors[i]),
-					measurable: newMetric(processors[i].ID(), p.sampleRate, counters.processor...),
-				}
-				p.metrics[r.ID()] = r
-				p.processors = append(p.processors, r)
+	return func(p *Pipe) error {
+		for i := range processors {
+			r := &processRunner{
+				Processor:  processors[i],
+				hooks:      bindHooks(processors[i]),
+				measurable: newMetric(processors[i].ID(), p.sampleRate, counters.processor...),
 			}
+			p.metrics[r.ID()] = r
+			p.processors = append(p.processors, r)
 		}
+		return nil
 	}
 }
 
@@ -137,18 +137,17 @@ func WithSinks(sinks ...phono.Sink) Option {
 			panic(ErrComponentNoID)
 		}
 	}
-	return func(p *Pipe) phono.ParamFunc {
-		return func() {
-			for i := range sinks {
-				r := &sinkRunner{
-					Sink:       sinks[i],
-					hooks:      bindHooks(sinks[i]),
-					measurable: newMetric(sinks[i].ID(), p.sampleRate, counters.sink...),
-				}
-				p.metrics[r.ID()] = r
-				p.sinks = append(p.sinks, r)
+	return func(p *Pipe) error {
+		for i := range sinks {
+			r := &sinkRunner{
+				Sink:       sinks[i],
+				hooks:      bindHooks(sinks[i]),
+				measurable: newMetric(sinks[i].ID(), p.sampleRate, counters.sink...),
 			}
+			p.metrics[r.ID()] = r
+			p.sinks = append(p.sinks, r)
 		}
+		return nil
 	}
 }
 

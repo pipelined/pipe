@@ -47,13 +47,14 @@ func TestPipe(t *testing.T) {
 	}
 	processor := &mock.Processor{UID: phono.NewUID()}
 	sink := &mock.Sink{UID: phono.NewUID()}
-	p := pipe.New(
+	p, err := pipe.New(
 		sampleRate,
 		pipe.WithName("Mock"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(processor),
 		pipe.WithSinks(sink),
 	)
+	assert.Nil(t, err)
 
 	for _, test := range tests {
 		p.Push(
@@ -94,25 +95,27 @@ func TestComponentsReuse(t *testing.T) {
 	sink1 := &mock.Sink{UID: phono.NewUID()}
 	sink2 := &mock.Sink{UID: phono.NewUID()}
 
-	p := pipe.New(
+	p, err := pipe.New(
 		sampleRate,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),
 	)
+	assert.Nil(t, err)
 
-	err := pipe.Wait(p.Run())
+	err = pipe.Wait(p.Run())
 	assert.Nil(t, err)
 	err = pipe.Wait(p.Close())
 	assert.Nil(t, err)
-	p = pipe.New(
+	p, err = pipe.New(
 		sampleRate,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),
 	)
+	assert.Nil(t, err)
 	err = pipe.Wait(p.Run())
 	assert.Nil(t, err)
 	err = pipe.Wait(p.Close())
