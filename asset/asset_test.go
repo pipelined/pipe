@@ -48,19 +48,20 @@ func TestPipe(t *testing.T) {
 
 	for _, test := range tests {
 		sink := asset.New()
-		p := pipe.New(
+		p, err := pipe.New(
 			sampleRate,
 			pipe.WithName("Mock"),
 			pipe.WithPump(pump),
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),
 		)
+		assert.Nil(t, err)
 		p.Push(
 			pump.LimitParam(test.Limit),
 			pump.NumChannelsParam(test.NumChannels),
 			pump.ValueParam(test.value),
 		)
-		err := pipe.Wait(p.Run())
+		err = pipe.Wait(p.Run())
 		assert.Nil(t, err)
 
 		messageCount, samplesCount := pump.Count()
