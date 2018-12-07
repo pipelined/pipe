@@ -120,6 +120,9 @@ func (m *Mixer) Pump(outputID string) (phono.PumpFunc, error) {
 
 func (m *Mixer) mix() {
 	m.frame = &frame{}
+
+	// regsiter available inputs.
+register:
 	for {
 		select {
 		// add all scheduled inputin.
@@ -134,40 +137,40 @@ func (m *Mixer) mix() {
 
 			// now we have all frames, can initiate first frame.
 			m.frame.expected = len(m.frames)
+			break register
+		}
+	}
 
-			// start main loop.
-			for {
-				select {
-				// register new input.
-				case s := <-m.register:
-					// add new input.
-					m.frames[s] = m.frame
-					resetExpectations(m.frame, len(m.frames))
-				case msg := <-m.in:
-					f := m.frames[msg.inputID]
-					if msg.Buffer != nil {
-						f.buffers = append(f.buffers, msg.Buffer)
-						m.frame = send(f, m.out)
+	// start main loop.
+	for {
+		select {
+		// register new input during runtime.
+		case s := <-m.register:
+			// add new input.
+			m.frames[s] = m.frame
+			resetExpectations(m.frame, len(m.frames))
+		case msg := <-m.in:
+			f := m.frames[msg.inputID]
+			if msg.Buffer != nil {
+				f.buffers = append(f.buffers, msg.Buffer)
+				m.frame = send(f, m.out)
 
-						// check if there is no next frame.
-						if f.next == nil {
-							f.next = newFrame(len(m.frames))
-						}
-						// proceed input to next frame.
-						m.frames[msg.inputID] = f.next
-					} else {
-						// move input to done.
-						m.done = append(m.done, msg.inputID)
-						delete(m.frames, msg.inputID)
-						// reset expectations.
-						resetExpectations(f, len(m.frames))
-						// send frames.
-						m.frame = send(f, m.out)
-						if len(m.frames) == 0 {
-							close(m.out)
-							return
-						}
-					}
+				// proceed input to next frame.
+				if f.next == nil {
+					f.next = newFrame(len(m.frames))
+				}
+				m.frames[msg.inputID] = f.next
+			} else {
+				// move input to done.
+				m.done = append(m.done, msg.inputID)
+				delete(m.frames, msg.inputID)
+				// reset expectations.
+				resetExpectations(f, len(m.frames))
+				// send frames.
+				m.frame = send(f, m.out)
+				if len(m.frames) == 0 {
+					close(m.out)
+					return
 				}
 			}
 		}
@@ -186,7 +189,7 @@ func newFrame(numframes int) *frame {
 
 // send all complete frames. Returns next incomplete frame.
 func send(f *frame, out chan *frame) *frame {
-	for f.isComplete() {
+	for f != nil && f.isComplete() {
 		out <- f
 		f = f.next
 	}
