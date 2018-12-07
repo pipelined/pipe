@@ -222,9 +222,7 @@ func (s idleReady) transition(p *Pipe, e eventMessage) (state, error) {
 		}
 		return s, nil
 	case run:
-		if err := p.start(); err != nil {
-			return s, err
-		}
+		p.start()
 		return running, nil
 	}
 	return s, ErrInvalidState
