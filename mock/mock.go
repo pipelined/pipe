@@ -151,11 +151,6 @@ func (c *counter) Advance(buf phono.Buffer) {
 	c.samples = c.samples + int64(buf.Size())
 }
 
-// Reset resets counter's metrics.
-func (c *counter) Reset() {
-	c.messages, c.samples = 0, 0
-}
-
 // Count returns messages and samples metrics.
 func (c *counter) Count() (int64, int64) {
 	return c.messages, c.samples

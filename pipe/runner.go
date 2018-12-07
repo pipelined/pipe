@@ -109,14 +109,20 @@ func resetter(i interface{}) hook {
 	return nil
 }
 
-// build creates the closure. it's separated from run to have pre-run
+// newPumpRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func (r *pumpRunner) build(sourceID string) (err error) {
-	r.fn, err = r.Pump.Pump(sourceID)
+func newPumpRunner(sourceID string, p phono.Pump, m measurable) (*pumpRunner, error) {
+	fn, err := p.Pump(sourceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	r := pumpRunner{
+		fn:         fn,
+		Pump:       p,
+		hooks:      bindHooks(p),
+		measurable: m,
+	}
+	return &r, nil
 }
 
 // run the Pump runner.
@@ -175,14 +181,20 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 	return out, errc
 }
 
-// build creates the closure. it's separated from run to have pre-run
+// newProcessRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func (r *processRunner) build(sourceID string) (err error) {
-	r.fn, err = r.Processor.Process(sourceID)
+func newProcessRunner(sourceID string, p phono.Processor, m measurable) (*processRunner, error) {
+	fn, err := p.Process(sourceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	r := processRunner{
+		fn:         fn,
+		Processor:  p,
+		hooks:      bindHooks(p),
+		measurable: m,
+	}
+	return &r, nil
 }
 
 // run the Processor runner.
@@ -235,14 +247,20 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 	return r.out, errc
 }
 
-// build creates the closure. it's separated from run to have pre-run
+// newSinkRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func (r *sinkRunner) build(sourceID string) (err error) {
-	r.fn, err = r.Sink.Sink(sourceID)
+func newSinkRunner(sourceID string, s phono.Sink, m measurable) (*sinkRunner, error) {
+	fn, err := s.Sink(sourceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	r := sinkRunner{
+		fn:         fn,
+		Sink:       s,
+		hooks:      bindHooks(s),
+		measurable: m,
+	}
+	return &r, nil
 }
 
 // run the sink runner.

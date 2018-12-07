@@ -49,7 +49,7 @@ type Pipe struct {
 
 // Option provides a way to set parameters to pipe
 // returns phono.ParamFunc, which can be executed later
-type Option func(p *Pipe) phono.ParamFunc
+type Option func(p *Pipe) error
 
 // ErrInvalidState is returned if pipe method cannot be executed at this moment.
 var ErrInvalidState = errors.New("invalid state")
@@ -59,7 +59,7 @@ var ErrComponentNoID = errors.New("component have no ID value")
 
 // New creates a new pipe and applies provided options.
 // Returned pipe is in Ready state.
-func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
+func New(sampleRate phono.SampleRate, options ...Option) (*Pipe, error) {
 	p := &Pipe{
 		UID:        phono.NewUID(),
 		sampleRate: sampleRate,
@@ -75,18 +75,20 @@ func New(sampleRate phono.SampleRate, options ...Option) *Pipe {
 		consume:    make(chan message),
 	}
 	for _, option := range options {
-		option(p)()
+		err := option(p)
+		if err != nil {
+			return nil, err
+		}
 	}
 	go p.loop()
-	return p
+	return p, nil
 }
 
 // WithName sets name to Pipe
 func WithName(n string) Option {
-	return func(p *Pipe) phono.ParamFunc {
-		return func() {
-			p.name = n
-		}
+	return func(p *Pipe) error {
+		p.name = n
+		return nil
 	}
 }
 
@@ -95,16 +97,14 @@ func WithPump(pump phono.Pump) Option {
 	if pump.ID() == "" {
 		panic(ErrComponentNoID)
 	}
-	return func(p *Pipe) phono.ParamFunc {
-		return func() {
-			r := &pumpRunner{
-				Pump:       pump,
-				hooks:      bindHooks(pump),
-				measurable: newMetric(pump.ID(), p.sampleRate, counters.pump...),
-			}
-			p.metrics[r.ID()] = r
-			p.pump = r
+	return func(p *Pipe) error {
+		r, err := newPumpRunner(p.ID(), pump, newMetric(pump.ID(), p.sampleRate, counters.pump...))
+		if err != nil {
+			return err
 		}
+		p.pump = r
+		p.metrics[r.ID()] = r
+		return nil
 	}
 }
 
@@ -115,40 +115,36 @@ func WithProcessors(processors ...phono.Processor) Option {
 			panic(ErrComponentNoID)
 		}
 	}
-	return func(p *Pipe) phono.ParamFunc {
-		return func() {
-			for i := range processors {
-				r := &processRunner{
-					Processor:  processors[i],
-					hooks:      bindHooks(processors[i]),
-					measurable: newMetric(processors[i].ID(), p.sampleRate, counters.processor...),
-				}
-				p.metrics[r.ID()] = r
-				p.processors = append(p.processors, r)
+	return func(p *Pipe) error {
+		for _, proc := range processors {
+			r, err := newProcessRunner(p.ID(), proc, newMetric(proc.ID(), p.sampleRate, counters.processor...))
+			if err != nil {
+				return err
 			}
+			p.processors = append(p.processors, r)
+			p.metrics[r.ID()] = r
 		}
+		return nil
 	}
 }
 
 // WithSinks sets sinks to Pipe
 func WithSinks(sinks ...phono.Sink) Option {
-	for i := range sinks {
-		if sinks[i].ID() == "" {
+	for _, sink := range sinks {
+		if sink.ID() == "" {
 			panic(ErrComponentNoID)
 		}
 	}
-	return func(p *Pipe) phono.ParamFunc {
-		return func() {
-			for i := range sinks {
-				r := &sinkRunner{
-					Sink:       sinks[i],
-					hooks:      bindHooks(sinks[i]),
-					measurable: newMetric(sinks[i].ID(), p.sampleRate, counters.sink...),
-				}
-				p.metrics[r.ID()] = r
-				p.sinks = append(p.sinks, r)
+	return func(p *Pipe) error {
+		for _, sink := range sinks {
+			r, err := newSinkRunner(p.ID(), sink, newMetric(sink.ID(), p.sampleRate, counters.processor...))
+			if err != nil {
+				return err
 			}
+			p.sinks = append(p.sinks, r)
+			p.metrics[r.ID()] = r
 		}
+		return nil
 	}
 }
 
@@ -231,61 +227,25 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 }
 
 // start starts the execution of pipe.
-func (p *Pipe) start() error {
-	// build all runners first.
-	// build pump.
-	err := p.pump.build(p.ID())
-	if err != nil {
-		return err
-	}
-
-	// build processors.
-	for _, proc := range p.processors {
-		err := proc.build(p.ID())
-		if err != nil {
-			return err
-		}
-	}
-
-	// build sinks.
-	for _, sink := range p.sinks {
-		err := sink.build(p.ID())
-		if err != nil {
-			return err
-		}
-	}
-
+func (p *Pipe) start() {
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	// start pump
 	out, errc := p.pump.run(p.cancel, p.ID(), p.provide, p.consume)
-	if err != nil {
-		interrupt(p.cancel)
-		return err
-	}
 	errcList = append(errcList, errc)
 
 	// start chained processesing
 	for _, proc := range p.processors {
 		out, errc = proc.run(p.cancel, p.ID(), out)
-		if err != nil {
-			interrupt(p.cancel)
-			return err
-		}
 		errcList = append(errcList, errc)
 	}
 
-	sinkErrcList, err := p.broadcastToSinks(out)
-	if err != nil {
-		interrupt(p.cancel)
-		return err
-	}
+	sinkErrcList := p.broadcastToSinks(out)
 	errcList = append(errcList, sinkErrcList...)
 	p.errc = mergeErrors(errcList...)
-	return nil
 }
 
 // broadcastToSinks passes messages to all sinks.
-func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
+func (p *Pipe) broadcastToSinks(in <-chan message) []<-chan error {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(p.sinks))
 	//list of channels for broadcast
@@ -324,7 +284,7 @@ func (p *Pipe) broadcastToSinks(in <-chan message) ([]<-chan error, error) {
 		}
 	}()
 
-	return errcList, nil
+	return errcList
 }
 
 // merge error channels from all components into one.
