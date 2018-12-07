@@ -15,7 +15,7 @@ type Mixer struct {
 	bufferSize  phono.BufferSize
 	out         chan *frame       // channel to send frames ready for mix
 	in          chan *inMessage   // channel to send incoming messages
-	inputs      map[string]*input // inputs sinking data
+	frames      map[string]*frame // frames sinking data
 	done        []string          // done inputs ids
 	register    chan string       // register new input input, buffered
 	outputID    atomic.Value      // id of the pipe which is output of mixer
@@ -23,13 +23,8 @@ type Mixer struct {
 }
 
 type inMessage struct {
-	sourceID string
+	inputID string
 	phono.Buffer
-}
-
-// input represents a mixer input and is getting created everytime Sink method is called.
-type input struct {
-	*frame
 }
 
 // frame represents a slice of samples to mix.
@@ -39,22 +34,22 @@ type frame struct {
 	next     *frame
 }
 
-// sum returns mixed samples.
+// sum returns mixed samplein.
 func (f *frame) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) phono.Buffer {
 	var sum float64
-	var inputs float64
+	var frames float64
 	result := phono.Buffer(make([][]float64, numChannels))
 	for nc := 0; nc < int(numChannels); nc++ {
 		result[nc] = make([]float64, 0, bufferSize)
 		for bs := 0; bs < int(bufferSize); bs++ {
 			sum = 0
-			inputs = 0
-			// additional check to sum shorten blocks.
+			frames = 0
+			// additional check to sum shorten blockin.
 			for i := 0; i < len(f.buffers) && len(f.buffers[i][nc]) > bs; i++ {
 				sum = sum + f.buffers[i][nc][bs]
-				inputs++
+				frames++
 			}
-			result[nc] = append(result[nc], sum/inputs)
+			result[nc] = append(result[nc], sum/frames)
 		}
 	}
 	f.buffers = nil
@@ -70,7 +65,7 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
 		UID:         phono.NewUID(),
 		Logger:      log.GetLogger(),
-		inputs:      make(map[string]*input),
+		frames:      make(map[string]*frame),
 		numChannels: nc,
 		bufferSize:  bs,
 		in:          make(chan *inMessage, 1),
@@ -83,7 +78,7 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
 	m.register <- inputID
 	return func(b phono.Buffer) error {
-		m.in <- &inMessage{sourceID: inputID, Buffer: b}
+		m.in <- &inMessage{inputID: inputID, Buffer: b}
 		return nil
 	}, nil
 }
@@ -93,7 +88,7 @@ func (m *Mixer) Flush(sourceID string) error {
 	if m.isOutput(sourceID) {
 		return nil
 	}
-	m.in <- &inMessage{sourceID: sourceID}
+	m.in <- &inMessage{inputID: sourceID}
 	return nil
 }
 
@@ -127,51 +122,48 @@ func (m *Mixer) mix() {
 	m.frame = &frame{}
 	for {
 		select {
-		// add all scheduled inputs.
+		// add all scheduled inputin.
 		case s := <-m.register:
-			m.inputs[s] = &input{m.frame}
+			m.frames[s] = m.frame
 		default:
-			// add done inputs.
+			// add done inputin.
 			for _, inputID := range m.done {
-				m.inputs[inputID] = &input{m.frame}
+				m.frames[inputID] = m.frame
 			}
-			m.done = make([]string, 0, len(m.inputs))
+			m.done = make([]string, 0, len(m.frames))
 
-			// now we have all inputs, can initiate first frame.
-			m.frame.expected = len(m.inputs)
+			// now we have all frames, can initiate first frame.
+			m.frame.expected = len(m.frames)
 
 			// start main loop.
 			for {
 				select {
 				// register new input.
 				case s := <-m.register:
-					m.inputs[s] = &input{frame: m.frame}
+					// add new input.
+					m.frames[s] = m.frame
+					resetExpectations(m.frame, len(m.frames))
 				case msg := <-m.in:
-					s := m.inputs[msg.sourceID]
+					f := m.frames[msg.inputID]
 					if msg.Buffer != nil {
-						s.frame.buffers = append(s.frame.buffers, msg.Buffer)
-						if s.frame.isReady() {
-							m.send(s.frame)
-						}
+						f.buffers = append(f.buffers, msg.Buffer)
+						m.frame = send(f, m.out)
 
 						// check if there is no next frame.
-						if s.frame.next == nil {
-							s.frame.next = newFrame(len(m.inputs))
+						if f.next == nil {
+							f.next = newFrame(len(m.frames))
 						}
 						// proceed input to next frame.
-						s.frame = s.frame.next
+						m.frames[msg.inputID] = f.next
 					} else {
-						m.done = append(m.done, msg.sourceID)
-						delete(m.inputs, msg.sourceID)
-						// lower expectations for each next frame.
-						for f := s.frame; f != nil; f = f.next {
-							f.expected = len(m.inputs)
-							if f.expected > 0 && f.isReady() {
-								m.send(s.frame)
-							}
-						}
-						s.frame = nil
-						if len(m.inputs) == 0 {
+						// move input to done.
+						m.done = append(m.done, msg.inputID)
+						delete(m.frames, msg.inputID)
+						// reset expectations.
+						resetExpectations(f, len(m.frames))
+						// send frames.
+						m.frame = send(f, m.out)
+						if len(m.frames) == 0 {
 							close(m.out)
 							return
 						}
@@ -183,16 +175,28 @@ func (m *Mixer) mix() {
 }
 
 // isReady checks if frame is completed.
-func (f *frame) isReady() bool {
-	return f.expected == len(f.buffers)
+func (f *frame) isComplete() bool {
+	return f.expected > 0 && f.expected == len(f.buffers)
 }
 
-// newFrame generates new frame based on number of inputs.
-func newFrame(numInputs int) *frame {
-	return &frame{expected: numInputs}
+// newFrame generates new frame based on number of inputin.
+func newFrame(numframes int) *frame {
+	return &frame{expected: numframes}
 }
 
-func (m *Mixer) send(f *frame) {
-	m.frame = f
-	m.out <- f
+// send all complete frames. Returns next incomplete frame.
+func send(f *frame, out chan *frame) *frame {
+	for f.isComplete() {
+		out <- f
+		f = f.next
+	}
+	return f
+}
+
+// resetExpectations for all frames after this one.
+func resetExpectations(f *frame, e int) {
+	for f != nil {
+		f.expected = e
+		f = f.next
+	}
 }
