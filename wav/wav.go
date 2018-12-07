@@ -88,12 +88,13 @@ func (p *Pump) Flush(string) error {
 	return p.file.Close()
 }
 
+// Reset implements pipe.Resetter.
+func (p *Pump) Reset(string) error {
+	return phono.SingleUse(&p.once)
+}
+
 // Pump starts the pump process once executed, wav attributes are accessible.
 func (p *Pump) Pump(string) (phono.PumpFunc, error) {
-	err := phono.SingleUse(&p.once)
-	if err != nil {
-		return nil, err
-	}
 	return func() (phono.Buffer, error) {
 		if p.decoder == nil {
 			return nil, errors.New("Source is not defined")
