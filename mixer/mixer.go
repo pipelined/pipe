@@ -15,13 +15,13 @@ type Mixer struct {
 	bufferSize  phono.BufferSize
 	out         chan phono.Buffer // channel to send frames ready for mix
 	in          chan *inMessage   // channel to send incoming messages
-	signals     map[string]*input // signals sinking data
-	done        map[string]*input // output for pumping data
+	inputs      map[string]*input // inputs sinking data
+	done        map[string]*input // done inputs
 	*frame                        // last processed frame
 
 	outputID atomic.Value // id of the pipe which is output of mixer
 
-	register      chan string // register new input signal, buffered
+	register      chan string // register new input input, buffered
 	sinkcalls     int32       // incremented before send register
 	sinkcallsdone int32       // incremented after send register
 }
@@ -43,27 +43,22 @@ type frame struct {
 	next     *frame
 }
 
-func (f *frame) isReady() bool {
-	// fmt.Printf("Is ready: %v expected: %v got: %v", f, f.expected, len(f.buffers))
-	return f.expected == len(f.buffers)
-}
-
 // sum returns mixed samples.
 func (f *frame) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) phono.Buffer {
 	var sum float64
-	var signals float64
+	var inputs float64
 	result := phono.Buffer(make([][]float64, numChannels))
 	for nc := 0; nc < int(numChannels); nc++ {
 		result[nc] = make([]float64, 0, bufferSize)
 		for bs := 0; bs < int(bufferSize); bs++ {
 			sum = 0
-			signals = 0
+			inputs = 0
 			// additional check to sum shorten blocks
 			for i := 0; i < len(f.buffers) && len(f.buffers[i][nc]) > bs; i++ {
 				sum = sum + f.buffers[i][nc][bs]
-				signals++
+				inputs++
 			}
-			result[nc] = append(result[nc], sum/signals)
+			result[nc] = append(result[nc], sum/inputs)
 		}
 	}
 	f.buffers = nil
@@ -79,7 +74,7 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	m := &Mixer{
 		UID:         phono.NewUID(),
 		Logger:      log.GetLogger(),
-		signals:     make(map[string]*input),
+		inputs:      make(map[string]*input),
 		done:        make(map[string]*input),
 		numChannels: nc,
 		bufferSize:  bs,
@@ -90,7 +85,7 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 	return m
 }
 
-// Sink registers new input signal.
+// Sink registers new input.
 func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
 	atomic.AddInt32(&m.sinkcalls, 1)
 	m.register <- inputID
@@ -142,29 +137,29 @@ func (m *Mixer) mix() {
 	for {
 		select {
 		case s := <-m.register:
-			m.signals[s] = &input{}
+			m.inputs[s] = &input{}
 		default:
-			// add done signals
+			// add done inputs
 			for k, v := range m.done {
-				m.signals[k] = v
+				m.inputs[k] = v
 				delete(m.done, k)
 			}
 
-			// now we have all signals, can initiate frames
+			// now we have all inputs, can initiate frames
 			m.frame = m.newFrame()
-			for k := range m.signals {
-				m.signals[k].frame = m.frame
+			for k := range m.inputs {
+				m.inputs[k].frame = m.frame
 			}
 
 			// start main loop
 			for {
 				select {
-				// register new signal
+				// register new input
 				case s := <-m.register:
-					m.signals[s] = &input{}
-					m.signals[s].frame = m.frame
+					m.inputs[s] = &input{}
+					m.inputs[s].frame = m.frame
 				case msg := <-m.in:
-					s := m.signals[msg.sourceID]
+					s := m.inputs[msg.sourceID]
 					if msg.Buffer != nil {
 						s.frame.buffers = append(s.frame.buffers, msg.Buffer)
 						if s.frame.isReady() {
@@ -186,21 +181,25 @@ func (m *Mixer) mix() {
 							}
 						}
 						m.done[msg.sourceID] = s
-						delete(m.signals, msg.sourceID)
-						if len(m.signals) == 0 {
+						delete(m.inputs, msg.sourceID)
+						if len(m.inputs) == 0 {
 							close(m.out)
 							return
 						}
 					}
-
 				}
 			}
 		}
 	}
 }
 
+func (f *frame) isReady() bool {
+	// fmt.Printf("Is ready: %v expected: %v got: %v", f, f.expected, len(f.buffers))
+	return f.expected == len(f.buffers)
+}
+
 func (m *Mixer) newFrame() *frame {
-	return &frame{expected: len(m.signals)}
+	return &frame{expected: len(m.inputs)}
 }
 
 func (m *Mixer) send(f *frame) {
