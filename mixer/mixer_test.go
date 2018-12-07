@@ -45,7 +45,6 @@ var (
 )
 
 func TestMixer(t *testing.T) {
-	t.Skip("This test is broken")
 	pump1 := &mock.Pump{
 		UID:         phono.NewUID(),
 		Limit:       1,
