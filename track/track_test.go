@@ -145,12 +145,14 @@ func TestTrackWavSlices(t *testing.T) {
 	assert.Nil(t, err)
 	asset := asset.New()
 
-	p1 := pipe.New(
+	p1, err := pipe.New(
 		sampleRate,
 		pipe.WithPump(wavPump),
 		pipe.WithSinks(asset),
 	)
-	_ = pipe.Wait(p1.Run())
+	assert.Nil(t, err)
+	err = pipe.Wait(p1.Run())
+	assert.Nil(t, err)
 
 	wavSink, err := wav.NewSink(
 		test.Out.Track,
@@ -165,11 +167,12 @@ func TestTrackWavSlices(t *testing.T) {
 	track.AddClip(66150, asset.Clip(44100, 44100))
 	track.AddClip(132300, asset.Clip(0, 44100))
 
-	p2 := pipe.New(
+	p2, err := pipe.New(
 		sampleRate,
 		pipe.WithPump(track),
 		pipe.WithSinks(wavSink),
 	)
+	assert.Nil(t, err)
 	_ = pipe.Wait(p2.Run())
 }
 
@@ -185,11 +188,12 @@ func TestSliceOverlaps(t *testing.T) {
 			track.AddClip(test.clipsAt[i], clip)
 		}
 
-		p := pipe.New(
+		p, err := pipe.New(
 			sampleRate,
 			pipe.WithPump(track),
 			pipe.WithSinks(sink),
 		)
+		assert.Nil(t, err)
 		if test.BufferSize > 0 {
 			p.Push(track.BufferSizeParam(test.BufferSize))
 		}

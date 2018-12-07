@@ -52,12 +52,13 @@ func TestWavPipe(t *testing.T) {
 		assert.Nil(t, err)
 
 		processor := &mock.Processor{UID: phono.NewUID()}
-		p := pipe.New(
+		p, err := pipe.New(
 			sampleRate,
 			pipe.WithPump(pump),
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),
 		)
+		assert.Nil(t, err)
 		err = pipe.Wait(p.Run())
 		assert.Nil(t, err)
 		messageCount, sampleCount := processor.Count()
