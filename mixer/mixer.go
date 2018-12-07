@@ -17,13 +17,9 @@ type Mixer struct {
 	in          chan *inMessage   // channel to send incoming messages
 	inputs      map[string]*input // inputs sinking data
 	done        map[string]*input // done inputs
+	register    chan string       // register new input input, buffered
+	outputID    atomic.Value      // id of the pipe which is output of mixer
 	*frame                        // last processed frame
-
-	outputID atomic.Value // id of the pipe which is output of mixer
-
-	register      chan string // register new input input, buffered
-	sinkcalls     int32       // incremented before send register
-	sinkcallsdone int32       // incremented after send register
 }
 
 type inMessage struct {
@@ -87,9 +83,7 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 
 // Sink registers new input.
 func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
-	atomic.AddInt32(&m.sinkcalls, 1)
 	m.register <- inputID
-	atomic.AddInt32(&m.sinkcallsdone, 1)
 	return func(b phono.Buffer) error {
 		m.in <- &inMessage{sourceID: inputID, Buffer: b}
 		return nil
@@ -98,7 +92,7 @@ func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
 
 // Flush mixer data for defined source.
 func (m *Mixer) Flush(sourceID string) error {
-	if m.isPump(sourceID) {
+	if m.isOutput(sourceID) {
 		return nil
 	}
 	m.in <- &inMessage{sourceID: sourceID}
@@ -107,27 +101,26 @@ func (m *Mixer) Flush(sourceID string) error {
 
 // Reset resets the mixer for another run.
 func (m *Mixer) Reset(sourceID string) error {
-	if m.isPump(sourceID) {
+	if m.isOutput(sourceID) {
 		m.out = make(chan phono.Buffer, 1)
 		go m.mix()
 	}
 	return nil
 }
 
-func (m *Mixer) isPump(sourceID string) bool {
+func (m *Mixer) isOutput(sourceID string) bool {
 	return sourceID == m.outputID.Load().(string)
 }
 
 // Pump returns a pump function which allows to read the out channel.
-func (m *Mixer) Pump(sourceID string) (phono.PumpFunc, error) {
-	m.outputID.Store(sourceID)
+func (m *Mixer) Pump(outputID string) (phono.PumpFunc, error) {
+	m.outputID.Store(outputID)
 	return func() (phono.Buffer, error) {
 		// receive new buffer
 		b, ok := <-m.out
 		if !ok {
 			return nil, phono.ErrEOP
 		}
-		// b := f.sum(m.numChannels, m.bufferSize)
 		return b, nil
 	}, nil
 }
@@ -194,7 +187,6 @@ func (m *Mixer) mix() {
 }
 
 func (f *frame) isReady() bool {
-	// fmt.Printf("Is ready: %v expected: %v got: %v", f, f.expected, len(f.buffers))
 	return f.expected == len(f.buffers)
 }
 
