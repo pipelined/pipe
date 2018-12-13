@@ -118,6 +118,14 @@ func (m *Mixer) Pump(outputID string) (phono.PumpFunc, error) {
 	}, nil
 }
 
+// Interrupt impliments pipe.Interrupter.
+func (m *Mixer) Interrupt(sourceID string) error {
+	if !m.isOutput(sourceID) {
+		m.in <- &inMessage{inputID: sourceID}
+	}
+	return nil
+}
+
 func (m *Mixer) mix() {
 	m.frame = &frame{}
 
@@ -125,11 +133,11 @@ func (m *Mixer) mix() {
 register:
 	for {
 		select {
-		// add all scheduled inputin.
+		// add all scheduled inputs.
 		case s := <-m.register:
 			m.frames[s] = m.frame
 		default:
-			// add done inputin.
+			// add done inputs.
 			for _, inputID := range m.done {
 				m.frames[inputID] = m.frame
 			}
@@ -182,7 +190,7 @@ func (f *frame) isComplete() bool {
 	return f.expected > 0 && f.expected == len(f.buffers)
 }
 
-// newFrame generates new frame based on number of inputin.
+// newFrame generates new frame based on number of inputs.
 func newFrame(numframes int) *frame {
 	return &frame{expected: numframes}
 }
