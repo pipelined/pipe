@@ -1,7 +1,6 @@
 package mixer_test
 
 import (
-	"time"
 	"go.uber.org/goleak"
 	"fmt"
 	"testing"
@@ -171,7 +170,7 @@ func TestWavMixer(t *testing.T) {
 	playback.Close()
 }
 
-func TestMixerInterruption(t *testing.T) {
+func TestMixerInterruptSink(t *testing.T) {
 	pump := &mock.Pump{
 		UID:         phono.NewUID(),
 		Limit:       10,
@@ -202,9 +201,48 @@ func TestMixerInterruption(t *testing.T) {
 
 	pipe.Wait(track.Pause())
 	pipe.Wait(track.Close())
-	playback.Close()
+	err = pipe.Wait(playback.Close())
+	assert.Nil(t, err)
 
-	time.Sleep(100 * time.Millisecond)
+	goleak.VerifyNoLeaks(t)
+}
 
+func TestMixerInterruptPump(t *testing.T) {
+	pump := &mock.Pump{
+		UID:         phono.NewUID(),
+		Limit:       10,
+		BufferSize:  bufferSize,
+		NumChannels: numChannels,
+		Interval: 	 100,
+	}
+	sampleRate := phono.SampleRate(44100)
+	mix := mixer.New(bufferSize, numChannels)
+	sink := &mock.Sink{UID: phono.NewUID()}
+	playback, err := pipe.New(
+		sampleRate,
+		pipe.WithName("Playback"),
+		pipe.WithPump(mix),
+		pipe.WithSinks(sink),
+	)
+	assert.Nil(t, err)
+	track, err := pipe.New(
+		sampleRate,
+		pipe.WithName("Track 1"),
+		pipe.WithPump(pump),
+		pipe.WithSinks(mix),
+	)
+	assert.Nil(t, err)
+
+	trackRun := track.Run()
+	playback.Run()
+
+	pipe.Wait(playback.Pause())
+	err = pipe.Wait(playback.Close())
+	assert.Nil(t, err)
+	err = pipe.Wait(trackRun)
+	assert.Equal(t, phono.ErrInterrupted, err)
+	err = pipe.Wait(track.Close())
+	assert.Nil(t, err)
+	
 	goleak.VerifyNoLeaks(t)
 }
