@@ -70,7 +70,6 @@ func New(sampleRate phono.SampleRate, options ...Option) (*Pipe, error) {
 		params:     make(map[string][]phono.ParamFunc),
 		feedback:   make(map[string][]phono.ParamFunc),
 		events:     make(chan eventMessage, 1),
-		cancel:     make(chan struct{}),
 		provide:    make(chan struct{}),
 		consume:    make(chan message),
 	}
@@ -228,6 +227,7 @@ func (p *Pipe) Measure(ids ...string) <-chan Measure {
 
 // start starts the execution of pipe.
 func (p *Pipe) start() {
+	p.cancel = make(chan struct{})
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	// start pump
 	out, errc := p.pump.run(p.cancel, p.ID(), p.provide, p.consume)
