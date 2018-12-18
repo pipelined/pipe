@@ -210,7 +210,6 @@ func (s idleReady) listen(p *Pipe, t target) (state, target) {
 func (s idleReady) transition(p *Pipe, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
-		interrupt(p.cancel)
 		return nil, nil
 	case push:
 		e.params.applyTo(p.ID())
