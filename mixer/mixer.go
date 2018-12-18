@@ -20,6 +20,7 @@ type Mixer struct {
 	register    chan string       // register new input input, buffered
 	outputID    atomic.Value      // id of the pipe which is output of mixer
 	*frame                        // last processed frame
+	cancel      chan struct{}     // cancel is closed only when pump is interrupted
 }
 
 type inMessage struct {
@@ -70,6 +71,7 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 		bufferSize:  bs,
 		in:          make(chan *inMessage, 1),
 		register:    make(chan string, maxInputs),
+		cancel:      make(chan struct{}),
 	}
 	return m
 }
@@ -78,14 +80,19 @@ func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
 func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
 	m.register <- inputID
 	return func(b phono.Buffer) error {
-		m.in <- &inMessage{inputID: inputID, Buffer: b}
-		return nil
+		select {
+		case m.in <- &inMessage{inputID: inputID, Buffer: b}:
+			return nil
+		case <-m.cancel:
+			return phono.ErrInterrupted
+		}
 	}, nil
 }
 
 // Flush mixer data for defined source.
 func (m *Mixer) Flush(sourceID string) error {
 	if m.isOutput(sourceID) {
+		m.cancel = make(chan struct{})
 		return nil
 	}
 	m.in <- &inMessage{inputID: sourceID}
@@ -118,6 +125,16 @@ func (m *Mixer) Pump(outputID string) (phono.PumpFunc, error) {
 	}, nil
 }
 
+// Interrupt impliments pipe.Interrupter.
+func (m *Mixer) Interrupt(sourceID string) error {
+	if !m.isOutput(sourceID) {
+		m.in <- &inMessage{inputID: sourceID}
+	} else {
+		close(m.cancel)
+	}
+	return nil
+}
+
 func (m *Mixer) mix() {
 	m.frame = &frame{}
 
@@ -125,11 +142,11 @@ func (m *Mixer) mix() {
 register:
 	for {
 		select {
-		// add all scheduled inputin.
+		// add all scheduled inputs.
 		case s := <-m.register:
 			m.frames[s] = m.frame
 		default:
-			// add done inputin.
+			// add done inputs.
 			for _, inputID := range m.done {
 				m.frames[inputID] = m.frame
 			}
@@ -141,9 +158,12 @@ register:
 		}
 	}
 
+	defer close(m.out)
 	// start main loop.
 	for {
 		select {
+		case <-m.cancel:
+			return
 		// register new input during runtime.
 		case s := <-m.register:
 			// add new input.
@@ -153,7 +173,7 @@ register:
 			f := m.frames[msg.inputID]
 			if msg.Buffer != nil {
 				f.buffers = append(f.buffers, msg.Buffer)
-				m.frame = send(f, m.out)
+				m.frame = send(f, m.out, m.cancel)
 
 				// proceed input to next frame.
 				if f.next == nil {
@@ -167,9 +187,9 @@ register:
 				// reset expectations.
 				resetExpectations(f, len(m.frames))
 				// send frames.
-				m.frame = send(f, m.out)
+				m.frame = send(f, m.out, m.cancel)
 				if len(m.frames) == 0 {
-					close(m.out)
+					// close(m.out)
 					return
 				}
 			}
@@ -182,16 +202,20 @@ func (f *frame) isComplete() bool {
 	return f.expected > 0 && f.expected == len(f.buffers)
 }
 
-// newFrame generates new frame based on number of inputin.
+// newFrame generates new frame based on number of inputs.
 func newFrame(numframes int) *frame {
 	return &frame{expected: numframes}
 }
 
 // send all complete frames. Returns next incomplete frame.
-func send(f *frame, out chan *frame) *frame {
+func send(f *frame, out chan *frame, cancel chan struct{}) *frame {
 	for f != nil && f.isComplete() {
-		out <- f
-		f = f.next
+		select {
+		case out <- f:
+			f = f.next
+		case <-cancel:
+			return nil
+		}
 	}
 	return f
 }
