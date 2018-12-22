@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -63,7 +64,12 @@ func (m *Meter) Store(c string, v interface{}) {
 	if m == nil {
 		return
 	}
-	m.values[c].Store(v)
+
+	if counter, ok := m.values[c]; ok {
+		counter.Store(v)
+	} else {
+		panic(fmt.Sprintf("Counter %s does not exist", c))
+	}
 }
 
 // Load counter value.

@@ -68,3 +68,14 @@ func TestMeter(t *testing.T) {
 		}
 	}
 }
+
+func TestInvalidCounter(t *testing.T) {
+	m := metric.Metric{}
+	meterName, counterName, invalidCounter := "testMeter", "testCounter", "invalidCounter"
+	meter := m.Meter(meterName, counterName)
+
+	assert.Panics(t, func() { meter.Store(invalidCounter, 1) })
+
+	v := meter.Load(invalidCounter)
+	assert.Nil(t, v)
+}
