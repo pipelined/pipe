@@ -1,37 +1,79 @@
 package metric
 
 import (
+	"sync"
 	"sync/atomic"
-	"time"
 )
 
-// Counter is an atomic int64 counter.
-type Counter struct {
-	label string
-	value int64
+// Metric contains component's Meters.
+type Metric struct {
+	m      sync.Mutex
+	meters map[string]*Meter
 }
 
-// Inc increases value by defined delta.
-func (c *Counter) Inc(v int64) {
-	atomic.AddInt64(&c.value, v)
+// Meter read-only immutable map of atomic Counters.
+// probably...
+type Meter struct {
+	values map[string]*atomic.Value
 }
 
-// Value returns current counter value.
-func (c *Counter) Value() int64 {
-	return atomic.LoadInt64(&c.value)
+// Meter returns new Meter for provided id. Existing Meter is flushed.
+// If no match found, new Meter is added and returned.
+func (m *Metric) Meter(id string, counters ...string) *Meter {
+	m.m.Lock()
+	defer m.m.Unlock()
+
+	// remove current meter.
+	if m.meters == nil {
+		m.meters = make(map[string]*Meter)
+	} else {
+		delete(m.meters, id)
+	}
+
+	// create new meter with provided counters
+	meter := &Meter{values: make(map[string]*atomic.Value)}
+
+	for _, counter := range counters {
+		meter.values[counter] = &atomic.Value{}
+	}
+
+	m.meters[id] = meter
+	return meter
 }
 
-// DurationCounter is an atomic time.Duration counter.
-type DurationCounter struct {
-	counter Counter
+// Measure returns Metric's measures.
+func (m *Metric) Measure() map[string]map[string]interface{} {
+	r := make(map[string]map[string]interface{})
+	m.m.Lock()
+	defer m.m.Unlock()
+
+	for meterName, meter := range m.meters {
+		meterValues := make(map[string]interface{})
+		for counterName, counter := range meter.values {
+			meterValues[counterName] = counter.Load()
+		}
+		r[meterName] = meterValues
+	}
+
+	return r
 }
 
-// Inc increases value by defined delta.
-func (c *DurationCounter) Inc(v time.Duration) {
-	c.counter.Inc(int64(v))
+// Store new counter value.
+func (m *Meter) Store(c string, v interface{}) {
+	if m == nil {
+		return
+	}
+	m.values[c].Store(v)
 }
 
-// Value returns current counter value.
-func (c *DurationCounter) Value() time.Duration {
-	return time.Duration(c.counter.Value())
+// Load counter value.
+func (m *Meter) Load(c string) interface{} {
+	if m == nil {
+		return nil
+	}
+
+	if v, ok := m.values[c]; ok {
+		return v.Load()
+	}
+	return nil
 }
