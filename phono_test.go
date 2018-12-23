@@ -92,3 +92,30 @@ func TestSingleUse(t *testing.T) {
 	err = phono.SingleUse(&once)
 	assert.Equal(t, phono.ErrSingleUseReused, err)
 }
+
+func TestDuration(t *testing.T) {
+	var tests = []struct {
+		sampleRate phono.SampleRate
+		samples    int64
+		expected   time.Duration
+	}{
+		{
+			sampleRate: 44100,
+			samples:    44100,
+			expected:   1 * time.Second,
+		},
+		{
+			sampleRate: 44100,
+			samples:    22050,
+			expected:   500 * time.Millisecond,
+		},
+		{
+			sampleRate: 44100,
+			samples:    50,
+			expected:   1133786 * time.Nanosecond,
+		},
+	}
+	for _, c := range tests {
+		assert.Equal(t, c.expected, c.sampleRate.DurationOf(c.samples))
+	}
+}
