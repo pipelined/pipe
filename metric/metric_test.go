@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/dudk/phono"
+	"github.com/dudk/phono/metric"
 	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
-	"github.com/dudk/phono/pipe/metric"
 )
 
 func TestMeter(t *testing.T) {
@@ -44,7 +44,7 @@ func TestMeter(t *testing.T) {
 	}
 
 	// function to test meter.
-	testFn := func(c pipe.Meter, wg *sync.WaitGroup, counter string, inc int64, iter int) {
+	testFn := func(c phono.Meter, wg *sync.WaitGroup, counter string, inc int64, iter int) {
 		var v int64
 		for i := 0; i < iter; i++ {
 			v = v + inc

@@ -34,7 +34,7 @@ type Pipe struct {
 	processors []*processRunner
 	sinks      []*sinkRunner
 
-	metric   Metric
+	metric   phono.Metric
 	params   params            //cahced params
 	feedback params            //cached feedback
 	errc     chan error        // errors channel
@@ -56,20 +56,6 @@ var ErrInvalidState = errors.New("invalid state")
 
 // ErrComponentNoID is used to cause a panic when new component without ID is added to pipe.
 var ErrComponentNoID = errors.New("component have no ID value")
-
-type (
-	// Metric stores meters of pipe components.
-	Metric interface {
-		Meter(id string, counters ...string) Meter
-		Measure() map[string]map[string]interface{}
-	}
-
-	// Meter stores counters values.
-	Meter interface {
-		Store(counter string, value interface{})
-		Load(counter string) interface{}
-	}
-)
 
 // New creates a new pipe and applies provided options.
 // Returned pipe is in Ready state.
@@ -105,7 +91,7 @@ func WithName(n string) Option {
 }
 
 // WithMetric adds meterics for this pipe and all components.
-func WithMetric(m Metric) Option {
+func WithMetric(m phono.Metric) Option {
 	return func(p *Pipe) error {
 		p.metric = m
 		return nil

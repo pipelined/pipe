@@ -137,11 +137,11 @@ func newPumpRunner(sampleRate phono.SampleRate, sourceID string, p phono.Pump) (
 }
 
 // run the Pump runner.
-func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message, metric Metric) (<-chan message, <-chan error) {
+func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message, metric phono.Metric) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
 
-	var meter Meter
+	var meter phono.Meter
 	if metric != nil {
 		meter = metric.Meter(r.ID(), counters.pump...)
 	}
@@ -222,11 +222,11 @@ func newProcessRunner(sampleRate phono.SampleRate, sourceID string, p phono.Proc
 }
 
 // run the Processor runner.
-func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric Metric) (<-chan message, <-chan error) {
+func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric phono.Metric) (<-chan message, <-chan error) {
 	errc := make(chan error, 1)
 	r.in = in
 	r.out = make(chan message)
-	var meter Meter
+	var meter phono.Meter
 	if metric != nil {
 		meter = metric.Meter(r.ID(), counters.processor...)
 	}
@@ -300,9 +300,9 @@ func newSinkRunner(sampleRate phono.SampleRate, sourceID string, s phono.Sink) (
 }
 
 // run the sink runner.
-func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric Metric) <-chan error {
+func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric phono.Metric) <-chan error {
 	errc := make(chan error, 1)
-	var meter Meter
+	var meter phono.Meter
 	if metric != nil {
 		meter = metric.Meter(r.ID(), counters.sink...)
 	}
@@ -361,7 +361,7 @@ func call(fn hook, sourceID string, errc chan error) {
 	return
 }
 
-func store(m Meter, c string, v interface{}) {
+func store(m phono.Meter, c string, v interface{}) {
 	if m != nil {
 		m.Store(c, v)
 	}
