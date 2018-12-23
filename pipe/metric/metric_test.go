@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/dudk/phono"
-	"github.com/dudk/phono/metric"
 	"github.com/dudk/phono/mock"
 	"github.com/dudk/phono/pipe"
+	"github.com/dudk/phono/pipe/metric"
 )
 
 func TestMeter(t *testing.T) {
