@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/dudk/phono/pipe"
 )
 
 // Metric contains component's Meters.
@@ -20,7 +22,7 @@ type Meter struct {
 
 // Meter returns new Meter for provided id. Existing Meter is flushed.
 // If no match found, new Meter is added and returned.
-func (m *Metric) Meter(id string, counters ...string) *Meter {
+func (m *Metric) Meter(id string, counters ...string) pipe.Meter {
 	m.m.Lock()
 	defer m.m.Unlock()
 

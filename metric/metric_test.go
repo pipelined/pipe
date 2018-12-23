@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/dudk/phono"
 	"github.com/dudk/phono/metric"
+	"github.com/dudk/phono/mock"
+	"github.com/dudk/phono/pipe"
 )
 
 func TestMeter(t *testing.T) {
@@ -40,7 +44,7 @@ func TestMeter(t *testing.T) {
 	}
 
 	// function to test meter.
-	testFn := func(c *metric.Meter, wg *sync.WaitGroup, counter string, inc int64, iter int) {
+	testFn := func(c pipe.Meter, wg *sync.WaitGroup, counter string, inc int64, iter int) {
 		var v int64
 		for i := 0; i < iter; i++ {
 			v = v + inc
@@ -78,4 +82,30 @@ func TestInvalidCounter(t *testing.T) {
 
 	v := meter.Load(invalidCounter)
 	assert.Nil(t, v)
+}
+
+func TestPipe(t *testing.T) {
+	sampleRate := phono.SampleRate(44100)
+	pump := &mock.Pump{
+		UID:         phono.NewUID(),
+		Limit:       5,
+		Interval:    10 * time.Microsecond,
+		BufferSize:  10,
+		NumChannels: 1,
+	}
+	proc1 := &mock.Processor{UID: phono.NewUID()}
+	proc2 := &mock.Processor{UID: phono.NewUID()}
+	sink1 := &mock.Sink{UID: phono.NewUID()}
+	sink2 := &mock.Sink{UID: phono.NewUID()}
+	metric := &metric.Metric{}
+	p, _ := pipe.New(
+		sampleRate,
+		pipe.WithMetric(metric),
+		pipe.WithName("Pipe"),
+		pipe.WithPump(pump),
+		pipe.WithProcessors(proc1, proc2),
+		pipe.WithSinks(sink1, sink2),
+	)
+	pipe.Wait(p.Run())
+	fmt.Printf("%+v\n", metric.Measure())
 }

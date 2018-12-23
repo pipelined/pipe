@@ -9,28 +9,25 @@ import (
 // pumpRunner is pump's runner.
 type pumpRunner struct {
 	phono.Pump
-	meter Meter
-	fn    phono.PumpFunc
-	out   chan message
+	fn  phono.PumpFunc
+	out chan message
 	hooks
 }
 
 // processRunner represents processor's runner.
 type processRunner struct {
 	phono.Processor
-	meter Meter
-	fn    phono.ProcessFunc
-	in    <-chan message
-	out   chan message
+	fn  phono.ProcessFunc
+	in  <-chan message
+	out chan message
 	hooks
 }
 
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
 	phono.Sink
-	meter Meter
-	fn    phono.SinkFunc
-	in    <-chan message
+	fn phono.SinkFunc
+	in <-chan message
 	hooks
 }
 
@@ -74,18 +71,22 @@ var counters = struct {
 	processor []string
 	sink      []string
 }{
-	pump:      []string{OutputCounter, StartCounter},
-	processor: []string{OutputCounter, StartCounter},
-	sink:      []string{OutputCounter, StartCounter},
+	pump:      []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter},
+	processor: []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter},
+	sink:      []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter},
 }
 
 var do struct{}
 
 const (
-	// OutputCounter is a key for output counter within metric.
-	OutputCounter = "Output"
+	// MessageCounter measures number of messages.
+	MessageCounter = "Messages"
+	// SampleCounter measures number of samples.
+	SampleCounter = "Samples"
 	// StartCounter is when runner started.
 	StartCounter = "Start"
+	// LatencyCounter measures latency between processing calls.
+	LatencyCounter = "Latency"
 )
 
 // flusher checks if interface implements Flusher and if so, return it.
@@ -127,23 +128,24 @@ func newPumpRunner(sourceID string, p phono.Pump) (*pumpRunner, error) {
 	return &r, nil
 }
 
-func (r *pumpRunner) setMetric(m Metric) {
-	if m != nil {
-		r.meter = m.Meter(r.ID(), counters.pump...)
-	}
-}
-
 // run the Pump runner.
-func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message) (<-chan message, <-chan error) {
+func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message, metric Metric) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
+
+	var meter Meter
+	if metric != nil {
+		meter = metric.Meter(r.ID(), counters.pump...)
+	}
 	go func() {
 		defer close(out)
 		defer close(errc)
-		store(r.meter, StartCounter, time.Now())
+		store(meter, StartCounter, time.Now())
 		call(r.reset, sourceID, errc) // reset hook
 		var err error
 		var m message
+		var messages, samples int64
+		processedAt := time.Now()
 		for {
 			// request new message
 			select {
@@ -171,6 +173,12 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 				}
 				return
 			}
+
+			messages, samples = messages+1, samples+int64(m.Buffer.Size())
+			store(meter, MessageCounter, messages)
+			store(meter, SampleCounter, samples)
+			store(meter, LatencyCounter, time.Since(processedAt))
+			processedAt = time.Now()
 
 			m.feedback.applyTo(r.ID()) // apply feedback
 
@@ -201,25 +209,25 @@ func newProcessRunner(sourceID string, p phono.Processor) (*processRunner, error
 	return &r, nil
 }
 
-func (r *processRunner) setMetric(m Metric) {
-	if m != nil {
-		r.meter = m.Meter(r.ID(), counters.processor...)
-	}
-}
-
 // run the Processor runner.
-func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan message) (<-chan message, <-chan error) {
+func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric Metric) (<-chan message, <-chan error) {
 	errc := make(chan error, 1)
 	r.in = in
 	r.out = make(chan message)
+	var meter Meter
+	if metric != nil {
+		meter = metric.Meter(r.ID(), counters.processor...)
+	}
 	go func() {
 		defer close(r.out)
 		defer close(errc)
-		store(r.meter, StartCounter, time.Now())
+		store(meter, StartCounter, time.Now())
 		call(r.reset, sourceID, errc) // reset hook
 		var err error
 		var m message
 		var ok bool
+		var messages, samples int64
+		processedAt := time.Now()
 		for {
 			// retrieve new message
 			select {
@@ -239,6 +247,13 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 				errc <- err
 				return
 			}
+
+			messages, samples = messages+1, samples+int64(m.Buffer.Size())
+			store(meter, MessageCounter, messages)
+			store(meter, SampleCounter, samples)
+			store(meter, LatencyCounter, time.Since(processedAt))
+			processedAt = time.Now()
+
 			m.feedback.applyTo(r.ID()) // apply feedback
 
 			// send message further
@@ -268,21 +283,21 @@ func newSinkRunner(sourceID string, s phono.Sink) (*sinkRunner, error) {
 	return &r, nil
 }
 
-func (r *sinkRunner) setMetric(m Metric) {
-	if m != nil {
-		r.meter = m.Meter(r.ID(), counters.sink...)
-	}
-}
-
 // run the sink runner.
-func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message) <-chan error {
+func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric Metric) <-chan error {
 	errc := make(chan error, 1)
+	var meter Meter
+	if metric != nil {
+		meter = metric.Meter(r.ID(), counters.sink...)
+	}
 	go func() {
 		defer close(errc)
-		store(r.meter, StartCounter, time.Now())
+		store(meter, StartCounter, time.Now())
 		call(r.reset, sourceID, errc) // reset hook
 		var m message
 		var ok bool
+		var messages, samples int64
+		processedAt := time.Now()
 		for {
 			// receive new message
 			select {
@@ -302,6 +317,13 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 				errc <- err
 				return
 			}
+
+			messages, samples = messages+1, samples+int64(m.Buffer.Size())
+			store(meter, MessageCounter, messages)
+			store(meter, SampleCounter, samples)
+			store(meter, LatencyCounter, time.Since(processedAt))
+			processedAt = time.Now()
+
 			m.feedback.applyTo(r.ID()) // apply feedback
 		}
 	}()
