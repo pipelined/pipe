@@ -57,6 +57,20 @@ var ErrInvalidState = errors.New("invalid state")
 // ErrComponentNoID is used to cause a panic when new component without ID is added to pipe.
 var ErrComponentNoID = errors.New("component have no ID value")
 
+type (
+	// Metric stores meters of pipe components.
+	Metric interface {
+		Meter(id string, counters ...string) Meter
+		Measure() map[string]map[string]interface{}
+	}
+
+	// Meter stores counters values.
+	Meter interface {
+		Store(counter string, value interface{})
+		Load(counter string) interface{}
+	}
+)
+
 // New creates a new pipe and applies provided options.
 // Returned pipe is in Ready state.
 func New(sampleRate phono.SampleRate, options ...Option) (*Pipe, error) {
@@ -163,71 +177,6 @@ func (p *Pipe) Push(values ...phono.Param) {
 		params: params.add(values...),
 	}
 }
-
-// Measure returns a buffered channel of Measure.
-// Event is pushed into pipe to retrieve metrics. Metric measure is returned immediately if
-// state is idle, otherwise it's returned once it's reached destination within pipe.
-// Result channel has buffer sized to found components. Order of measures can differ from
-// requested order due to pipeline configuration.
-// Calling this method after pipe is closed causes a panic.
-// func (p *Pipe) Measure(ids ...string) <-chan Measure {
-// 	if len(p.metrics) == 0 {
-// 		return nil
-// 	}
-// 	em := eventMessage{event: measure, params: make(map[string][]phono.ParamFunc)}
-// 	if len(ids) > 0 {
-// 		em.components = make([]string, 0, len(ids))
-// 		// check if passed ids are part of the pipe
-// 		for _, id := range ids {
-// 			_, ok := p.metrics[id]
-// 			if ok {
-// 				em.components = append(em.components, id)
-// 			}
-// 		}
-// 		// no components found
-// 		if len(em.components) == 0 {
-// 			return nil
-// 		}
-// 	} else {
-// 		em.components = make([]string, 0, len(p.metrics))
-// 		// get all if nothing is passed
-// 		for id := range p.metrics {
-// 			em.components = append(em.components, id)
-// 		}
-// 	}
-
-// 	done := make(chan struct{}, len(em.components)) // done chan to close metrics channel
-// 	mc := make(chan Measure, len(em.components))    // measures channel
-
-// 	for _, id := range em.components {
-// 		m := p.metrics[id]
-// 		param := phono.Param{
-// 			ID: id,
-// 			Apply: func() {
-// 				var do struct{}
-// 				mc <- m.Measure()
-// 				done <- do
-// 			},
-// 		}
-// 		em.params = em.params.add(param)
-// 	}
-
-// 	//wait and close
-// 	go func(requested int) {
-// 		received := 0
-// 		for received < requested {
-// 			select {
-// 			case <-done:
-// 				received++
-// 			case <-p.cancel:
-// 				return
-// 			}
-// 		}
-// 		close(mc)
-// 	}(len(em.components))
-// 	p.events <- em
-// 	return mc
-// }
 
 // start starts the execution of pipe.
 func (p *Pipe) start() {
