@@ -8,15 +8,16 @@ import (
 )
 
 type (
-	// measurable identifies an entity with measurable metrics.
-	// Each measurable can have multiple counters.
-	// If custom metrics will be needed, it can be exposed in the future.
-	measurable interface {
-		Reset()
-		Measure() Measure
-		FinishMeasure()
-		Counter(string) *Counter
-		Latency()
+	// Metric stores meters of pipe components.
+	Metric interface {
+		Meter(id string, counters ...string) Meter
+		Measure() map[string]map[string]interface{}
+	}
+
+	// Meter stores counters values.
+	Meter interface {
+		Store(counter string, value interface{})
+		Load(counter string) interface{}
 	}
 
 	// metric represents measures of pipe components.

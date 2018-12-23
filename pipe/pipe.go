@@ -34,12 +34,12 @@ type Pipe struct {
 	processors []*processRunner
 	sinks      []*sinkRunner
 
-	metrics  map[string]measurable // metrics holds all references to measurable components
-	params   params                //cahced params
-	feedback params                //cached feedback
-	errc     chan error            // errors channel
-	events   chan eventMessage     // event channel
-	cancel   chan struct{}         // cancellation channel
+	metric   Metric
+	params   params            //cahced params
+	feedback params            //cached feedback
+	errc     chan error        // errors channel
+	events   chan eventMessage // event channel
+	cancel   chan struct{}     // cancellation channel
 
 	provide chan struct{} // ask for new message request
 	consume chan message  // emission of messages
@@ -66,7 +66,6 @@ func New(sampleRate phono.SampleRate, options ...Option) (*Pipe, error) {
 		log:        log.GetLogger(),
 		processors: make([]*processRunner, 0),
 		sinks:      make([]*sinkRunner, 0),
-		metrics:    make(map[string]measurable),
 		params:     make(map[string][]phono.ParamFunc),
 		feedback:   make(map[string][]phono.ParamFunc),
 		events:     make(chan eventMessage, 1),
@@ -91,18 +90,25 @@ func WithName(n string) Option {
 	}
 }
 
+// WithMetric adds meterics for this pipe and all components.
+func WithMetric(m Metric) Option {
+	return func(p *Pipe) error {
+		p.metric = m
+		return nil
+	}
+}
+
 // WithPump sets pump to Pipe
 func WithPump(pump phono.Pump) Option {
 	if pump.ID() == "" {
 		panic(ErrComponentNoID)
 	}
 	return func(p *Pipe) error {
-		r, err := newPumpRunner(p.ID(), pump, newMetric(pump.ID(), p.sampleRate, counters.pump...))
+		r, err := newPumpRunner(p.ID(), pump)
 		if err != nil {
 			return err
 		}
 		p.pump = r
-		p.metrics[r.ID()] = r
 		return nil
 	}
 }
@@ -116,12 +122,11 @@ func WithProcessors(processors ...phono.Processor) Option {
 	}
 	return func(p *Pipe) error {
 		for _, proc := range processors {
-			r, err := newProcessRunner(p.ID(), proc, newMetric(proc.ID(), p.sampleRate, counters.processor...))
+			r, err := newProcessRunner(p.ID(), proc)
 			if err != nil {
 				return err
 			}
 			p.processors = append(p.processors, r)
-			p.metrics[r.ID()] = r
 		}
 		return nil
 	}
@@ -136,12 +141,11 @@ func WithSinks(sinks ...phono.Sink) Option {
 	}
 	return func(p *Pipe) error {
 		for _, sink := range sinks {
-			r, err := newSinkRunner(p.ID(), sink, newMetric(sink.ID(), p.sampleRate, counters.processor...))
+			r, err := newSinkRunner(p.ID(), sink)
 			if err != nil {
 				return err
 			}
 			p.sinks = append(p.sinks, r)
-			p.metrics[r.ID()] = r
 		}
 		return nil
 	}
@@ -232,11 +236,13 @@ func (p *Pipe) start() {
 	// start pump
 	out, errc := p.pump.run(p.cancel, p.ID(), p.provide, p.consume)
 	errcList = append(errcList, errc)
+	p.pump.setMetric(p.metric)
 
 	// start chained processesing
 	for _, proc := range p.processors {
 		out, errc = proc.run(p.cancel, p.ID(), out)
 		errcList = append(errcList, errc)
+		proc.setMetric(p.metric)
 	}
 
 	sinkErrcList := p.broadcastToSinks(out)
@@ -258,6 +264,7 @@ func (p *Pipe) broadcastToSinks(in <-chan message) []<-chan error {
 	for i, s := range p.sinks {
 		errc := s.run(p.cancel, p.ID(), broadcasts[i])
 		errcList = append(errcList, errc)
+		s.setMetric(p.metric)
 	}
 
 	go func() {

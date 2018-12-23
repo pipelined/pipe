@@ -1,34 +1,36 @@
 package pipe
 
 import (
+	"time"
+
 	"github.com/dudk/phono"
 )
 
 // pumpRunner is pump's runner.
 type pumpRunner struct {
 	phono.Pump
-	measurable
-	fn  phono.PumpFunc
-	out chan message
+	meter Meter
+	fn    phono.PumpFunc
+	out   chan message
 	hooks
 }
 
 // processRunner represents processor's runner.
 type processRunner struct {
 	phono.Processor
-	measurable
-	fn  phono.ProcessFunc
-	in  <-chan message
-	out chan message
+	meter Meter
+	fn    phono.ProcessFunc
+	in    <-chan message
+	out   chan message
 	hooks
 }
 
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
 	phono.Sink
-	measurable
-	fn phono.SinkFunc
-	in <-chan message
+	meter Meter
+	fn    phono.SinkFunc
+	in    <-chan message
 	hooks
 }
 
@@ -72,17 +74,18 @@ var counters = struct {
 	processor []string
 	sink      []string
 }{
-	pump:      []string{OutputCounter},
-	processor: []string{OutputCounter},
-	sink:      []string{OutputCounter},
+	pump:      []string{OutputCounter, StartCounter},
+	processor: []string{OutputCounter, StartCounter},
+	sink:      []string{OutputCounter, StartCounter},
 }
 
 var do struct{}
 
 const (
 	// OutputCounter is a key for output counter within metric.
-	// It calculates regular total output per component.
 	OutputCounter = "Output"
+	// StartCounter is when runner started.
+	StartCounter = "Start"
 )
 
 // flusher checks if interface implements Flusher and if so, return it.
@@ -111,31 +114,34 @@ func resetter(i interface{}) hook {
 
 // newPumpRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newPumpRunner(sourceID string, p phono.Pump, m measurable) (*pumpRunner, error) {
+func newPumpRunner(sourceID string, p phono.Pump) (*pumpRunner, error) {
 	fn, err := p.Pump(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := pumpRunner{
-		fn:         fn,
-		Pump:       p,
-		hooks:      bindHooks(p),
-		measurable: m,
+		fn:    fn,
+		Pump:  p,
+		hooks: bindHooks(p),
 	}
 	return &r, nil
+}
+
+func (r *pumpRunner) setMetric(m Metric) {
+	if m != nil {
+		r.meter = m.Meter(r.ID(), counters.pump...)
+	}
 }
 
 // run the Pump runner.
 func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
-	r.measurable.Reset()
 	go func() {
 		defer close(out)
 		defer close(errc)
-		defer r.measurable.FinishMeasure()
+		store(r.meter, StartCounter, time.Now())
 		call(r.reset, sourceID, errc) // reset hook
-		r.measurable.Latency()
 		var err error
 		var m message
 		for {
@@ -165,8 +171,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 				}
 				return
 			}
-			r.Counter(OutputCounter).Advance(m.Buffer)
-			r.Latency()
+
 			m.feedback.applyTo(r.ID()) // apply feedback
 
 			// push message further
@@ -183,18 +188,23 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 
 // newProcessRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newProcessRunner(sourceID string, p phono.Processor, m measurable) (*processRunner, error) {
+func newProcessRunner(sourceID string, p phono.Processor) (*processRunner, error) {
 	fn, err := p.Process(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := processRunner{
-		fn:         fn,
-		Processor:  p,
-		hooks:      bindHooks(p),
-		measurable: m,
+		fn:        fn,
+		Processor: p,
+		hooks:     bindHooks(p),
 	}
 	return &r, nil
+}
+
+func (r *processRunner) setMetric(m Metric) {
+	if m != nil {
+		r.meter = m.Meter(r.ID(), counters.processor...)
+	}
 }
 
 // run the Processor runner.
@@ -202,13 +212,11 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 	errc := make(chan error, 1)
 	r.in = in
 	r.out = make(chan message)
-	r.measurable.Reset()
 	go func() {
 		defer close(r.out)
 		defer close(errc)
-		defer r.measurable.FinishMeasure()
+		store(r.meter, StartCounter, time.Now())
 		call(r.reset, sourceID, errc) // reset hook
-		r.measurable.Latency()
 		var err error
 		var m message
 		var ok bool
@@ -231,8 +239,6 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 				errc <- err
 				return
 			}
-			r.Counter(OutputCounter).Advance(m.Buffer)
-			r.Latency()
 			m.feedback.applyTo(r.ID()) // apply feedback
 
 			// send message further
@@ -249,29 +255,32 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 
 // newSinkRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newSinkRunner(sourceID string, s phono.Sink, m measurable) (*sinkRunner, error) {
+func newSinkRunner(sourceID string, s phono.Sink) (*sinkRunner, error) {
 	fn, err := s.Sink(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := sinkRunner{
-		fn:         fn,
-		Sink:       s,
-		hooks:      bindHooks(s),
-		measurable: m,
+		fn:    fn,
+		Sink:  s,
+		hooks: bindHooks(s),
 	}
 	return &r, nil
+}
+
+func (r *sinkRunner) setMetric(m Metric) {
+	if m != nil {
+		r.meter = m.Meter(r.ID(), counters.sink...)
+	}
 }
 
 // run the sink runner.
 func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message) <-chan error {
 	errc := make(chan error, 1)
-	r.measurable.Reset()
 	go func() {
 		defer close(errc)
-		defer r.measurable.FinishMeasure()
+		store(r.meter, StartCounter, time.Now())
 		call(r.reset, sourceID, errc) // reset hook
-		r.measurable.Latency()
 		var m message
 		var ok bool
 		for {
@@ -293,8 +302,6 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 				errc <- err
 				return
 			}
-			r.Counter(OutputCounter).Advance(m.Buffer)
-			r.Latency()
 			m.feedback.applyTo(r.ID()) // apply feedback
 		}
 	}()
@@ -311,4 +318,10 @@ func call(fn hook, sourceID string, errc chan error) {
 		errc <- err
 	}
 	return
+}
+
+func store(m Meter, c string, v interface{}) {
+	if m != nil {
+		m.Store(c, v)
+	}
 }
