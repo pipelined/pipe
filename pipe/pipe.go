@@ -104,7 +104,7 @@ func WithPump(pump phono.Pump) Option {
 		panic(ErrComponentNoID)
 	}
 	return func(p *Pipe) error {
-		r, err := newPumpRunner(p.ID(), pump)
+		r, err := newPumpRunner(p.sampleRate, p.ID(), pump)
 		if err != nil {
 			return err
 		}
@@ -122,7 +122,7 @@ func WithProcessors(processors ...phono.Processor) Option {
 	}
 	return func(p *Pipe) error {
 		for _, proc := range processors {
-			r, err := newProcessRunner(p.ID(), proc)
+			r, err := newProcessRunner(p.sampleRate, p.ID(), proc)
 			if err != nil {
 				return err
 			}
@@ -141,7 +141,7 @@ func WithSinks(sinks ...phono.Sink) Option {
 	}
 	return func(p *Pipe) error {
 		for _, sink := range sinks {
-			r, err := newSinkRunner(p.ID(), sink)
+			r, err := newSinkRunner(p.sampleRate, p.ID(), sink)
 			if err != nil {
 				return err
 			}

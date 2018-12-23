@@ -107,5 +107,8 @@ func TestPipe(t *testing.T) {
 		pipe.WithSinks(sink1, sink2),
 	)
 	pipe.Wait(p.Run())
-	fmt.Printf("%+v\n", metric.Measure())
+
+	m := metric.Measure()
+	fmt.Printf("%+v\n", m)
+	assert.Equal(t, 1133786*time.Nanosecond, m[pump.ID()][pipe.DurationCounter])
 }

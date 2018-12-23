@@ -8,6 +8,7 @@ import (
 
 // pumpRunner is pump's runner.
 type pumpRunner struct {
+	sampleRate phono.SampleRate
 	phono.Pump
 	fn  phono.PumpFunc
 	out chan message
@@ -16,6 +17,7 @@ type pumpRunner struct {
 
 // processRunner represents processor's runner.
 type processRunner struct {
+	sampleRate phono.SampleRate
 	phono.Processor
 	fn  phono.ProcessFunc
 	in  <-chan message
@@ -25,6 +27,7 @@ type processRunner struct {
 
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
+	sampleRate phono.SampleRate
 	phono.Sink
 	fn phono.SinkFunc
 	in <-chan message
@@ -71,9 +74,9 @@ var counters = struct {
 	processor []string
 	sink      []string
 }{
-	pump:      []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter},
-	processor: []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter},
-	sink:      []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter},
+	pump:      []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter},
+	processor: []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter},
+	sink:      []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter},
 }
 
 var do struct{}
@@ -83,10 +86,14 @@ const (
 	MessageCounter = "Messages"
 	// SampleCounter measures number of samples.
 	SampleCounter = "Samples"
-	// StartCounter is when runner started.
+	// StartCounter fixes when runner started.
 	StartCounter = "Start"
 	// LatencyCounter measures latency between processing calls.
 	LatencyCounter = "Latency"
+	// ElapsedCounter fixes when runner ended.
+	ElapsedCounter = "Elapsed"
+	// DurationCounter counts what's the duration of signal.
+	DurationCounter = "Duration"
 )
 
 // flusher checks if interface implements Flusher and if so, return it.
@@ -115,15 +122,16 @@ func resetter(i interface{}) hook {
 
 // newPumpRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newPumpRunner(sourceID string, p phono.Pump) (*pumpRunner, error) {
+func newPumpRunner(sampleRate phono.SampleRate, sourceID string, p phono.Pump) (*pumpRunner, error) {
 	fn, err := p.Pump(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := pumpRunner{
-		fn:    fn,
-		Pump:  p,
-		hooks: bindHooks(p),
+		sampleRate: sampleRate,
+		fn:         fn,
+		Pump:       p,
+		hooks:      bindHooks(p),
 	}
 	return &r, nil
 }
@@ -140,7 +148,8 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 	go func() {
 		defer close(out)
 		defer close(errc)
-		store(meter, StartCounter, time.Now())
+		startedAt := time.Now()
+		store(meter, StartCounter, startedAt)
 		call(r.reset, sourceID, errc) // reset hook
 		var err error
 		var m message
@@ -179,6 +188,8 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			store(meter, SampleCounter, samples)
 			store(meter, LatencyCounter, time.Since(processedAt))
 			processedAt = time.Now()
+			store(meter, ElapsedCounter, time.Since(startedAt))
+			store(meter, DurationCounter, r.sampleRate.DurationOf(samples))
 
 			m.feedback.applyTo(r.ID()) // apply feedback
 
@@ -196,15 +207,16 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 
 // newProcessRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newProcessRunner(sourceID string, p phono.Processor) (*processRunner, error) {
+func newProcessRunner(sampleRate phono.SampleRate, sourceID string, p phono.Processor) (*processRunner, error) {
 	fn, err := p.Process(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := processRunner{
-		fn:        fn,
-		Processor: p,
-		hooks:     bindHooks(p),
+		sampleRate: sampleRate,
+		fn:         fn,
+		Processor:  p,
+		hooks:      bindHooks(p),
 	}
 	return &r, nil
 }
@@ -221,7 +233,8 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 	go func() {
 		defer close(r.out)
 		defer close(errc)
-		store(meter, StartCounter, time.Now())
+		startedAt := time.Now()
+		store(meter, StartCounter, startedAt)
 		call(r.reset, sourceID, errc) // reset hook
 		var err error
 		var m message
@@ -253,6 +266,8 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 			store(meter, SampleCounter, samples)
 			store(meter, LatencyCounter, time.Since(processedAt))
 			processedAt = time.Now()
+			store(meter, ElapsedCounter, time.Since(startedAt))
+			store(meter, DurationCounter, r.sampleRate.DurationOf(samples))
 
 			m.feedback.applyTo(r.ID()) // apply feedback
 
@@ -270,15 +285,16 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 
 // newSinkRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newSinkRunner(sourceID string, s phono.Sink) (*sinkRunner, error) {
+func newSinkRunner(sampleRate phono.SampleRate, sourceID string, s phono.Sink) (*sinkRunner, error) {
 	fn, err := s.Sink(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := sinkRunner{
-		fn:    fn,
-		Sink:  s,
-		hooks: bindHooks(s),
+		sampleRate: sampleRate,
+		fn:         fn,
+		Sink:       s,
+		hooks:      bindHooks(s),
 	}
 	return &r, nil
 }
@@ -292,7 +308,8 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 	}
 	go func() {
 		defer close(errc)
-		store(meter, StartCounter, time.Now())
+		startedAt := time.Now()
+		store(meter, StartCounter, startedAt)
 		call(r.reset, sourceID, errc) // reset hook
 		var m message
 		var ok bool
@@ -323,6 +340,8 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 			store(meter, SampleCounter, samples)
 			store(meter, LatencyCounter, time.Since(processedAt))
 			processedAt = time.Now()
+			store(meter, ElapsedCounter, time.Since(startedAt))
+			store(meter, DurationCounter, r.sampleRate.DurationOf(samples))
 
 			m.feedback.applyTo(r.ID()) // apply feedback
 		}
