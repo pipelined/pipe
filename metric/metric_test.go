@@ -109,6 +109,8 @@ func TestPipe(t *testing.T) {
 	pipe.Wait(p.Run())
 
 	m := metric.Measure()
-	fmt.Printf("%+v\n", m)
+	assert.Equal(t, 1133786*time.Nanosecond, m[pump.ID()][pipe.DurationCounter])
+	pipe.Wait(p.Run())
+	m = metric.Measure()
 	assert.Equal(t, 1133786*time.Nanosecond, m[pump.ID()][pipe.DurationCounter])
 }
