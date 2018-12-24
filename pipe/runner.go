@@ -68,16 +68,60 @@ func bindHooks(v interface{}) hooks {
 	}
 }
 
-// counters is a structure for metrics initialization.
-var counters = struct {
-	pump      []string
-	processor []string
-	sink      []string
-}{
-	pump:      []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter},
-	processor: []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter},
-	sink:      []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter},
+type meter struct {
+	phono.Meter
+	sampleRate  phono.SampleRate
+	startedAt   time.Time     // StartCounter
+	messages    int64         // MessageCounter
+	samples     int64         // SampleCounter
+	latency     time.Duration // LatencyCounter
+	processedAt time.Time
+	elapsed     time.Duration // ElapsedCounter
+	duration    time.Duration // DurationCounter
 }
+
+// newMeter creates new meter with counters.
+func newMeter(componentID string, sampleRate phono.SampleRate, m phono.Metric) meter {
+	meter := meter{
+		sampleRate:  sampleRate,
+		startedAt:   time.Now(),
+		processedAt: time.Now(),
+	}
+	if m != nil {
+		meter.Meter = m.Meter(componentID, counters...)
+		meter.Store(StartCounter, meter.startedAt)
+	}
+
+	return meter
+}
+
+// message capture metrics after message is processed.
+func (m meter) message() meter {
+	m.messages++
+	m.latency = time.Since(m.processedAt)
+	m.processedAt = time.Now()
+	m.elapsed = time.Since(m.startedAt)
+	if m.Meter != nil {
+		m.Store(MessageCounter, m.messages)
+		m.Store(LatencyCounter, m.latency)
+		m.Store(ElapsedCounter, m.elapsed)
+	}
+	return m
+}
+
+// sample capture metrics after samples are processed.
+func (m meter) sample(s int64) meter {
+	m.samples = m.samples + s
+	m.duration = m.sampleRate.DurationOf(m.samples)
+	if m.Meter != nil {
+		m.Store(SampleCounter, m.samples)
+		m.Store(DurationCounter, m.duration)
+	}
+	return m
+}
+
+// counters is a structure for metrics initialization.
+var counters = []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter}
 
 var do struct{}
 
@@ -141,20 +185,13 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 	out := make(chan message)
 	errc := make(chan error, 1)
 
-	var meter phono.Meter
-	if metric != nil {
-		meter = metric.Meter(r.ID(), counters.pump...)
-	}
 	go func() {
 		defer close(out)
 		defer close(errc)
-		startedAt := time.Now()
-		store(meter, StartCounter, startedAt)
 		call(r.reset, sourceID, errc) // reset hook
 		var err error
 		var m message
-		var messages, samples int64
-		processedAt := time.Now()
+		meter := newMeter(r.ID(), r.sampleRate, metric)
 		for {
 			// request new message
 			select {
@@ -183,13 +220,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 				return
 			}
 
-			messages, samples = messages+1, samples+int64(m.Buffer.Size())
-			store(meter, MessageCounter, messages)
-			store(meter, SampleCounter, samples)
-			store(meter, LatencyCounter, time.Since(processedAt))
-			processedAt = time.Now()
-			store(meter, ElapsedCounter, time.Since(startedAt))
-			store(meter, DurationCounter, r.sampleRate.DurationOf(samples))
+			meter = meter.sample(int64(m.Buffer.Size())).message()
 
 			m.feedback.applyTo(r.ID()) // apply feedback
 
@@ -226,21 +257,14 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 	errc := make(chan error, 1)
 	r.in = in
 	r.out = make(chan message)
-	var meter phono.Meter
-	if metric != nil {
-		meter = metric.Meter(r.ID(), counters.processor...)
-	}
 	go func() {
 		defer close(r.out)
 		defer close(errc)
-		startedAt := time.Now()
-		store(meter, StartCounter, startedAt)
+		meter := newMeter(r.ID(), r.sampleRate, metric)
 		call(r.reset, sourceID, errc) // reset hook
 		var err error
 		var m message
 		var ok bool
-		var messages, samples int64
-		processedAt := time.Now()
 		for {
 			// retrieve new message
 			select {
@@ -261,13 +285,7 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 				return
 			}
 
-			messages, samples = messages+1, samples+int64(m.Buffer.Size())
-			store(meter, MessageCounter, messages)
-			store(meter, SampleCounter, samples)
-			store(meter, LatencyCounter, time.Since(processedAt))
-			processedAt = time.Now()
-			store(meter, ElapsedCounter, time.Since(startedAt))
-			store(meter, DurationCounter, r.sampleRate.DurationOf(samples))
+			meter = meter.sample(int64(m.Buffer.Size())).message()
 
 			m.feedback.applyTo(r.ID()) // apply feedback
 
@@ -302,19 +320,12 @@ func newSinkRunner(sampleRate phono.SampleRate, sourceID string, s phono.Sink) (
 // run the sink runner.
 func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric phono.Metric) <-chan error {
 	errc := make(chan error, 1)
-	var meter phono.Meter
-	if metric != nil {
-		meter = metric.Meter(r.ID(), counters.sink...)
-	}
 	go func() {
 		defer close(errc)
-		startedAt := time.Now()
-		store(meter, StartCounter, startedAt)
+		meter := newMeter(r.ID(), r.sampleRate, metric)
 		call(r.reset, sourceID, errc) // reset hook
 		var m message
 		var ok bool
-		var messages, samples int64
-		processedAt := time.Now()
 		for {
 			// receive new message
 			select {
@@ -335,13 +346,7 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 				return
 			}
 
-			messages, samples = messages+1, samples+int64(m.Buffer.Size())
-			store(meter, MessageCounter, messages)
-			store(meter, SampleCounter, samples)
-			store(meter, LatencyCounter, time.Since(processedAt))
-			processedAt = time.Now()
-			store(meter, ElapsedCounter, time.Since(startedAt))
-			store(meter, DurationCounter, r.sampleRate.DurationOf(samples))
+			meter = meter.sample(int64(m.Buffer.Size())).message()
 
 			m.feedback.applyTo(r.ID()) // apply feedback
 		}
@@ -359,10 +364,4 @@ func call(fn hook, sourceID string, errc chan error) {
 		errc <- err
 	}
 	return
-}
-
-func store(m phono.Meter, c string, v interface{}) {
-	if m != nil {
-		m.Store(c, v)
-	}
 }
