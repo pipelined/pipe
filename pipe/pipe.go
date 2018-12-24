@@ -34,12 +34,12 @@ type Pipe struct {
 	processors []*processRunner
 	sinks      []*sinkRunner
 
-	metrics  map[string]measurable // metrics holds all references to measurable components
-	params   params                //cahced params
-	feedback params                //cached feedback
-	errc     chan error            // errors channel
-	events   chan eventMessage     // event channel
-	cancel   chan struct{}         // cancellation channel
+	metric   phono.Metric
+	params   params            //cahced params
+	feedback params            //cached feedback
+	errc     chan error        // errors channel
+	events   chan eventMessage // event channel
+	cancel   chan struct{}     // cancellation channel
 
 	provide chan struct{} // ask for new message request
 	consume chan message  // emission of messages
@@ -66,7 +66,6 @@ func New(sampleRate phono.SampleRate, options ...Option) (*Pipe, error) {
 		log:        log.GetLogger(),
 		processors: make([]*processRunner, 0),
 		sinks:      make([]*sinkRunner, 0),
-		metrics:    make(map[string]measurable),
 		params:     make(map[string][]phono.ParamFunc),
 		feedback:   make(map[string][]phono.ParamFunc),
 		events:     make(chan eventMessage, 1),
@@ -91,18 +90,25 @@ func WithName(n string) Option {
 	}
 }
 
+// WithMetric adds meterics for this pipe and all components.
+func WithMetric(m phono.Metric) Option {
+	return func(p *Pipe) error {
+		p.metric = m
+		return nil
+	}
+}
+
 // WithPump sets pump to Pipe
 func WithPump(pump phono.Pump) Option {
 	if pump.ID() == "" {
 		panic(ErrComponentNoID)
 	}
 	return func(p *Pipe) error {
-		r, err := newPumpRunner(p.ID(), pump, newMetric(pump.ID(), p.sampleRate, counters.pump...))
+		r, err := newPumpRunner(p.sampleRate, p.ID(), pump)
 		if err != nil {
 			return err
 		}
 		p.pump = r
-		p.metrics[r.ID()] = r
 		return nil
 	}
 }
@@ -116,12 +122,11 @@ func WithProcessors(processors ...phono.Processor) Option {
 	}
 	return func(p *Pipe) error {
 		for _, proc := range processors {
-			r, err := newProcessRunner(p.ID(), proc, newMetric(proc.ID(), p.sampleRate, counters.processor...))
+			r, err := newProcessRunner(p.sampleRate, p.ID(), proc)
 			if err != nil {
 				return err
 			}
 			p.processors = append(p.processors, r)
-			p.metrics[r.ID()] = r
 		}
 		return nil
 	}
@@ -136,12 +141,11 @@ func WithSinks(sinks ...phono.Sink) Option {
 	}
 	return func(p *Pipe) error {
 		for _, sink := range sinks {
-			r, err := newSinkRunner(p.ID(), sink, newMetric(sink.ID(), p.sampleRate, counters.processor...))
+			r, err := newSinkRunner(p.sampleRate, p.ID(), sink)
 			if err != nil {
 				return err
 			}
 			p.sinks = append(p.sinks, r)
-			p.metrics[r.ID()] = r
 		}
 		return nil
 	}
@@ -160,82 +164,17 @@ func (p *Pipe) Push(values ...phono.Param) {
 	}
 }
 
-// Measure returns a buffered channel of Measure.
-// Event is pushed into pipe to retrieve metrics. Metric measure is returned immediately if
-// state is idle, otherwise it's returned once it's reached destination within pipe.
-// Result channel has buffer sized to found components. Order of measures can differ from
-// requested order due to pipeline configuration.
-// Calling this method after pipe is closed causes a panic.
-// func (p *Pipe) Measure(ids ...string) <-chan Measure {
-// 	if len(p.metrics) == 0 {
-// 		return nil
-// 	}
-// 	em := eventMessage{event: measure, params: make(map[string][]phono.ParamFunc)}
-// 	if len(ids) > 0 {
-// 		em.components = make([]string, 0, len(ids))
-// 		// check if passed ids are part of the pipe
-// 		for _, id := range ids {
-// 			_, ok := p.metrics[id]
-// 			if ok {
-// 				em.components = append(em.components, id)
-// 			}
-// 		}
-// 		// no components found
-// 		if len(em.components) == 0 {
-// 			return nil
-// 		}
-// 	} else {
-// 		em.components = make([]string, 0, len(p.metrics))
-// 		// get all if nothing is passed
-// 		for id := range p.metrics {
-// 			em.components = append(em.components, id)
-// 		}
-// 	}
-
-// 	done := make(chan struct{}, len(em.components)) // done chan to close metrics channel
-// 	mc := make(chan Measure, len(em.components))    // measures channel
-
-// 	for _, id := range em.components {
-// 		m := p.metrics[id]
-// 		param := phono.Param{
-// 			ID: id,
-// 			Apply: func() {
-// 				var do struct{}
-// 				mc <- m.Measure()
-// 				done <- do
-// 			},
-// 		}
-// 		em.params = em.params.add(param)
-// 	}
-
-// 	//wait and close
-// 	go func(requested int) {
-// 		received := 0
-// 		for received < requested {
-// 			select {
-// 			case <-done:
-// 				received++
-// 			case <-p.cancel:
-// 				return
-// 			}
-// 		}
-// 		close(mc)
-// 	}(len(em.components))
-// 	p.events <- em
-// 	return mc
-// }
-
 // start starts the execution of pipe.
 func (p *Pipe) start() {
 	p.cancel = make(chan struct{})
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	// start pump
-	out, errc := p.pump.run(p.cancel, p.ID(), p.provide, p.consume)
+	out, errc := p.pump.run(p.cancel, p.ID(), p.provide, p.consume, p.metric)
 	errcList = append(errcList, errc)
 
 	// start chained processesing
 	for _, proc := range p.processors {
-		out, errc = proc.run(p.cancel, p.ID(), out)
+		out, errc = proc.run(p.cancel, p.ID(), out, p.metric)
 		errcList = append(errcList, errc)
 	}
 
@@ -256,7 +195,7 @@ func (p *Pipe) broadcastToSinks(in <-chan message) []<-chan error {
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc := s.run(p.cancel, p.ID(), broadcasts[i])
+		errc := s.run(p.cancel, p.ID(), broadcasts[i], p.metric)
 		errcList = append(errcList, errc)
 	}
 
