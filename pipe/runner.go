@@ -1,13 +1,15 @@
 package pipe
 
 import (
+	"time"
+
 	"github.com/dudk/phono"
 )
 
 // pumpRunner is pump's runner.
 type pumpRunner struct {
+	sampleRate phono.SampleRate
 	phono.Pump
-	measurable
 	fn  phono.PumpFunc
 	out chan message
 	hooks
@@ -15,8 +17,8 @@ type pumpRunner struct {
 
 // processRunner represents processor's runner.
 type processRunner struct {
+	sampleRate phono.SampleRate
 	phono.Processor
-	measurable
 	fn  phono.ProcessFunc
 	in  <-chan message
 	out chan message
@@ -25,8 +27,8 @@ type processRunner struct {
 
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
+	sampleRate phono.SampleRate
 	phono.Sink
-	measurable
 	fn phono.SinkFunc
 	in <-chan message
 	hooks
@@ -66,23 +68,76 @@ func bindHooks(v interface{}) hooks {
 	}
 }
 
-// counters is a structure for metrics initialization.
-var counters = struct {
-	pump      []string
-	processor []string
-	sink      []string
-}{
-	pump:      []string{OutputCounter},
-	processor: []string{OutputCounter},
-	sink:      []string{OutputCounter},
+type meter struct {
+	phono.Meter
+	sampleRate  phono.SampleRate
+	startedAt   time.Time     // StartCounter
+	messages    int64         // MessageCounter
+	samples     int64         // SampleCounter
+	latency     time.Duration // LatencyCounter
+	processedAt time.Time
+	elapsed     time.Duration // ElapsedCounter
+	duration    time.Duration // DurationCounter
 }
+
+// newMeter creates new meter with counters.
+func newMeter(componentID string, sampleRate phono.SampleRate, m phono.Metric) meter {
+	meter := meter{
+		sampleRate:  sampleRate,
+		startedAt:   time.Now(),
+		processedAt: time.Now(),
+	}
+	if m != nil {
+		meter.Meter = m.Meter(componentID, counters...)
+		meter.Store(StartCounter, meter.startedAt)
+	}
+
+	return meter
+}
+
+// message capture metrics after message is processed.
+func (m meter) message() meter {
+	m.messages++
+	m.latency = time.Since(m.processedAt)
+	m.processedAt = time.Now()
+	m.elapsed = time.Since(m.startedAt)
+	if m.Meter != nil {
+		m.Store(MessageCounter, m.messages)
+		m.Store(LatencyCounter, m.latency)
+		m.Store(ElapsedCounter, m.elapsed)
+	}
+	return m
+}
+
+// sample capture metrics after samples are processed.
+func (m meter) sample(s int64) meter {
+	m.samples = m.samples + s
+	m.duration = m.sampleRate.DurationOf(m.samples)
+	if m.Meter != nil {
+		m.Store(SampleCounter, m.samples)
+		m.Store(DurationCounter, m.duration)
+	}
+	return m
+}
+
+// counters is a structure for metrics initialization.
+var counters = []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter}
 
 var do struct{}
 
 const (
-	// OutputCounter is a key for output counter within metric.
-	// It calculates regular total output per component.
-	OutputCounter = "Output"
+	// MessageCounter measures number of messages.
+	MessageCounter = "Messages"
+	// SampleCounter measures number of samples.
+	SampleCounter = "Samples"
+	// StartCounter fixes when runner started.
+	StartCounter = "Start"
+	// LatencyCounter measures latency between processing calls.
+	LatencyCounter = "Latency"
+	// ElapsedCounter fixes when runner ended.
+	ElapsedCounter = "Elapsed"
+	// DurationCounter counts what's the duration of signal.
+	DurationCounter = "Duration"
 )
 
 // flusher checks if interface implements Flusher and if so, return it.
@@ -111,33 +166,32 @@ func resetter(i interface{}) hook {
 
 // newPumpRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newPumpRunner(sourceID string, p phono.Pump, m measurable) (*pumpRunner, error) {
+func newPumpRunner(sampleRate phono.SampleRate, sourceID string, p phono.Pump) (*pumpRunner, error) {
 	fn, err := p.Pump(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := pumpRunner{
+		sampleRate: sampleRate,
 		fn:         fn,
 		Pump:       p,
 		hooks:      bindHooks(p),
-		measurable: m,
 	}
 	return &r, nil
 }
 
 // run the Pump runner.
-func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message) (<-chan message, <-chan error) {
+func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message, metric phono.Metric) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
-	r.measurable.Reset()
+
 	go func() {
 		defer close(out)
 		defer close(errc)
-		defer r.measurable.FinishMeasure()
 		call(r.reset, sourceID, errc) // reset hook
-		r.measurable.Latency()
 		var err error
 		var m message
+		meter := newMeter(r.ID(), r.sampleRate, metric)
 		for {
 			// request new message
 			select {
@@ -165,8 +219,9 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 				}
 				return
 			}
-			r.Counter(OutputCounter).Advance(m.Buffer)
-			r.Latency()
+
+			meter = meter.sample(int64(m.Buffer.Size())).message()
+
 			m.feedback.applyTo(r.ID()) // apply feedback
 
 			// push message further
@@ -183,32 +238,30 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 
 // newProcessRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newProcessRunner(sourceID string, p phono.Processor, m measurable) (*processRunner, error) {
+func newProcessRunner(sampleRate phono.SampleRate, sourceID string, p phono.Processor) (*processRunner, error) {
 	fn, err := p.Process(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := processRunner{
+		sampleRate: sampleRate,
 		fn:         fn,
 		Processor:  p,
 		hooks:      bindHooks(p),
-		measurable: m,
 	}
 	return &r, nil
 }
 
 // run the Processor runner.
-func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan message) (<-chan message, <-chan error) {
+func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric phono.Metric) (<-chan message, <-chan error) {
 	errc := make(chan error, 1)
 	r.in = in
 	r.out = make(chan message)
-	r.measurable.Reset()
 	go func() {
 		defer close(r.out)
 		defer close(errc)
-		defer r.measurable.FinishMeasure()
+		meter := newMeter(r.ID(), r.sampleRate, metric)
 		call(r.reset, sourceID, errc) // reset hook
-		r.measurable.Latency()
 		var err error
 		var m message
 		var ok bool
@@ -231,8 +284,9 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 				errc <- err
 				return
 			}
-			r.Counter(OutputCounter).Advance(m.Buffer)
-			r.Latency()
+
+			meter = meter.sample(int64(m.Buffer.Size())).message()
+
 			m.feedback.applyTo(r.ID()) // apply feedback
 
 			// send message further
@@ -249,29 +303,27 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 
 // newSinkRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newSinkRunner(sourceID string, s phono.Sink, m measurable) (*sinkRunner, error) {
+func newSinkRunner(sampleRate phono.SampleRate, sourceID string, s phono.Sink) (*sinkRunner, error) {
 	fn, err := s.Sink(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := sinkRunner{
+		sampleRate: sampleRate,
 		fn:         fn,
 		Sink:       s,
 		hooks:      bindHooks(s),
-		measurable: m,
 	}
 	return &r, nil
 }
 
 // run the sink runner.
-func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message) <-chan error {
+func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric phono.Metric) <-chan error {
 	errc := make(chan error, 1)
-	r.measurable.Reset()
 	go func() {
 		defer close(errc)
-		defer r.measurable.FinishMeasure()
+		meter := newMeter(r.ID(), r.sampleRate, metric)
 		call(r.reset, sourceID, errc) // reset hook
-		r.measurable.Latency()
 		var m message
 		var ok bool
 		for {
@@ -293,8 +345,9 @@ func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan messag
 				errc <- err
 				return
 			}
-			r.Counter(OutputCounter).Advance(m.Buffer)
-			r.Latency()
+
+			meter = meter.sample(int64(m.Buffer.Size())).message()
+
 			m.feedback.applyTo(r.ID()) // apply feedback
 		}
 	}()
