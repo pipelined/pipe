@@ -8,7 +8,6 @@ import (
 
 // pumpRunner is pump's runner.
 type pumpRunner struct {
-	sampleRate phono.SampleRate
 	phono.Pump
 	fn  phono.PumpFunc
 	out chan message
@@ -17,7 +16,6 @@ type pumpRunner struct {
 
 // processRunner represents processor's runner.
 type processRunner struct {
-	sampleRate phono.SampleRate
 	phono.Processor
 	fn  phono.ProcessFunc
 	in  <-chan message
@@ -27,7 +25,6 @@ type processRunner struct {
 
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
-	sampleRate phono.SampleRate
 	phono.Sink
 	fn phono.SinkFunc
 	in <-chan message
@@ -166,22 +163,21 @@ func resetter(i interface{}) hook {
 
 // newPumpRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newPumpRunner(sampleRate phono.SampleRate, sourceID string, p phono.Pump) (*pumpRunner, error) {
+func newPumpRunner(sourceID string, p phono.Pump) (*pumpRunner, error) {
 	fn, err := p.Pump(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := pumpRunner{
-		sampleRate: sampleRate,
-		fn:         fn,
-		Pump:       p,
-		hooks:      bindHooks(p),
+		fn:    fn,
+		Pump:  p,
+		hooks: bindHooks(p),
 	}
 	return &r, nil
 }
 
 // run the Pump runner.
-func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message, metric phono.Metric) (<-chan message, <-chan error) {
+func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan struct{}, consume chan message, sampleRate phono.SampleRate, metric phono.Metric) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
 
@@ -191,7 +187,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 		call(r.reset, sourceID, errc) // reset hook
 		var err error
 		var m message
-		meter := newMeter(r.ID(), r.sampleRate, metric)
+		meter := newMeter(r.ID(), sampleRate, metric)
 		for {
 			// request new message
 			select {
@@ -238,29 +234,28 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 
 // newProcessRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newProcessRunner(sampleRate phono.SampleRate, sourceID string, p phono.Processor) (*processRunner, error) {
+func newProcessRunner(sourceID string, p phono.Processor) (*processRunner, error) {
 	fn, err := p.Process(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := processRunner{
-		sampleRate: sampleRate,
-		fn:         fn,
-		Processor:  p,
-		hooks:      bindHooks(p),
+		fn:        fn,
+		Processor: p,
+		hooks:     bindHooks(p),
 	}
 	return &r, nil
 }
 
 // run the Processor runner.
-func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric phono.Metric) (<-chan message, <-chan error) {
+func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan message, sampleRate phono.SampleRate, metric phono.Metric) (<-chan message, <-chan error) {
 	errc := make(chan error, 1)
 	r.in = in
 	r.out = make(chan message)
 	go func() {
 		defer close(r.out)
 		defer close(errc)
-		meter := newMeter(r.ID(), r.sampleRate, metric)
+		meter := newMeter(r.ID(), sampleRate, metric)
 		call(r.reset, sourceID, errc) // reset hook
 		var err error
 		var m message
@@ -303,26 +298,25 @@ func (r *processRunner) run(cancel chan struct{}, sourceID string, in <-chan mes
 
 // newSinkRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newSinkRunner(sampleRate phono.SampleRate, sourceID string, s phono.Sink) (*sinkRunner, error) {
+func newSinkRunner(sourceID string, s phono.Sink) (*sinkRunner, error) {
 	fn, err := s.Sink(sourceID)
 	if err != nil {
 		return nil, err
 	}
 	r := sinkRunner{
-		sampleRate: sampleRate,
-		fn:         fn,
-		Sink:       s,
-		hooks:      bindHooks(s),
+		fn:    fn,
+		Sink:  s,
+		hooks: bindHooks(s),
 	}
 	return &r, nil
 }
 
 // run the sink runner.
-func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message, metric phono.Metric) <-chan error {
+func (r *sinkRunner) run(cancel chan struct{}, sourceID string, in <-chan message, sampleRate phono.SampleRate, metric phono.Metric) <-chan error {
 	errc := make(chan error, 1)
 	go func() {
 		defer close(errc)
-		meter := newMeter(r.ID(), r.sampleRate, metric)
+		meter := newMeter(r.ID(), sampleRate, metric)
 		call(r.reset, sourceID, errc) // reset hook
 		var m message
 		var ok bool
