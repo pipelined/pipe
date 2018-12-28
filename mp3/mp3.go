@@ -34,9 +34,9 @@ func NewSink(path string, sampleRate phono.SampleRate, numChannels phono.NumChan
 	s.wr.Encoder.SetQuality(quality)
 	s.wr.Encoder.SetNumChannels(int(numChannels))
 	s.wr.Encoder.SetInSamplerate(int(sampleRate))
-	s.wr.Encoder.InitParams()
 	s.wr.Encoder.SetMode(lame.JOINT_STEREO)
 	s.wr.Encoder.SetVBR(lame.VBR_RH)
+	s.wr.Encoder.InitParams()
 	fmt.Printf("Bitrate: %v Quality: %v NumChannels: %v InSampleRate: %v\n", bitRate, quality, numChannels, sampleRate)
 	return &s, nil
 }
