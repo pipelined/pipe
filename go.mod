@@ -14,6 +14,7 @@ require (
 	github.com/rs/xid v1.2.1
 	github.com/sirupsen/logrus v1.2.0
 	github.com/stretchr/testify v1.2.2
+	github.com/viert/lame v0.0.0-20180516103454-0fb1f9d59ac3
 	go.uber.org/goleak v0.10.0
 	golang.org/x/crypto v0.0.0-20181127143415-eb0de9b17e85
 	golang.org/x/net v0.0.0-20181129055619-fae4c4e3ad76 // indirect
