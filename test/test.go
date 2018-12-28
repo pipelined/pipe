@@ -32,6 +32,7 @@ var (
 		Example4 string
 		Example5 string
 		Mixer    string
+		Mp3      string
 	}{
 		Wav1:     resolvePath(testdata + out + "wav1.wav"),
 		Wav2:     resolvePath(testdata + out + "wav2.wav"),
@@ -41,6 +42,7 @@ var (
 		Example4: resolvePath(testdata + out + "example4.wav"),
 		Example5: resolvePath(testdata + out + "example5.wav"),
 		Mixer:    resolvePath(testdata + out + "mixer.wav"),
+		Mp3:      resolvePath(testdata + out + "mp3.mp3"),
 	}
 )
 

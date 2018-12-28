@@ -29,7 +29,7 @@ before_install:
   - ssh-add vstsdk_rsa
   # dependencies
   - git clone ssh://git@github.com/dudk/vst2sdk.git
-  - brew install portaudio
+  - brew install portaudio lame
 
 script: env CGO_CFLAGS=-I$(pwd)/vst2sdk go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
