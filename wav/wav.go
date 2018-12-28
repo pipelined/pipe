@@ -177,7 +177,7 @@ func (s *Sink) Flush(string) error {
 // Sink returns new Sink function instance.
 func (s *Sink) Sink(string) (phono.SinkFunc, error) {
 	return func(b phono.Buffer) error {
-		err := AsBuffer(s.ib, b)
+		err := AsBuffer(b, s.ib)
 		if err != nil {
 			return err
 		}
@@ -215,24 +215,17 @@ func AsSamples(b audio.Buffer) (phono.Buffer, error) {
 }
 
 // AsBuffer converts from [][]float64 to audio.Buffer.
-func AsBuffer(b audio.Buffer, s phono.Buffer) error {
-	if b == nil || s == nil {
+func AsBuffer(b phono.Buffer, ab audio.Buffer) error {
+	if ab == nil || b == nil {
 		return nil
 	}
 
-	numChannels := len(s)
-	bufferLen := numChannels * len(s[0])
-	switch b.(type) {
+	switch ab.(type) {
 	case *audio.IntBuffer:
-		ib := b.(*audio.IntBuffer)
-		ib.Data = make([]int, bufferLen)
-		for i := range s[0] {
-			for j := range s {
-				ib.Data[i*numChannels+j] = int(s[j][i] * 0x7fff)
-			}
-		}
+		ib := ab.(*audio.IntBuffer)
+		ib.Data = b.Ints()
 		return nil
 	default:
-		return fmt.Errorf("Conversion to %T from [][]float64 is not defined", b)
+		return fmt.Errorf("Conversion to %T from [][]float64 is not defined", ab)
 	}
 }
