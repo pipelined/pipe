@@ -186,31 +186,25 @@ func (s *Sink) Sink(string) (phono.SinkFunc, error) {
 }
 
 // AsSamples converts from audio.Buffer to [][]float64 buffer.
-func AsSamples(b audio.Buffer) (phono.Buffer, error) {
-	if b == nil {
+func AsSamples(ab audio.Buffer) (phono.Buffer, error) {
+	if ab == nil {
 		return nil, nil
 	}
 
-	if b.PCMFormat() == nil {
+	if ab.PCMFormat() == nil {
 		return nil, errors.New("Format for Buffer is not defined")
 	}
 
-	numChannels := b.PCMFormat().NumChannels
-	s := phono.Buffer(make([][]float64, numChannels))
-	bufferLen := numChannels * b.NumFrames()
+	numChannels := ab.PCMFormat().NumChannels
+	b := phono.EmptyBuffer(phono.NumChannels(numChannels), phono.BufferSize(ab.NumFrames()))
 
-	switch b.(type) {
+	switch ab.(type) {
 	case *audio.IntBuffer:
-		ib := b.(*audio.IntBuffer)
-		for i := range s {
-			s[i] = make([]float64, 0, b.NumFrames())
-			for j := i; j < bufferLen; j = j + numChannels {
-				s[i] = append(s[i], float64(ib.Data[j])/0x8000)
-			}
-		}
-		return s, nil
+		ib := ab.(*audio.IntBuffer)
+		b.ReadInts(ib.Data)
+		return b, nil
 	default:
-		return nil, fmt.Errorf("Conversion to [][]float64 from %T is not defined", b)
+		return nil, fmt.Errorf("Conversion to [][]float64 from %T is not defined", ab)
 	}
 }
 
