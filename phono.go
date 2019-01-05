@@ -226,6 +226,7 @@ func (b Buffer) Ints() []int {
 	return ints
 }
 
+// ReadInts converts PCM to float64 buffer.
 func (b Buffer) ReadInts(ints []int) {
 	if b == nil {
 		return
