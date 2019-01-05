@@ -18,6 +18,8 @@ Gopkg.lock
 
 # Output files
 *.wav
-*.mp3
 !sample1.wav
 !sample2.wav
+
+*.mp3
+!sample.mp3
