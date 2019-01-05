@@ -226,6 +226,20 @@ func (b Buffer) Ints() []int {
 	return ints
 }
 
+func (b Buffer) ReadInts(ints []int) {
+	if b == nil {
+		return
+	}
+	intsLen := len(ints)
+	numChannels := int(b.NumChannels())
+	for i := range b {
+		b[i] = make([]float64, 0, intsLen)
+		for j := i; j < intsLen; j = j + numChannels {
+			b[i] = append(b[i], float64(ints[j])/0x8000)
+		}
+	}
+}
+
 // EmptyBuffer returns an empty buffer of specified length
 func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
 	result := Buffer(make([][]float64, numChannels))

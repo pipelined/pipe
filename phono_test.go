@@ -119,3 +119,14 @@ func TestDuration(t *testing.T) {
 		assert.Equal(t, c.expected, c.sampleRate.DurationOf(c.samples))
 	}
 }
+
+func TestReadInts(t *testing.T) {
+	var tests = []struct {
+		ints []int
+		phono.NumChannels
+		expected phono.Buffer
+	}{}
+	for test := range tests {
+
+	}
+}
