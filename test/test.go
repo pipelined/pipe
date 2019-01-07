@@ -15,10 +15,12 @@ var (
 	Data = struct {
 		Wav1        string
 		Wav2        string
+		Mp3         string
 		Wav1Samples int64
 	}{
 		Wav1:        resolvePath(testdata + "sample1.wav"), // Wav1 is the wav file with bass slap sample.
 		Wav2:        resolvePath(testdata + "sample2.wav"), // Wav2 is the wav file with trimmed reversed bass slap sample.
+		Mp3:         resolvePath(testdata + "sample.mp3"),
 		Wav1Samples: 330534,
 	}
 
@@ -32,6 +34,7 @@ var (
 		Example4 string
 		Example5 string
 		Mixer    string
+		Mp3      string
 	}{
 		Wav1:     resolvePath(testdata + out + "wav1.wav"),
 		Wav2:     resolvePath(testdata + out + "wav2.wav"),
@@ -41,6 +44,7 @@ var (
 		Example4: resolvePath(testdata + out + "example4.wav"),
 		Example5: resolvePath(testdata + out + "example5.wav"),
 		Mixer:    resolvePath(testdata + out + "mixer.wav"),
+		Mp3:      resolvePath(testdata + out + "mp3.mp3"),
 	}
 )
 

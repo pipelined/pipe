@@ -211,6 +211,36 @@ func (b Buffer) Clip(start int64, len int) Clip {
 	}
 }
 
+// Ints converts [][]float64 buffer to []int of PCM data.
+func (b Buffer) Ints() []int {
+	if b == nil {
+		return nil
+	}
+	numChannels := int(b.NumChannels())
+	ints := make([]int, int(b.Size())*numChannels)
+	for i := range b[0] {
+		for j := range b {
+			ints[i*numChannels+j] = int(b[j][i] * 0x7fff)
+		}
+	}
+	return ints
+}
+
+// ReadInts converts PCM to float64 buffer.
+func (b Buffer) ReadInts(ints []int) {
+	if b == nil {
+		return
+	}
+	intsLen := len(ints)
+	numChannels := int(b.NumChannels())
+	for i := range b {
+		b[i] = make([]float64, 0, intsLen)
+		for j := i; j < intsLen; j = j + numChannels {
+			b[i] = append(b[i], float64(ints[j])/0x8000)
+		}
+	}
+}
+
 // EmptyBuffer returns an empty buffer of specified length
 func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
 	result := Buffer(make([][]float64, numChannels))

@@ -107,7 +107,7 @@ func TestSampelsToIntBuffer(t *testing.T) {
 		[]float64{1, 1, 1, 1, 1, 1, 1, 1},
 		[]float64{2, 2, 2, 2, 2, 2, 2, 2},
 	}
-	err := wav.AsBuffer(ib, samples)
+	err := wav.AsBuffer(samples, ib)
 	assert.Nil(t, err)
 	assert.NotNil(t, ib)
 	assert.Equal(t, 8, ib.NumFrames())
