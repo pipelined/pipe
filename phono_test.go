@@ -9,44 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var sliceTests = []struct {
-	in       phono.Buffer
-	start    int64
-	len      int
-	expected phono.Buffer
-}{
-	{
-		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
-		start:    1,
-		len:      2,
-		expected: phono.Buffer([][]float64{[]float64{1, 2}, []float64{1, 2}}),
-	},
-	{
-		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
-		start:    5,
-		len:      2,
-		expected: phono.Buffer([][]float64{[]float64{5, 6}, []float64{5, 6}}),
-	},
-	{
-		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
-		start:    7,
-		len:      4,
-		expected: phono.Buffer([][]float64{[]float64{7, 8, 9}, []float64{7, 8, 9}}),
-	},
-	{
-		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
-		start:    9,
-		len:      1,
-		expected: phono.Buffer([][]float64{[]float64{9}}),
-	},
-	{
-		in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
-		start:    10,
-		len:      1,
-		expected: nil,
-	},
-}
-
 func TestBuffer(t *testing.T) {
 	var s phono.Buffer
 	assert.Equal(t, phono.NumChannels(0), s.NumChannels())
@@ -66,6 +28,44 @@ func TestBuffer(t *testing.T) {
 }
 
 func TestSliceBuffer(t *testing.T) {
+	var sliceTests = []struct {
+		in       phono.Buffer
+		start    int64
+		len      int
+		expected phono.Buffer
+	}{
+		{
+			in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+			start:    1,
+			len:      2,
+			expected: phono.Buffer([][]float64{[]float64{1, 2}, []float64{1, 2}}),
+		},
+		{
+			in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+			start:    5,
+			len:      2,
+			expected: phono.Buffer([][]float64{[]float64{5, 6}, []float64{5, 6}}),
+		},
+		{
+			in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+			start:    7,
+			len:      4,
+			expected: phono.Buffer([][]float64{[]float64{7, 8, 9}, []float64{7, 8, 9}}),
+		},
+		{
+			in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+			start:    9,
+			len:      1,
+			expected: phono.Buffer([][]float64{[]float64{9}}),
+		},
+		{
+			in:       phono.Buffer([][]float64{[]float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}),
+			start:    10,
+			len:      1,
+			expected: nil,
+		},
+	}
+
 	for _, test := range sliceTests {
 		result := test.in.Slice(test.start, test.len)
 		assert.Equal(t, test.expected.Size(), result.Size())
@@ -117,5 +117,59 @@ func TestDuration(t *testing.T) {
 	}
 	for _, c := range tests {
 		assert.Equal(t, c.expected, c.sampleRate.DurationOf(c.samples))
+	}
+}
+
+func TestReadInts(t *testing.T) {
+	tests := []struct {
+		label string
+		ints  []int
+		phono.NumChannels
+		phono.BufferSize
+		expected phono.Buffer
+	}{
+		{
+			label:       "Simple case",
+			ints:        []int{1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2},
+			NumChannels: 2,
+			BufferSize:  8,
+			expected: phono.Buffer([][]float64{
+				[]float64{1, 1, 1, 1, 1, 1, 1, 1},
+				[]float64{2, 2, 2, 2, 2, 2, 2, 2},
+			}),
+		},
+	}
+	for _, test := range tests {
+		b := phono.EmptyBuffer(test.NumChannels, test.BufferSize)
+		b.ReadInts(test.ints)
+		assert.Equal(t, test.expected.NumChannels(), b.NumChannels(), test.label)
+		assert.Equal(t, test.expected.Size(), b.Size(), test.label)
+		for i := range test.expected {
+			for j := range test.expected[i] {
+				assert.Equal(t, test.expected[i][j]/0x8000, b[i][j], test.label)
+			}
+		}
+	}
+}
+
+func TestInts(t *testing.T) {
+	tests := []struct {
+		phono.Buffer
+		expected []int
+	}{
+		{
+			Buffer: phono.Buffer([][]float64{
+				[]float64{1, 1, 1, 1, 1, 1, 1, 1},
+				[]float64{2, 2, 2, 2, 2, 2, 2, 2},
+			}),
+			expected: []int{1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2},
+		},
+	}
+
+	for _, test := range tests {
+		ints := test.Buffer.Ints()
+		for i := range test.expected {
+			assert.Equal(t, test.expected[i]*0x7fff, ints[i])
+		}
 	}
 }

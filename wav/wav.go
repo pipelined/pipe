@@ -177,7 +177,7 @@ func (s *Sink) Flush(string) error {
 // Sink returns new Sink function instance.
 func (s *Sink) Sink(string) (phono.SinkFunc, error) {
 	return func(b phono.Buffer) error {
-		err := AsBuffer(s.ib, b)
+		err := AsBuffer(b, s.ib)
 		if err != nil {
 			return err
 		}
@@ -186,53 +186,40 @@ func (s *Sink) Sink(string) (phono.SinkFunc, error) {
 }
 
 // AsSamples converts from audio.Buffer to [][]float64 buffer.
-func AsSamples(b audio.Buffer) (phono.Buffer, error) {
-	if b == nil {
+func AsSamples(ab audio.Buffer) (phono.Buffer, error) {
+	if ab == nil {
 		return nil, nil
 	}
 
-	if b.PCMFormat() == nil {
+	if ab.PCMFormat() == nil {
 		return nil, errors.New("Format for Buffer is not defined")
 	}
 
-	numChannels := b.PCMFormat().NumChannels
-	s := phono.Buffer(make([][]float64, numChannels))
-	bufferLen := numChannels * b.NumFrames()
+	numChannels := ab.PCMFormat().NumChannels
+	b := phono.EmptyBuffer(phono.NumChannels(numChannels), phono.BufferSize(ab.NumFrames()))
 
-	switch b.(type) {
+	switch ab.(type) {
 	case *audio.IntBuffer:
-		ib := b.(*audio.IntBuffer)
-		for i := range s {
-			s[i] = make([]float64, 0, b.NumFrames())
-			for j := i; j < bufferLen; j = j + numChannels {
-				s[i] = append(s[i], float64(ib.Data[j])/0x8000)
-			}
-		}
-		return s, nil
+		ib := ab.(*audio.IntBuffer)
+		b.ReadInts(ib.Data)
+		return b, nil
 	default:
-		return nil, fmt.Errorf("Conversion to [][]float64 from %T is not defined", b)
+		return nil, fmt.Errorf("Conversion to [][]float64 from %T is not defined", ab)
 	}
 }
 
 // AsBuffer converts from [][]float64 to audio.Buffer.
-func AsBuffer(b audio.Buffer, s phono.Buffer) error {
-	if b == nil || s == nil {
+func AsBuffer(b phono.Buffer, ab audio.Buffer) error {
+	if ab == nil || b == nil {
 		return nil
 	}
 
-	numChannels := len(s)
-	bufferLen := numChannels * len(s[0])
-	switch b.(type) {
+	switch ab.(type) {
 	case *audio.IntBuffer:
-		ib := b.(*audio.IntBuffer)
-		ib.Data = make([]int, bufferLen)
-		for i := range s[0] {
-			for j := range s {
-				ib.Data[i*numChannels+j] = int(s[j][i] * 0x7fff)
-			}
-		}
+		ib := ab.(*audio.IntBuffer)
+		ib.Data = b.Ints()
 		return nil
 	default:
-		return fmt.Errorf("Conversion to %T from [][]float64 is not defined", b)
+		return fmt.Errorf("Conversion to %T from [][]float64 is not defined", ab)
 	}
 }
