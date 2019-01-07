@@ -9,8 +9,8 @@ require (
 	github.com/rs/xid v1.2.1
 	github.com/sirupsen/logrus v1.3.0
 	github.com/stretchr/testify v1.3.0
-	github.com/viert/lame v0.0.0-20180516103454-0fb1f9d59ac3
+	github.com/viert/lame v0.0.0-20190107091753-60caf1e722fd
 	go.uber.org/goleak v0.10.0
 	golang.org/x/crypto v0.0.0-20190103213133-ff983b9c42bc // indirect
-	golang.org/x/sys v0.0.0-20190105165716-badf5585203e // indirect
+	golang.org/x/sys v0.0.0-20190107070147-cb59ee366067 // indirect
 )
