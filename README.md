@@ -12,12 +12,12 @@
 
 ## Getting started
 
-Find examples in [phono/example](https://github.com/dudk/phono/blob/master/example) package:
+Find examples in [phono/_example](https://github.com/dudk/phono/blob/master/_example) package:
 
-* Read wav file and play it with portaudio [link](https://github.com/dudk/phono/blob/master/example/example1.go)
-* Read wav file, process it with vst2 plugin and save to another wav file [link](https://github.com/dudk/phono/blob/master/example/example2.go)
-* Read two wav files, mix them and save result into new wav file [link](https://github.com/dudk/phono/blob/master/example/example3.go)
-* Read wav file, sample it, compose track, save result into wav file [link](https://github.com/dudk/phono/blob/master/example/example4.go)
+* Read wav file and play it with portaudio [link](https://github.com/dudk/phono/blob/master/_example/example1.go)
+* Read wav file, process it with vst2 plugin and save to another wav file [link](https://github.com/dudk/phono/blob/master/_example/example2.go)
+* Read two wav files, mix them and save result into new wav file [link](https://github.com/dudk/phono/blob/master/_example/example3.go)
+* Read wav file, sample it, compose track, save result into wav file [link](https://github.com/dudk/phono/blob/master/_example/example4.go)
 
 ## Implemented packages
 
