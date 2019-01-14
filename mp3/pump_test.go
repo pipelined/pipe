@@ -3,10 +3,10 @@ package mp3_test
 import (
 	"testing"
 
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/mp3"
-	"github.com/dudk/phono/pipe"
-	"github.com/dudk/phono/test"
+	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/mp3"
+	"github.com/pipelined/phono/pipe"
+	"github.com/pipelined/phono/test"
 	"github.com/stretchr/testify/assert"
 )
 

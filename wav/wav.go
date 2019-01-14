@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 )

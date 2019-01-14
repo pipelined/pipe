@@ -3,7 +3,7 @@ package mock
 import (
 	"time"
 
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 )
 
 // Param types

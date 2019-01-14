@@ -1,11 +1,11 @@
 package example
 
 import (
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/pipe"
-	"github.com/dudk/phono/portaudio"
-	"github.com/dudk/phono/test"
-	"github.com/dudk/phono/wav"
+	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/pipe"
+	"github.com/pipelined/phono/portaudio"
+	"github.com/pipelined/phono/test"
+	"github.com/pipelined/phono/wav"
 )
 
 // Example:

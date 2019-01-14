@@ -3,14 +3,14 @@ package mp3_test
 import (
 	"testing"
 
-	"github.com/dudk/phono/mp3"
-	"github.com/dudk/phono/pipe"
+	"github.com/pipelined/phono/mp3"
+	"github.com/pipelined/phono/pipe"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/test"
-	"github.com/dudk/phono/wav"
+	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/test"
+	"github.com/pipelined/phono/wav"
 )
 
 func TestSink(t *testing.T) {
