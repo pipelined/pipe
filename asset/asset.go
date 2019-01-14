@@ -3,7 +3,7 @@ package asset
 import (
 	"sync"
 
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 )
 
 // Asset is a sink which uses a regular buffer as underlying storage.

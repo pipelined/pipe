@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 
 	"github.com/hajimehoshi/go-mp3"
 )

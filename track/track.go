@@ -1,7 +1,7 @@
 package track
 
 import (
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 )
 
 // Track is a sequence of pipes which are executed one after another.

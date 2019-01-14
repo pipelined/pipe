@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 )
 
 // Metric contains component's Meters.

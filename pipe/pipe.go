@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/log"
+	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/log"
 )
 
 // Message is a main structure for pipe transport
