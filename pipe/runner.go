@@ -3,7 +3,7 @@ package pipe
 import (
 	"time"
 
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 )
 
 // pumpRunner is pump's runner.

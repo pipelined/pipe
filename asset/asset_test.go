@@ -3,10 +3,10 @@ package asset_test
 import (
 	"testing"
 
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/asset"
-	"github.com/dudk/phono/mock"
-	"github.com/dudk/phono/pipe"
+	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/asset"
+	"github.com/pipelined/phono/mock"
+	"github.com/pipelined/phono/pipe"
 	"github.com/stretchr/testify/assert"
 )
 

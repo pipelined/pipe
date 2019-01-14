@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 	"github.com/viert/lame"
 )
 

@@ -7,12 +7,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/mixer"
-	"github.com/dudk/phono/mock"
-	"github.com/dudk/phono/pipe"
-	"github.com/dudk/phono/test"
-	"github.com/dudk/phono/wav"
+	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/mixer"
+	"github.com/pipelined/phono/mock"
+	"github.com/pipelined/phono/pipe"
+	"github.com/pipelined/phono/test"
+	"github.com/pipelined/phono/wav"
 )
 
 var (
