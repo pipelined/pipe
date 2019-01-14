@@ -1,4 +1,4 @@
-module github.com/dudk/phono
+module github.com/pipelined/phono
 
 require (
 	github.com/dudk/vst2 v0.1.2
