@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/mock"
+	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/mock"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -3,8 +3,8 @@ package mixer
 import (
 	"sync/atomic"
 
-	"github.com/dudk/phono"
-	"github.com/dudk/phono/log"
+	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/log"
 )
 
 // Mixer summs up multiple channels of messages into a single channel.

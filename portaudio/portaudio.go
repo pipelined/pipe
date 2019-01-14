@@ -1,7 +1,7 @@
 package portaudio
 
 import (
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 	"github.com/gordonklaus/portaudio"
 )
 

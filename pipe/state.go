@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 )
 
 // state identifies one of the possible states pipe can be in.

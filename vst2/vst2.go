@@ -6,7 +6,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/dudk/phono"
+	"github.com/pipelined/phono"
 	"github.com/dudk/vst2"
 )
 
