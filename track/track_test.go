@@ -19,7 +19,7 @@ import (
 var (
 	bufferSize  = phono.BufferSize(512)
 	sampleRate  = 44100
-	numChannels = phono.NumChannels(1)
+	numChannels = 1
 
 	buffer1 = phono.Buffer([][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}})
 	buffer2 = phono.Buffer([][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}})
@@ -156,8 +156,8 @@ func TestTrackWavSlices(t *testing.T) {
 
 	wavSink, err := wav.NewSink(
 		test.Out.Track,
-		wavPump.WavSampleRate(),
-		wavPump.WavNumChannels(),
+		wavPump.SampleRate(),
+		wavPump.NumChannels(),
 		wavPump.WavBitDepth(),
 		wavPump.WavAudioFormat(),
 	)

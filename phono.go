@@ -77,10 +77,6 @@ type (
 type (
 	// BufferSize represents a buffer size value
 	BufferSize int
-	// NumChannels represents a number of channels
-	NumChannels int
-	// SampleRate represents a sample rate value
-	// SampleRate int
 )
 
 // Metrics types.
@@ -140,11 +136,11 @@ func ReceivedBy(wg *sync.WaitGroup, id string) Param {
 }
 
 // NumChannels returns number of channels in this sample slice
-func (b Buffer) NumChannels() NumChannels {
+func (b Buffer) NumChannels() int {
 	if b == nil {
 		return 0
 	}
-	return NumChannels(len(b))
+	return len(b)
 }
 
 // Size returns number of samples in single block in this sample slice
@@ -242,7 +238,7 @@ func (b Buffer) ReadInts(ints []int) {
 }
 
 // EmptyBuffer returns an empty buffer of specified length
-func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
+func EmptyBuffer(numChannels int, bufferSize BufferSize) Buffer {
 	result := Buffer(make([][]float64, numChannels))
 	for i := range result {
 		result[i] = make([]float64, bufferSize)

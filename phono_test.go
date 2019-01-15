@@ -11,10 +11,10 @@ import (
 
 func TestBuffer(t *testing.T) {
 	var s phono.Buffer
-	assert.Equal(t, phono.NumChannels(0), s.NumChannels())
+	assert.Equal(t, 0, s.NumChannels())
 	assert.Equal(t, phono.BufferSize(0), s.Size())
 	s = [][]float64{[]float64{}}
-	assert.Equal(t, phono.NumChannels(1), s.NumChannels())
+	assert.Equal(t, 1, s.NumChannels())
 	assert.Equal(t, phono.BufferSize(0), s.Size())
 	s[0] = make([]float64, 512)
 	assert.Equal(t, phono.BufferSize(512), s.Size())
@@ -122,9 +122,9 @@ func TestDuration(t *testing.T) {
 
 func TestReadInts(t *testing.T) {
 	tests := []struct {
-		label string
-		ints  []int
-		phono.NumChannels
+		label       string
+		ints        []int
+		NumChannels int
 		phono.BufferSize
 		expected phono.Buffer
 	}{
