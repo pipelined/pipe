@@ -20,7 +20,7 @@ type Pump struct {
 	Limit
 	Value float64
 	phono.BufferSize
-	phono.NumChannels
+	NumChannels int
 }
 
 // Sink mocks up a pipe.Sink interface.
@@ -68,11 +68,11 @@ func (m *Pump) ValueParam(v float64) phono.Param {
 }
 
 // NumChannelsParam pushes new number of channels for pump
-func (m *Pump) NumChannelsParam(nc phono.NumChannels) phono.Param {
+func (m *Pump) NumChannelsParam(numChannels int) phono.Param {
 	return phono.Param{
 		ID: m.ID(),
 		Apply: func() {
-			m.NumChannels = nc
+			m.NumChannels = numChannels
 		},
 	}
 }

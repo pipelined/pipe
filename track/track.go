@@ -7,8 +7,8 @@ import (
 // Track is a sequence of pipes which are executed one after another.
 type Track struct {
 	phono.UID
-	bs phono.BufferSize
-	phono.NumChannels
+	bs          phono.BufferSize
+	numChannels int
 
 	start   *clip
 	end     *clip
@@ -38,12 +38,12 @@ func (c *clip) End() int64 {
 }
 
 // New creates a new track in a session.
-func New(bs phono.BufferSize, nc phono.NumChannels) (t *Track) {
+func New(bs phono.BufferSize, numChannels int) (t *Track) {
 	t = &Track{
 		UID:         phono.NewUID(),
 		nextIndex:   0,
 		bs:          bs,
-		NumChannels: nc,
+		numChannels: numChannels,
 	}
 	return
 }
@@ -87,14 +87,14 @@ func (t *Track) bufferAt(index int64) (result phono.Buffer) {
 	for t.bs > result.Size() {
 		// if current clip starts after frame then append empty buffer
 		if t.current == nil || t.current.At >= bufferEnd {
-			result = result.Append(phono.EmptyBuffer(t.NumChannels, t.bs-result.Size()))
+			result = result.Append(phono.EmptyBuffer(t.numChannels, t.bs-result.Size()))
 		} else {
 			// if clip starts in current frame
 			if t.current.At >= index {
 				// calculate offset buffer size
 				// offset buffer is needed to align a clip start within a buffer
 				offsetBufSize := phono.BufferSize(t.current.At - index)
-				result = result.Append(phono.EmptyBuffer(t.NumChannels, offsetBufSize))
+				result = result.Append(phono.EmptyBuffer(t.numChannels, offsetBufSize))
 				if bufferEnd >= t.current.End() {
 					buf = t.current.Slice(t.current.Start, t.current.Len)
 				} else {

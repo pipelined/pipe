@@ -82,6 +82,6 @@ func (p *Pump) SampleRate() int {
 
 // NumChannels returns number of channels.
 // NOTE: current decoder always provides stereo, so return constant.
-func (p *Pump) NumChannels() phono.NumChannels {
+func (p *Pump) NumChannels() int {
 	return 2
 }

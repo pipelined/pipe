@@ -17,7 +17,7 @@ import (
 
 var (
 	bufferSize  = phono.BufferSize(10)
-	numChannels = phono.NumChannels(1)
+	numChannels = 1
 	tests       = []struct {
 		mock.Limit
 		value1   float64
@@ -126,11 +126,11 @@ func TestWavMixer(t *testing.T) {
 
 	p1, _ := wav.NewPump(test.Data.Wav1, bs)
 	p2, _ := wav.NewPump(test.Data.Wav2, bs)
-	sampleRate := p1.WavSampleRate()
+	sampleRate := p1.SampleRate()
 
-	s, _ := wav.NewSink(test.Out.Mixer, p1.WavSampleRate(), p1.WavNumChannels(), p1.WavBitDepth(), p1.WavAudioFormat())
+	s, _ := wav.NewSink(test.Out.Mixer, p1.SampleRate(), p1.NumChannels(), p1.WavBitDepth(), p1.WavAudioFormat())
 
-	m := mixer.New(bs, p1.WavNumChannels())
+	m := mixer.New(bs, p1.NumChannels())
 
 	track1, err := pipe.New(
 		sampleRate,

@@ -14,7 +14,7 @@ import (
 var (
 	tests = []struct {
 		phono.BufferSize
-		phono.NumChannels
+		NumChannels int
 		mock.Limit
 		value    float64
 		messages int64
