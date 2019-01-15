@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	bufferSize                  = 512
-	sampleRate phono.SampleRate = 44100
+	bufferSize = 512
+	sampleRate = 44100
 )
 
 var measureTests = struct {

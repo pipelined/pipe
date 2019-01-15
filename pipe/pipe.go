@@ -28,7 +28,7 @@ type params map[string][]phono.ParamFunc
 type Pipe struct {
 	phono.UID
 	name       string
-	sampleRate phono.SampleRate
+	sampleRate int
 
 	pump       *pumpRunner
 	processors []*processRunner
@@ -59,7 +59,7 @@ var ErrComponentNoID = errors.New("component have no ID value")
 
 // New creates a new pipe and applies provided options.
 // Returned pipe is in Ready state.
-func New(sampleRate phono.SampleRate, options ...Option) (*Pipe, error) {
+func New(sampleRate int, options ...Option) (*Pipe, error) {
 	p := &Pipe{
 		UID:        phono.NewUID(),
 		sampleRate: sampleRate,

@@ -45,7 +45,7 @@ func TestPipe(t *testing.T) {
 			BufferSize: bufferSize,
 		}
 		processor := &mock.Processor{UID: phono.NewUID()}
-		sampleRate := phono.SampleRate(44100)
+		sampleRate := 44100
 		sink := asset.New()
 		p, err := pipe.New(
 			sampleRate,

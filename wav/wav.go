@@ -6,9 +6,9 @@ import (
 	"os"
 	"sync"
 
-	"github.com/pipelined/phono"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
+	"github.com/pipelined/phono"
 )
 
 type (
@@ -19,7 +19,7 @@ type (
 
 		// properties of decoded wav.
 		wavNumChannels phono.NumChannels
-		wavSampleRate  phono.SampleRate
+		wavSampleRate  int
 		wavBitDepth    int
 		wavAudioFormat int
 		wavFormat      *audio.Format
@@ -33,7 +33,7 @@ type (
 	// Sink sink saves audio to wav file.
 	Sink struct {
 		phono.UID
-		wavSampleRate  phono.SampleRate
+		wavSampleRate  int
 		wavNumChannels phono.NumChannels
 		wavBitDepth    int
 		wavAudioFormat int
@@ -71,7 +71,7 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 		decoder:        decoder,
 		bufferSize:     bufferSize,
 		wavNumChannels: phono.NumChannels(decoder.Format().NumChannels),
-		wavSampleRate:  phono.SampleRate(decoder.SampleRate),
+		wavSampleRate:  int(decoder.SampleRate),
 		wavBitDepth:    int(decoder.BitDepth),
 		wavAudioFormat: int(decoder.WavAudioFormat),
 		wavFormat:      decoder.Format(),
@@ -120,7 +120,7 @@ func (p *Pump) Pump(string) (phono.PumpFunc, error) {
 }
 
 // WavSampleRate returns wav's sample rate.
-func (p *Pump) WavSampleRate() phono.SampleRate {
+func (p *Pump) WavSampleRate() int {
 	return p.wavSampleRate
 }
 
@@ -140,7 +140,7 @@ func (p *Pump) WavAudioFormat() int {
 }
 
 // NewSink creates new wav sink.
-func NewSink(path string, wavSampleRate phono.SampleRate, wavNumChannels phono.NumChannels, bitDepth int, wavAudioFormat int) (*Sink, error) {
+func NewSink(path string, wavSampleRate int, wavNumChannels phono.NumChannels, bitDepth int, wavAudioFormat int) (*Sink, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, err
