@@ -36,7 +36,7 @@ var (
 		},
 	}
 	bufferSize = phono.BufferSize(10)
-	sampleRate = phono.SampleRate(10)
+	sampleRate = 10
 )
 
 func TestPipe(t *testing.T) {

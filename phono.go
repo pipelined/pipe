@@ -80,7 +80,7 @@ type (
 	// NumChannels represents a number of channels
 	NumChannels int
 	// SampleRate represents a sample rate value
-	SampleRate int
+	// SampleRate int
 )
 
 // Metrics types.
@@ -251,6 +251,6 @@ func EmptyBuffer(numChannels NumChannels, bufferSize BufferSize) Buffer {
 }
 
 // DurationOf returns time duration of passed samples for this sample rate.
-func (s SampleRate) DurationOf(v int64) time.Duration {
-	return time.Duration(float64(v) / float64(s) * float64(time.Second))
+func DurationOf(sampleRate int, samples int64) time.Duration {
+	return time.Duration(float64(samples) / float64(sampleRate) * float64(time.Second))
 }

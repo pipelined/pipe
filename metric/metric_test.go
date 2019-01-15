@@ -85,7 +85,7 @@ func TestInvalidCounter(t *testing.T) {
 }
 
 func TestPipe(t *testing.T) {
-	sampleRate := phono.SampleRate(44100)
+	sampleRate := 44100
 	pump := &mock.Pump{
 		UID:         phono.NewUID(),
 		Limit:       5,

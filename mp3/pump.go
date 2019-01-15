@@ -73,11 +73,11 @@ func (p *Pump) Flush(string) error {
 }
 
 // SampleRate returns sample rate of decoded file.
-func (p *Pump) SampleRate() phono.SampleRate {
+func (p *Pump) SampleRate() int {
 	if p == nil || p.d == nil {
 		return 0
 	}
-	return phono.SampleRate(p.d.SampleRate())
+	return p.d.SampleRate()
 }
 
 // NumChannels returns number of channels.

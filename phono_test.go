@@ -79,9 +79,9 @@ func TestSliceBuffer(t *testing.T) {
 }
 
 func TestSampleRate(t *testing.T) {
-	sampleRate := phono.SampleRate(44100)
+	sampleRate := 44100
 	expected := 500 * time.Millisecond
-	result := sampleRate.DurationOf(22050)
+	result := phono.DurationOf(sampleRate, 22050)
 	assert.Equal(t, expected, result)
 }
 
@@ -95,7 +95,7 @@ func TestSingleUse(t *testing.T) {
 
 func TestDuration(t *testing.T) {
 	var tests = []struct {
-		sampleRate phono.SampleRate
+		sampleRate int
 		samples    int64
 		expected   time.Duration
 	}{
@@ -116,7 +116,7 @@ func TestDuration(t *testing.T) {
 		},
 	}
 	for _, c := range tests {
-		assert.Equal(t, c.expected, c.sampleRate.DurationOf(c.samples))
+		assert.Equal(t, c.expected, phono.DurationOf(c.sampleRate, c.samples))
 	}
 }
 

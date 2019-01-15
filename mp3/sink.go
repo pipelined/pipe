@@ -19,7 +19,7 @@ type Sink struct {
 }
 
 // NewSink creates new Sink.
-func NewSink(path string, sampleRate phono.SampleRate, numChannels phono.NumChannels, bitRate int, quality int) (*Sink, error) {
+func NewSink(path string, sampleRate int, numChannels phono.NumChannels, bitRate int, quality int) (*Sink, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, err

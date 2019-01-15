@@ -58,7 +58,7 @@ func TestMixer(t *testing.T) {
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
 	}
-	sampleRate := phono.SampleRate(44100)
+	sampleRate := 44100
 	mix := mixer.New(bufferSize, numChannels)
 	sink := &mock.Sink{UID: phono.NewUID()}
 	playback, err := pipe.New(
@@ -178,7 +178,7 @@ func TestMixerInterruptSink(t *testing.T) {
 		NumChannels: numChannels,
 		Interval: 	 100,
 	}
-	sampleRate := phono.SampleRate(44100)
+	sampleRate := 44100
 	mix := mixer.New(bufferSize, numChannels)
 	sink := &mock.Sink{UID: phono.NewUID()}
 	playback, err := pipe.New(
@@ -215,7 +215,7 @@ func TestMixerInterruptPump(t *testing.T) {
 		NumChannels: numChannels,
 		Interval: 	 100,
 	}
-	sampleRate := phono.SampleRate(44100)
+	sampleRate := 44100
 	mix := mixer.New(bufferSize, numChannels)
 	sink := &mock.Sink{UID: phono.NewUID()}
 	playback, err := pipe.New(

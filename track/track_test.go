@@ -18,7 +18,7 @@ import (
 
 var (
 	bufferSize  = phono.BufferSize(512)
-	sampleRate  = phono.SampleRate(44100)
+	sampleRate  = 44100
 	numChannels = phono.NumChannels(1)
 
 	buffer1 = phono.Buffer([][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}})

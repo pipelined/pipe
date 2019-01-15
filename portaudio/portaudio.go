@@ -1,8 +1,8 @@
 package portaudio
 
 import (
-	"github.com/pipelined/phono"
 	"github.com/gordonklaus/portaudio"
+	"github.com/pipelined/phono"
 )
 
 type (
@@ -11,14 +11,14 @@ type (
 		phono.UID
 		buf    []float32
 		stream *portaudio.Stream
-		sr     phono.SampleRate
+		sr     int
 		bs     phono.BufferSize
 		nc     phono.NumChannels
 	}
 )
 
 // NewSink returns new initialized sink which allows to play pipe.
-func NewSink(bs phono.BufferSize, sr phono.SampleRate, nc phono.NumChannels) *Sink {
+func NewSink(bs phono.BufferSize, sr int, nc phono.NumChannels) *Sink {
 	return &Sink{
 		UID: phono.NewUID(),
 		bs:  bs,
