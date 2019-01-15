@@ -7,7 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/pipelined/phono"
-	"github.com/dudk/vst2"
+	"github.com/pipelined/vst2"
 )
 
 // Processor represents vst2 sound processor

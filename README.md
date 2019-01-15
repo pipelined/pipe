@@ -34,7 +34,7 @@ Please, note that since `phono` is in active development stage, all packages are
 
 `phono/vst2` and `portaudio` packages do have external non-go dependencies. To use these packages, please check the documentation:
 
-* [vst2](https://github.com/dudk/vst2#dependencies)
+* [vst2](https://github.com/pipelined/vst2#dependencies)
 * [portaudio](https://github.com/gordonklaus/portaudio#portaudio)
 
 ## Testing
