@@ -7,7 +7,7 @@ import (
 	"github.com/pipelined/phono/test"
 	"github.com/pipelined/phono/vst2"
 	"github.com/pipelined/phono/wav"
-	vst2sdk "github.com/dudk/vst2"
+	vst2sdk "github.com/pipelined/vst2"
 )
 
 // Example:
