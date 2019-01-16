@@ -22,10 +22,10 @@ const (
 
 var tests = []struct {
 	BufferSize int
-	inFile   string
-	outFile  string
-	messages int
-	samples  int
+	inFile     string
+	outFile    string
+	messages   int
+	samples    int
 }{
 	{
 		BufferSize: bufferSize,
@@ -48,7 +48,7 @@ func TestWavPipe(t *testing.T) {
 		pump, err := wav.NewPump(test.inFile, bufferSize)
 		assert.Nil(t, err)
 		sampleRate := pump.SampleRate()
-		sink, err := wav.NewSink(test.outFile, pump.SampleRate(), pump.NumChannels(), pump.WavBitDepth(), pump.WavAudioFormat())
+		sink, err := wav.NewSink(test.outFile, pump.SampleRate(), pump.NumChannels(), pump.BitDepth(), pump.Format())
 		assert.Nil(t, err)
 
 		processor := &mock.Processor{UID: phono.NewUID()}
