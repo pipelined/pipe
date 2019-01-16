@@ -12,25 +12,25 @@ import (
 func TestBuffer(t *testing.T) {
 	var s phono.Buffer
 	assert.Equal(t, 0, s.NumChannels())
-	assert.Equal(t, phono.BufferSize(0), s.Size())
+	assert.Equal(t, 0, s.Size())
 	s = [][]float64{[]float64{}}
 	assert.Equal(t, 1, s.NumChannels())
-	assert.Equal(t, phono.BufferSize(0), s.Size())
+	assert.Equal(t, 0, s.Size())
 	s[0] = make([]float64, 512)
-	assert.Equal(t, phono.BufferSize(512), s.Size())
+	assert.Equal(t, 512, s.Size())
 
 	s2 := [][]float64{make([]float64, 512)}
 	s = s.Append(s2)
-	assert.Equal(t, phono.BufferSize(1024), s.Size())
+	assert.Equal(t, 1024, s.Size())
 	s2[0] = make([]float64, 1024)
 	s = s.Append(s2)
-	assert.Equal(t, phono.BufferSize(2048), s.Size())
+	assert.Equal(t, 2048, s.Size())
 }
 
 func TestSliceBuffer(t *testing.T) {
 	var sliceTests = []struct {
 		in       phono.Buffer
-		start    int64
+		start    int
 		len      int
 		expected phono.Buffer
 	}{
@@ -125,8 +125,8 @@ func TestReadInts(t *testing.T) {
 		label       string
 		ints        []int
 		NumChannels int
-		phono.BufferSize
-		expected phono.Buffer
+		BufferSize  int
+		expected    phono.Buffer
 	}{
 		{
 			label:       "Simple case",

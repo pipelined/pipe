@@ -20,7 +20,7 @@ const (
 var measureTests = struct {
 	interval time.Duration
 	mock.Limit
-	phono.BufferSize
+	BufferSize  int
 	NumChannels int
 }{
 	interval:    10 * time.Millisecond,

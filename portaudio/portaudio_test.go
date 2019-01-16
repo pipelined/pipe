@@ -8,14 +8,13 @@ import (
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/test"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/portaudio"
 	"github.com/pipelined/phono/wav"
 	"github.com/stretchr/testify/assert"
 )
 
 var (
-	bufferSize = phono.BufferSize(512)
+	bufferSize = 512
 )
 
 func TestSink(t *testing.T) {

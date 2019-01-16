@@ -13,12 +13,12 @@ import (
 
 var (
 	tests = []struct {
-		phono.BufferSize
+		BufferSize  int
 		NumChannels int
 		mock.Limit
 		value    float64
-		messages int64
-		samples  int64
+		messages int
+		samples  int
 	}{
 		{
 			NumChannels: 1,
@@ -35,7 +35,7 @@ var (
 			samples:     1000,
 		},
 	}
-	bufferSize = phono.BufferSize(10)
+	bufferSize = 10
 	sampleRate = 10
 )
 
@@ -78,7 +78,7 @@ func TestPipe(t *testing.T) {
 		assert.Equal(t, test.samples, samplesCount)
 
 		assert.Equal(t, test.NumChannels, sink.Buffer.NumChannels())
-		assert.Equal(t, phono.BufferSize(test.samples), sink.Buffer.Size())
+		assert.Equal(t, test.samples, sink.Buffer.Size())
 	}
 }
 

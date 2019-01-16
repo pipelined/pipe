@@ -1,7 +1,6 @@
 package example
 
 import (
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/portaudio"
 	"github.com/pipelined/phono/test"
@@ -12,7 +11,7 @@ import (
 //		Read .wav file
 //		Play it with portaudio
 func one() {
-	bufferSize := phono.BufferSize(512)
+	bufferSize := 512
 	// wav pump
 	wavPump, err := wav.NewPump(
 		test.Data.Wav1,
@@ -20,21 +19,22 @@ func one() {
 	)
 	check(err)
 	// take wav's sample rate as base
-	sampleRate := wavPump.WavSampleRate()
+	sampleRate := wavPump.SampleRate()
 
 	// portaudio sink
 	paSink := portaudio.NewSink(
 		bufferSize,
-		wavPump.WavSampleRate(),
-		wavPump.WavNumChannels(),
+		wavPump.SampleRate(),
+		wavPump.NumChannels(),
 	)
 
 	// build pipe
-	p := pipe.New(
+	p, err := pipe.New(
 		sampleRate,
 		pipe.WithPump(wavPump),
 		pipe.WithSinks(paSink),
 	)
+	check(err)
 	defer p.Close()
 
 	// run pipe

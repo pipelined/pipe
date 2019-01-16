@@ -43,14 +43,12 @@ type (
 	// Buffer represent a sample data sliced per channel
 	Buffer [][]float64
 
-	// Clip represents a segment of buffer
-	// Start is a start position of segment
-	// Len is a length of segment
+	// Clip represents a segment of buffer.
 	//
-	// Clip is not a copy of a buffer
+	// Clip is not a copy of a buffer.
 	Clip struct {
 		Buffer
-		Start int64
+		Start int
 		Len   int
 	}
 )
@@ -75,8 +73,8 @@ type (
 
 // Generic types
 type (
-	// BufferSize represents a buffer size value
-	BufferSize int
+// BufferSize represents a buffer size value
+// BufferSize int
 )
 
 // Metrics types.
@@ -144,11 +142,11 @@ func (b Buffer) NumChannels() int {
 }
 
 // Size returns number of samples in single block in this sample slice
-func (b Buffer) Size() BufferSize {
+func (b Buffer) Size() int {
 	if b.NumChannels() == 0 {
 		return 0
 	}
-	return BufferSize(len((b)[0]))
+	return len(b[0])
 }
 
 // Append buffers set to existing one one
@@ -172,11 +170,11 @@ func (b Buffer) Append(source Buffer) Buffer {
 // if start >= buffer size, nil is returned
 // if start + len >= buffer size, len is decreased till the end of slice
 // if start < 0, nil is returned
-func (b Buffer) Slice(start int64, len int) Buffer {
-	if b == nil || BufferSize(start) >= b.Size() || start < 0 {
+func (b Buffer) Slice(start int, len int) Buffer {
+	if b == nil || start >= b.Size() || start < 0 {
 		return nil
 	}
-	end := BufferSize(start + int64(len))
+	end := start + len
 	result := Buffer(make([][]float64, b.NumChannels()))
 	for i := range b {
 		if end > b.Size() {
@@ -187,16 +185,16 @@ func (b Buffer) Slice(start int64, len int) Buffer {
 	return result
 }
 
-// Clip creates a new clip from asset with defined start and length
+// Clip creates a new clip from buffer with defined start and length.
 //
 // if start >= buffer size, nil is returned
 // if start + len >= buffer size, len is decreased till the end of slice
 // if start < 0, nil is returned
-func (b Buffer) Clip(start int64, len int) Clip {
-	if b == nil || BufferSize(start) >= b.Size() || start < 0 {
+func (b Buffer) Clip(start int, len int) Clip {
+	if b == nil || start >= b.Size() || start < 0 {
 		return Clip{}
 	}
-	end := BufferSize(start + int64(len))
+	end := start + len
 	if end >= b.Size() {
 		len = int(b.Size()) - int(start)
 	}
@@ -238,7 +236,7 @@ func (b Buffer) ReadInts(ints []int) {
 }
 
 // EmptyBuffer returns an empty buffer of specified length
-func EmptyBuffer(numChannels int, bufferSize BufferSize) Buffer {
+func EmptyBuffer(numChannels int, bufferSize int) Buffer {
 	result := Buffer(make([][]float64, numChannels))
 	for i := range result {
 		result[i] = make([]float64, bufferSize)

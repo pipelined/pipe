@@ -18,8 +18,8 @@ type Pump struct {
 	counter
 	Interval time.Duration
 	Limit
-	Value float64
-	phono.BufferSize
+	Value       float64
+	BufferSize  int
 	NumChannels int
 }
 
@@ -141,22 +141,22 @@ func (c *counter) reset() {
 // counter counts messages and samples.
 // Duration is not zero only in context of measure.
 type counter struct {
-	messages int64
-	samples  int64
+	messages int
+	samples  int
 }
 
 // Advance counter's metrics.
 func (c *counter) Advance(buf phono.Buffer) {
 	c.messages++
-	c.samples = c.samples + int64(buf.Size())
+	c.samples = c.samples + buf.Size()
 }
 
 // Count returns messages and samples metrics.
-func (c *counter) Count() (int64, int64) {
+func (c *counter) Count() (int, int) {
 	return c.messages, c.samples
 }
 
 // Messages returns messages metrics.
-func (c *counter) Messages() int64 {
+func (c *counter) Messages() int {
 	return c.messages
 }
