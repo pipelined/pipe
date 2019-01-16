@@ -12,16 +12,16 @@ type (
 		buf         []float32
 		stream      *portaudio.Stream
 		sampleRate  int
-		bs          phono.BufferSize
+		bufferSize  int
 		numChannels int
 	}
 )
 
 // NewSink returns new initialized sink which allows to play pipe.
-func NewSink(bs phono.BufferSize, sampleRate int, numChannels int) *Sink {
+func NewSink(bufferSize int, sampleRate int, numChannels int) *Sink {
 	return &Sink{
 		UID:         phono.NewUID(),
-		bs:          bs,
+		bufferSize:  bufferSize,
 		sampleRate:  sampleRate,
 		numChannels: numChannels,
 	}
@@ -30,12 +30,12 @@ func NewSink(bs phono.BufferSize, sampleRate int, numChannels int) *Sink {
 // Sink writes the buffer of data to portaudio stream.
 // It aslo initilizes a portaudio api with default stream.
 func (s *Sink) Sink(string) (phono.SinkFunc, error) {
-	s.buf = make([]float32, int(s.bs)*s.numChannels)
+	s.buf = make([]float32, s.bufferSize*s.numChannels)
 	err := portaudio.Initialize()
 	if err != nil {
 		return nil, err
 	}
-	s.stream, err = portaudio.OpenDefaultStream(0, s.numChannels, float64(s.sampleRate), int(s.bs), &s.buf)
+	s.stream, err = portaudio.OpenDefaultStream(0, s.numChannels, float64(s.sampleRate), s.bufferSize, &s.buf)
 	if err != nil {
 		return nil, err
 	}

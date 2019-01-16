@@ -15,12 +15,12 @@ type Pump struct {
 	phono.UID
 	f          *os.File
 	d          *mp3.Decoder
-	bufferSize phono.BufferSize
+	bufferSize int
 	done       bool
 }
 
 // NewPump creates new mp3 Pump.
-func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
+func NewPump(path string, bufferSize int) (*Pump, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (p *Pump) Pump(string) (phono.PumpFunc, error) {
 		if len(ints)%2 == 1 {
 			ints = append(ints, 0)
 		}
-		b := phono.EmptyBuffer(2, phono.BufferSize(len(ints)))
+		b := phono.EmptyBuffer(2, len(ints))
 		b.ReadInts(ints)
 		return b, nil
 	}, nil

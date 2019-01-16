@@ -15,7 +15,7 @@ type (
 	// Pump reads from wav file.
 	Pump struct {
 		phono.UID
-		bufferSize phono.BufferSize
+		bufferSize int
 
 		// properties of decoded wav.
 		numChannels    int
@@ -53,7 +53,7 @@ var (
 )
 
 // NewPump creates a new wav pump and sets wav props.
-func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
+func NewPump(path string, bufferSize int) (*Pump, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -195,7 +195,7 @@ func AsSamples(ab audio.Buffer) (phono.Buffer, error) {
 		return nil, errors.New("Format for Buffer is not defined")
 	}
 
-	b := phono.EmptyBuffer(ab.PCMFormat().NumChannels, phono.BufferSize(ab.NumFrames()))
+	b := phono.EmptyBuffer(ab.PCMFormat().NumChannels, ab.NumFrames())
 
 	switch ab.(type) {
 	case *audio.IntBuffer:

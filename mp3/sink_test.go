@@ -8,13 +8,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/test"
 	"github.com/pipelined/phono/wav"
 )
 
 func TestSink(t *testing.T) {
-	bufferSize := phono.BufferSize(512)
+	bufferSize := 512
 	pump, err := wav.NewPump(test.Data.Wav1, bufferSize)
 	assert.Nil(t, err)
 	sampleRate := pump.SampleRate()

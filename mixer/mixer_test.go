@@ -16,15 +16,15 @@ import (
 )
 
 var (
-	bufferSize  = phono.BufferSize(10)
+	bufferSize  = 10
 	numChannels = 1
 	tests       = []struct {
 		mock.Limit
 		value1   float64
 		value2   float64
 		sum      float64
-		messages int64
-		samples  int64
+		messages int
+		samples  int
 	}{
 		{
 			Limit:    3,
@@ -122,7 +122,7 @@ func TestMixer(t *testing.T) {
 }
 
 func TestWavMixer(t *testing.T) {
-	bs := phono.BufferSize(512)
+	bs := 512
 
 	p1, _ := wav.NewPump(test.Data.Wav1, bs)
 	p2, _ := wav.NewPump(test.Data.Wav2, bs)

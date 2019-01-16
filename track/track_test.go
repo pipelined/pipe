@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	bufferSize  = phono.BufferSize(512)
+	bufferSize  = 512
 	sampleRate  = 44100
 	numChannels = 1
 
@@ -25,9 +25,9 @@ var (
 	buffer2 = phono.Buffer([][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}})
 
 	overlapTests = []struct {
-		phono.BufferSize
+		BufferSize int
 		clips   []phono.Clip
-		clipsAt []int64
+		clipsAt []int
 		result  []float64
 		msg     string
 	}{
@@ -37,7 +37,7 @@ var (
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
-			clipsAt: []int64{3, 4},
+			clipsAt: []int{3, 4},
 			result:  []float64{0, 0, 0, 1, 2, 2, 2, 0},
 			msg:     "Sequence",
 		},
@@ -47,7 +47,7 @@ var (
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
-			clipsAt: []int64{3, 4},
+			clipsAt: []int{3, 4},
 			result:  []float64{0, 0, 0, 1, 2, 2, 2, 0, 0},
 			msg:     "Sequence increased bufferSize",
 		},
@@ -57,7 +57,7 @@ var (
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
-			clipsAt: []int64{2, 3},
+			clipsAt: []int{2, 3},
 			result:  []float64{0, 0, 1, 2, 2, 2},
 			msg:     "Sequence shifted left",
 		},
@@ -67,7 +67,7 @@ var (
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
-			clipsAt: []int64{2, 4},
+			clipsAt: []int{2, 4},
 			result:  []float64{0, 0, 1, 0, 2, 2, 2, 0},
 			msg:     "Sequence with interval",
 		},
@@ -76,7 +76,7 @@ var (
 				buffer1.Clip(3, 3),
 				buffer2.Clip(5, 2),
 			},
-			clipsAt: []int64{3, 2},
+			clipsAt: []int{3, 2},
 			result:  []float64{0, 0, 2, 2, 1, 1},
 			msg:     "Overlap previous",
 		},
@@ -85,7 +85,7 @@ var (
 				buffer1.Clip(3, 3),
 				buffer2.Clip(5, 2),
 			},
-			clipsAt: []int64{2, 4},
+			clipsAt: []int{2, 4},
 			result:  []float64{0, 0, 1, 1, 2, 2},
 			msg:     "Overlap next",
 		},
@@ -94,7 +94,7 @@ var (
 				buffer1.Clip(3, 5),
 				buffer2.Clip(5, 2),
 			},
-			clipsAt: []int64{2, 4},
+			clipsAt: []int{2, 4},
 			result:  []float64{0, 0, 1, 1, 2, 2, 1, 0},
 			msg:     "Overlap single in the middle",
 		},
@@ -104,7 +104,7 @@ var (
 				buffer1.Clip(3, 2),
 				buffer2.Clip(5, 2),
 			},
-			clipsAt: []int64{2, 5, 4},
+			clipsAt: []int{2, 5, 4},
 			result:  []float64{0, 0, 1, 1, 2, 2, 1, 0},
 			msg:     "Overlap two in the middle",
 		},
@@ -114,7 +114,7 @@ var (
 				buffer1.Clip(5, 2),
 				buffer2.Clip(3, 2),
 			},
-			clipsAt: []int64{2, 5, 3},
+			clipsAt: []int{2, 5, 3},
 			result:  []float64{0, 0, 1, 2, 2, 1, 1, 0},
 			msg:     "Overlap two in the middle shifted",
 		},
@@ -123,7 +123,7 @@ var (
 				buffer1.Clip(3, 2),
 				buffer2.Clip(3, 5),
 			},
-			clipsAt: []int64{2, 2},
+			clipsAt: []int{2, 2},
 			result:  []float64{0, 0, 2, 2, 2, 2, 2, 0},
 			msg:     "Overlap single completely",
 		},
@@ -133,7 +133,7 @@ var (
 				buffer1.Clip(5, 2),
 				buffer2.Clip(1, 8),
 			},
-			clipsAt: []int64{2, 5, 1},
+			clipsAt: []int{2, 5, 1},
 			result:  []float64{0, 2, 2, 2, 2, 2, 2, 2, 2, 0},
 			msg:     "Overlap two completely",
 		},
@@ -178,7 +178,7 @@ func TestTrackWavSlices(t *testing.T) {
 
 func TestSliceOverlaps(t *testing.T) {
 	sink := &mock.Sink{UID: phono.NewUID()}
-	bufferSize := phono.BufferSize(2)
+	bufferSize := 2
 	track := track.New(bufferSize, buffer1.NumChannels())
 	for _, test := range overlapTests {
 		fmt.Printf("Starting: %v\n", test.msg)

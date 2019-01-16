@@ -3,7 +3,6 @@ package mp3_test
 import (
 	"testing"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/mp3"
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/test"
@@ -11,7 +10,7 @@ import (
 )
 
 func TestPump(t *testing.T) {
-	bufferSize := phono.BufferSize(512)
+	bufferSize := 512
 	pump, err := mp3.NewPump(test.Data.Mp3, bufferSize)
 	assert.Nil(t, err)
 	sampleRate := pump.SampleRate()
