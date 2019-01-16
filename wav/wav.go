@@ -18,14 +18,13 @@ type (
 		bufferSize int
 
 		// properties of decoded wav.
-		numChannels    int
-		sampleRate     int
-		wavBitDepth    int
-		wavAudioFormat int
-		wavFormat      *audio.Format
-		file           *os.File
-		decoder        *wav.Decoder
-		ib             *audio.IntBuffer
+		numChannels int
+		sampleRate  int
+		bitDepth    int
+		format      int
+		file        *os.File
+		decoder     *wav.Decoder
+		ib          *audio.IntBuffer
 		// Once for single-use.
 		once sync.Once
 	}
@@ -33,13 +32,13 @@ type (
 	// Sink sink saves audio to wav file.
 	Sink struct {
 		phono.UID
-		sampleRate     int
-		numChannels    int
-		wavBitDepth    int
-		wavAudioFormat int
-		file           *os.File
-		encoder        *wav.Encoder
-		ib             *audio.IntBuffer
+		sampleRate  int
+		numChannels int
+		bitDepth    int
+		format      int
+		file        *os.File
+		encoder     *wav.Encoder
+		ib          *audio.IntBuffer
 	}
 )
 
@@ -57,15 +56,14 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 	}
 
 	return &Pump{
-		UID:            phono.NewUID(),
-		file:           file,
-		decoder:        decoder,
-		bufferSize:     bufferSize,
-		numChannels:    decoder.Format().NumChannels,
-		sampleRate:     int(decoder.SampleRate),
-		wavBitDepth:    int(decoder.BitDepth),
-		wavAudioFormat: int(decoder.WavAudioFormat),
-		wavFormat:      decoder.Format(),
+		UID:         phono.NewUID(),
+		file:        file,
+		decoder:     decoder,
+		bufferSize:  bufferSize,
+		numChannels: decoder.Format().NumChannels,
+		sampleRate:  int(decoder.SampleRate),
+		bitDepth:    int(decoder.BitDepth),
+		format:      int(decoder.WavAudioFormat),
 		ib: &audio.IntBuffer{
 			Format:         decoder.Format(),
 			Data:           make([]int, int(bufferSize)*decoder.Format().NumChannels),
@@ -120,33 +118,33 @@ func (p *Pump) NumChannels() int {
 	return p.numChannels
 }
 
-// WavBitDepth returns wav's bit depth.
-func (p *Pump) WavBitDepth() int {
-	return p.wavBitDepth
+// BitDepth returns wav's bit depth.
+func (p *Pump) BitDepth() int {
+	return p.bitDepth
 }
 
-// WavAudioFormat returns wav's audio format.
-func (p *Pump) WavAudioFormat() int {
-	return p.wavAudioFormat
+// Format returns wav's value from format chunk.
+func (p *Pump) Format() int {
+	return p.format
 }
 
 // NewSink creates new wav sink.
-func NewSink(path string, sampleRate int, numChannels int, bitDepth int, wavAudioFormat int) (*Sink, error) {
+func NewSink(path string, sampleRate int, numChannels int, bitDepth int, format int) (*Sink, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, err
 	}
 
-	e := wav.NewEncoder(f, sampleRate, bitDepth, numChannels, wavAudioFormat)
+	e := wav.NewEncoder(f, sampleRate, bitDepth, numChannels, format)
 
 	return &Sink{
-		UID:            phono.NewUID(),
-		file:           f,
-		encoder:        e,
-		sampleRate:     sampleRate,
-		numChannels:    numChannels,
-		wavBitDepth:    bitDepth,
-		wavAudioFormat: wavAudioFormat,
+		UID:         phono.NewUID(),
+		file:        f,
+		encoder:     e,
+		sampleRate:  sampleRate,
+		numChannels: numChannels,
+		bitDepth:    bitDepth,
+		format:      format,
 		ib: &audio.IntBuffer{
 			Format: &audio.Format{
 				NumChannels: numChannels,
