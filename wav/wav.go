@@ -43,15 +43,6 @@ type (
 	}
 )
 
-var (
-	// ErrBufferSizeNotDefined is used when buffer size is not defined.
-	ErrBufferSizeNotDefined = errors.New("Buffer size is not defined")
-	// ErrSampleRateNotDefined is used when buffer size is not defined.
-	ErrSampleRateNotDefined = errors.New("Sample rate is not defined")
-	// ErrNumChannelsNotDefined is used when number of channels is not defined.
-	ErrNumChannelsNotDefined = errors.New("Number of channels is not defined")
-)
-
 // NewPump creates a new wav pump and sets wav props.
 func NewPump(path string, bufferSize int) (*Pump, error) {
 	file, err := os.Open(path)
