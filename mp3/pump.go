@@ -43,7 +43,7 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 func (p *Pump) Pump(string) (phono.PumpFunc, error) {
 	return func() (phono.Buffer, error) {
 		if p.done {
-			return nil, phono.ErrEOP
+			return nil, io.EOF
 		}
 
 		ints := make([]int, 0, int(p.bufferSize)*2)
