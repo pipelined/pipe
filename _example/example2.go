@@ -38,8 +38,8 @@ func two() {
 		test.Out.Example2,
 		wavPump.SampleRate(),
 		wavPump.NumChannels(),
-		wavPump.WavBitDepth(),
-		wavPump.WavAudioFormat(),
+		wavPump.BitDepth(),
+		wavPump.Format(),
 	)
 	check(err)
 	p, err := pipe.New(

@@ -158,8 +158,8 @@ func TestTrackWavSlices(t *testing.T) {
 		test.Out.Track,
 		wavPump.SampleRate(),
 		wavPump.NumChannels(),
-		wavPump.WavBitDepth(),
-		wavPump.WavAudioFormat(),
+		wavPump.BitDepth(),
+		wavPump.Format(),
 	)
 	track := track.New(bufferSize, asset.NumChannels())
 
