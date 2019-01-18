@@ -7,67 +7,67 @@ import (
 // Track is a sequence of pipes which are executed one after another.
 type Track struct {
 	phono.UID
-	bs phono.BufferSize
-	phono.NumChannels
+	bufferSize  int
+	numChannels int
 
 	start   *clip
 	end     *clip
 	current *clip
 
 	// newIndex is a channel to receive new index
-	newIndex chan int64
+	newIndex chan int
 	// last sent index
-	nextIndex int64
+	nextIndex int
 }
 
 // Clip is a phono.Clip in track.
 // It uses double-linked list structure.
 type clip struct {
-	At int64
+	At int
 	phono.Clip
 	Next *clip
 	Prev *clip
 }
 
 // End returns an end index of Clip.
-func (c *clip) End() int64 {
+func (c *clip) End() int {
 	if c == nil {
 		return -1
 	}
-	return c.At + int64(c.Len)
+	return c.At + c.Len
 }
 
 // New creates a new track in a session.
-func New(bs phono.BufferSize, nc phono.NumChannels) (t *Track) {
+func New(bufferSize int, numChannels int) (t *Track) {
 	t = &Track{
 		UID:         phono.NewUID(),
 		nextIndex:   0,
-		bs:          bs,
-		NumChannels: nc,
+		bufferSize:  bufferSize,
+		numChannels: numChannels,
 	}
 	return
 }
 
 // BufferSizeParam pushes new limit value for pump.
-func (t *Track) BufferSizeParam(bs phono.BufferSize) phono.Param {
+func (t *Track) BufferSizeParam(bufferSize int) phono.Param {
 	return phono.Param{
 		ID: t.ID(),
 		Apply: func() {
-			t.bs = bs
+			t.bufferSize = bufferSize
 		},
 	}
 }
 
 // Pump implements track pump with a sequence of not overlapped clips.
 func (t *Track) Pump(string) (phono.PumpFunc, error) {
-	t.newIndex = make(chan int64)
+	t.newIndex = make(chan int)
 	t.nextIndex = 0
 	return func() (phono.Buffer, error) {
 		if t.nextIndex >= t.clipsEnd() {
 			return nil, phono.ErrEOP
 		}
 		b := t.bufferAt(t.nextIndex)
-		t.nextIndex += int64(t.bs)
+		t.nextIndex += t.bufferSize
 		return b, nil
 	}, nil
 }
@@ -78,37 +78,37 @@ func (t *Track) Reset() {
 	t.end = nil
 }
 
-func (t *Track) bufferAt(index int64) (result phono.Buffer) {
+func (t *Track) bufferAt(index int) (result phono.Buffer) {
 	if t.current == nil {
 		t.current = t.clipAfter(index)
 	}
 	var buf phono.Buffer
-	bufferEnd := index + int64(t.bs)
-	for t.bs > result.Size() {
+	bufferEnd := index + t.bufferSize
+	for t.bufferSize > result.Size() {
 		// if current clip starts after frame then append empty buffer
 		if t.current == nil || t.current.At >= bufferEnd {
-			result = result.Append(phono.EmptyBuffer(t.NumChannels, t.bs-result.Size()))
+			result = result.Append(phono.EmptyBuffer(t.numChannels, t.bufferSize-result.Size()))
 		} else {
 			// if clip starts in current frame
 			if t.current.At >= index {
 				// calculate offset buffer size
 				// offset buffer is needed to align a clip start within a buffer
-				offsetBufSize := phono.BufferSize(t.current.At - index)
-				result = result.Append(phono.EmptyBuffer(t.NumChannels, offsetBufSize))
+				offsetBufSize := t.current.At - index
+				result = result.Append(phono.EmptyBuffer(t.numChannels, offsetBufSize))
 				if bufferEnd >= t.current.End() {
 					buf = t.current.Slice(t.current.Start, t.current.Len)
 				} else {
-					buf = t.current.Slice(t.current.Start, int(t.bs-result.Size()))
+					buf = t.current.Slice(t.current.Start, t.bufferSize-result.Size())
 				}
 			} else {
-				start := index - t.current.At + int64(t.current.Start)
+				start := index - t.current.At + t.current.Start
 				if bufferEnd >= t.current.End() {
-					buf = t.current.Slice(start, int(t.current.End()-index))
+					buf = t.current.Slice(start, t.current.End()-index)
 				} else {
-					buf = t.current.Slice(start, int(t.bs))
+					buf = t.current.Slice(start, t.bufferSize)
 				}
 			}
-			index += int64(buf.Size())
+			index += buf.Size()
 			result = result.Append(buf)
 			if index >= t.current.End() {
 				t.current = t.current.Next
@@ -120,7 +120,7 @@ func (t *Track) bufferAt(index int64) (result phono.Buffer) {
 
 // clipAfter searches for a first clip after passed index.
 // returns start position of clip and index in clip.
-func (t *Track) clipAfter(index int64) *clip {
+func (t *Track) clipAfter(index int) *clip {
 	slice := t.start
 	for slice != nil {
 		if slice.At >= index {
@@ -132,15 +132,15 @@ func (t *Track) clipAfter(index int64) *clip {
 }
 
 // clipsEnd returns index of last value of last clip.
-func (t *Track) clipsEnd() int64 {
+func (t *Track) clipsEnd() int {
 	if t.end == nil {
 		return -1
 	}
-	return t.end.At + int64(t.end.Len)
+	return t.end.At + t.end.Len
 }
 
 // AddClip assigns a frame to a track.
-func (t *Track) AddClip(at int64, f phono.Clip) {
+func (t *Track) AddClip(at int, f phono.Clip) {
 	t.current = nil
 	c := &clip{
 		At:   at,
@@ -184,13 +184,13 @@ func (t *Track) alignNextClip(c *clip) {
 	if next == nil {
 		return
 	}
-	overlap := int(c.At-next.At) + c.Len
+	overlap := c.At - next.At + c.Len
 	if overlap > 0 {
 		if next.Len > overlap {
 			// shorten next
-			next.Start = next.Start + int64(overlap)
-			next.Len = next.Len - int(overlap)
-			next.At = next.At + int64(overlap)
+			next.Start = next.Start + overlap
+			next.Len = next.Len - overlap
+			next.At = next.At + overlap
 		} else {
 			// remove next
 			c.Next = next.Next
@@ -209,12 +209,12 @@ func (t *Track) alignPrevClip(c *clip) {
 	if prev == nil {
 		return
 	}
-	overlap := int(prev.At-c.At) + prev.Len
+	overlap := prev.At - c.At + prev.Len
 	if overlap > 0 {
-		prev.Len = prev.Len - int(overlap)
-		if int(overlap) > c.Len {
-			at := c.At + int64(c.Len)
-			start := int64(overlap+c.Len) + c.At - prev.At
+		prev.Len = prev.Len - overlap
+		if overlap > c.Len {
+			at := c.At + c.Len
+			start := overlap + c.Len + c.At - prev.At
 			len := overlap - c.Len
 			t.AddClip(at, prev.Buffer.Clip(start, len))
 		}

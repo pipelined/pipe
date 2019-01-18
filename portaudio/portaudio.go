@@ -1,41 +1,41 @@
 package portaudio
 
 import (
-	"github.com/pipelined/phono"
 	"github.com/gordonklaus/portaudio"
+	"github.com/pipelined/phono"
 )
 
 type (
 	// Sink represets portaudio sink which allows to play audio using default device.
 	Sink struct {
 		phono.UID
-		buf    []float32
-		stream *portaudio.Stream
-		sr     phono.SampleRate
-		bs     phono.BufferSize
-		nc     phono.NumChannels
+		buf         []float32
+		stream      *portaudio.Stream
+		sampleRate  int
+		bufferSize  int
+		numChannels int
 	}
 )
 
 // NewSink returns new initialized sink which allows to play pipe.
-func NewSink(bs phono.BufferSize, sr phono.SampleRate, nc phono.NumChannels) *Sink {
+func NewSink(bufferSize int, sampleRate int, numChannels int) *Sink {
 	return &Sink{
-		UID: phono.NewUID(),
-		bs:  bs,
-		sr:  sr,
-		nc:  nc,
+		UID:         phono.NewUID(),
+		bufferSize:  bufferSize,
+		sampleRate:  sampleRate,
+		numChannels: numChannels,
 	}
 }
 
 // Sink writes the buffer of data to portaudio stream.
 // It aslo initilizes a portaudio api with default stream.
 func (s *Sink) Sink(string) (phono.SinkFunc, error) {
-	s.buf = make([]float32, int(s.bs)*int(s.nc))
+	s.buf = make([]float32, s.bufferSize*s.numChannels)
 	err := portaudio.Initialize()
 	if err != nil {
 		return nil, err
 	}
-	s.stream, err = portaudio.OpenDefaultStream(0, int(s.nc), float64(s.sr), int(s.bs), &s.buf)
+	s.stream, err = portaudio.OpenDefaultStream(0, s.numChannels, float64(s.sampleRate), s.bufferSize, &s.buf)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (s *Sink) Sink(string) (phono.SinkFunc, error) {
 	return func(b phono.Buffer) error {
 		for i := range b[0] {
 			for j := range b {
-				s.buf[i*int(s.nc)+j] = float32(b[j][i])
+				s.buf[i*s.numChannels+j] = float32(b[j][i])
 			}
 		}
 		return s.stream.Write()

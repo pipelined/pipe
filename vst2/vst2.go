@@ -15,9 +15,9 @@ type Processor struct {
 	phono.UID
 	plugin *vst2.Plugin
 
-	bufferSize    phono.BufferSize
-	numChannels   phono.NumChannels
-	sampleRate    phono.SampleRate
+	bufferSize    int
+	numChannels   int
+	sampleRate    int
 	tempo         float32
 	timeSignature vst2.TimeSignature
 
@@ -25,7 +25,7 @@ type Processor struct {
 }
 
 // NewProcessor creates new vst2 processor.
-func NewProcessor(plugin *vst2.Plugin, bufferSize phono.BufferSize, sampleRate phono.SampleRate, numChannels phono.NumChannels) *Processor {
+func NewProcessor(plugin *vst2.Plugin, bufferSize int, sampleRate int, numChannels int) *Processor {
 	return &Processor{
 		UID:             phono.NewUID(),
 		plugin:          plugin,

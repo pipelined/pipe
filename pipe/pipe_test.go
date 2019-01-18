@@ -13,15 +13,15 @@ import (
 )
 
 const (
-	bufferSize                  = 512
-	sampleRate phono.SampleRate = 44100
+	bufferSize = 512
+	sampleRate = 44100
 )
 
 var measureTests = struct {
 	interval time.Duration
 	mock.Limit
-	phono.BufferSize
-	phono.NumChannels
+	BufferSize  int
+	NumChannels int
 }{
 	interval:    10 * time.Millisecond,
 	Limit:       10,

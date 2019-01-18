@@ -11,26 +11,26 @@ import (
 
 func TestBuffer(t *testing.T) {
 	var s phono.Buffer
-	assert.Equal(t, phono.NumChannels(0), s.NumChannels())
-	assert.Equal(t, phono.BufferSize(0), s.Size())
+	assert.Equal(t, 0, s.NumChannels())
+	assert.Equal(t, 0, s.Size())
 	s = [][]float64{[]float64{}}
-	assert.Equal(t, phono.NumChannels(1), s.NumChannels())
-	assert.Equal(t, phono.BufferSize(0), s.Size())
+	assert.Equal(t, 1, s.NumChannels())
+	assert.Equal(t, 0, s.Size())
 	s[0] = make([]float64, 512)
-	assert.Equal(t, phono.BufferSize(512), s.Size())
+	assert.Equal(t, 512, s.Size())
 
 	s2 := [][]float64{make([]float64, 512)}
 	s = s.Append(s2)
-	assert.Equal(t, phono.BufferSize(1024), s.Size())
+	assert.Equal(t, 1024, s.Size())
 	s2[0] = make([]float64, 1024)
 	s = s.Append(s2)
-	assert.Equal(t, phono.BufferSize(2048), s.Size())
+	assert.Equal(t, 2048, s.Size())
 }
 
 func TestSliceBuffer(t *testing.T) {
 	var sliceTests = []struct {
 		in       phono.Buffer
-		start    int64
+		start    int
 		len      int
 		expected phono.Buffer
 	}{
@@ -79,9 +79,9 @@ func TestSliceBuffer(t *testing.T) {
 }
 
 func TestSampleRate(t *testing.T) {
-	sampleRate := phono.SampleRate(44100)
+	sampleRate := 44100
 	expected := 500 * time.Millisecond
-	result := sampleRate.DurationOf(22050)
+	result := phono.DurationOf(sampleRate, 22050)
 	assert.Equal(t, expected, result)
 }
 
@@ -95,7 +95,7 @@ func TestSingleUse(t *testing.T) {
 
 func TestDuration(t *testing.T) {
 	var tests = []struct {
-		sampleRate phono.SampleRate
+		sampleRate int
 		samples    int64
 		expected   time.Duration
 	}{
@@ -116,17 +116,17 @@ func TestDuration(t *testing.T) {
 		},
 	}
 	for _, c := range tests {
-		assert.Equal(t, c.expected, c.sampleRate.DurationOf(c.samples))
+		assert.Equal(t, c.expected, phono.DurationOf(c.sampleRate, c.samples))
 	}
 }
 
 func TestReadInts(t *testing.T) {
 	tests := []struct {
-		label string
-		ints  []int
-		phono.NumChannels
-		phono.BufferSize
-		expected phono.Buffer
+		label       string
+		ints        []int
+		NumChannels int
+		BufferSize  int
+		expected    phono.Buffer
 	}{
 		{
 			label:       "Simple case",

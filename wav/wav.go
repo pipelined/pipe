@@ -6,26 +6,25 @@ import (
 	"os"
 	"sync"
 
-	"github.com/pipelined/phono"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
+	"github.com/pipelined/phono"
 )
 
 type (
 	// Pump reads from wav file.
 	Pump struct {
 		phono.UID
-		bufferSize phono.BufferSize
+		bufferSize int
 
 		// properties of decoded wav.
-		wavNumChannels phono.NumChannels
-		wavSampleRate  phono.SampleRate
-		wavBitDepth    int
-		wavAudioFormat int
-		wavFormat      *audio.Format
-		file           *os.File
-		decoder        *wav.Decoder
-		ib             *audio.IntBuffer
+		numChannels int
+		sampleRate  int
+		bitDepth    int
+		format      int
+		file        *os.File
+		decoder     *wav.Decoder
+		ib          *audio.IntBuffer
 		// Once for single-use.
 		once sync.Once
 	}
@@ -33,27 +32,18 @@ type (
 	// Sink sink saves audio to wav file.
 	Sink struct {
 		phono.UID
-		wavSampleRate  phono.SampleRate
-		wavNumChannels phono.NumChannels
-		wavBitDepth    int
-		wavAudioFormat int
-		file           *os.File
-		encoder        *wav.Encoder
-		ib             *audio.IntBuffer
+		sampleRate  int
+		numChannels int
+		bitDepth    int
+		format      int
+		file        *os.File
+		encoder     *wav.Encoder
+		ib          *audio.IntBuffer
 	}
 )
 
-var (
-	// ErrBufferSizeNotDefined is used when buffer size is not defined.
-	ErrBufferSizeNotDefined = errors.New("Buffer size is not defined")
-	// ErrSampleRateNotDefined is used when buffer size is not defined.
-	ErrSampleRateNotDefined = errors.New("Sample rate is not defined")
-	// ErrNumChannelsNotDefined is used when number of channels is not defined.
-	ErrNumChannelsNotDefined = errors.New("Number of channels is not defined")
-)
-
 // NewPump creates a new wav pump and sets wav props.
-func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
+func NewPump(path string, bufferSize int) (*Pump, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -66,15 +56,14 @@ func NewPump(path string, bufferSize phono.BufferSize) (*Pump, error) {
 	}
 
 	return &Pump{
-		UID:            phono.NewUID(),
-		file:           file,
-		decoder:        decoder,
-		bufferSize:     bufferSize,
-		wavNumChannels: phono.NumChannels(decoder.Format().NumChannels),
-		wavSampleRate:  phono.SampleRate(decoder.SampleRate),
-		wavBitDepth:    int(decoder.BitDepth),
-		wavAudioFormat: int(decoder.WavAudioFormat),
-		wavFormat:      decoder.Format(),
+		UID:         phono.NewUID(),
+		file:        file,
+		decoder:     decoder,
+		bufferSize:  bufferSize,
+		numChannels: decoder.Format().NumChannels,
+		sampleRate:  int(decoder.SampleRate),
+		bitDepth:    int(decoder.BitDepth),
+		format:      int(decoder.WavAudioFormat),
 		ib: &audio.IntBuffer{
 			Format:         decoder.Format(),
 			Data:           make([]int, int(bufferSize)*decoder.Format().NumChannels),
@@ -119,47 +108,47 @@ func (p *Pump) Pump(string) (phono.PumpFunc, error) {
 	}, nil
 }
 
-// WavSampleRate returns wav's sample rate.
-func (p *Pump) WavSampleRate() phono.SampleRate {
-	return p.wavSampleRate
+// SampleRate returns wav's sample rate.
+func (p *Pump) SampleRate() int {
+	return p.sampleRate
 }
 
-// WavNumChannels returns wav's number of channels.
-func (p *Pump) WavNumChannels() phono.NumChannels {
-	return p.wavNumChannels
+// NumChannels returns wav's number of channels.
+func (p *Pump) NumChannels() int {
+	return p.numChannels
 }
 
-// WavBitDepth returns wav's bit depth.
-func (p *Pump) WavBitDepth() int {
-	return p.wavBitDepth
+// BitDepth returns wav's bit depth.
+func (p *Pump) BitDepth() int {
+	return p.bitDepth
 }
 
-// WavAudioFormat returns wav's audio format.
-func (p *Pump) WavAudioFormat() int {
-	return p.wavAudioFormat
+// Format returns wav's value from format chunk.
+func (p *Pump) Format() int {
+	return p.format
 }
 
 // NewSink creates new wav sink.
-func NewSink(path string, wavSampleRate phono.SampleRate, wavNumChannels phono.NumChannels, bitDepth int, wavAudioFormat int) (*Sink, error) {
+func NewSink(path string, sampleRate int, numChannels int, bitDepth int, format int) (*Sink, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, err
 	}
 
-	e := wav.NewEncoder(f, int(wavSampleRate), bitDepth, int(wavNumChannels), wavAudioFormat)
+	e := wav.NewEncoder(f, sampleRate, bitDepth, numChannels, format)
 
 	return &Sink{
-		UID:            phono.NewUID(),
-		file:           f,
-		encoder:        e,
-		wavSampleRate:  wavSampleRate,
-		wavNumChannels: wavNumChannels,
-		wavBitDepth:    bitDepth,
-		wavAudioFormat: wavAudioFormat,
+		UID:         phono.NewUID(),
+		file:        f,
+		encoder:     e,
+		sampleRate:  sampleRate,
+		numChannels: numChannels,
+		bitDepth:    bitDepth,
+		format:      format,
 		ib: &audio.IntBuffer{
 			Format: &audio.Format{
-				NumChannels: int(wavNumChannels),
-				SampleRate:  int(wavSampleRate),
+				NumChannels: numChannels,
+				SampleRate:  sampleRate,
 			},
 			SourceBitDepth: bitDepth},
 	}, nil
@@ -195,8 +184,7 @@ func AsSamples(ab audio.Buffer) (phono.Buffer, error) {
 		return nil, errors.New("Format for Buffer is not defined")
 	}
 
-	numChannels := ab.PCMFormat().NumChannels
-	b := phono.EmptyBuffer(phono.NumChannels(numChannels), phono.BufferSize(ab.NumFrames()))
+	b := phono.EmptyBuffer(ab.PCMFormat().NumChannels, ab.NumFrames())
 
 	switch ab.(type) {
 	case *audio.IntBuffer:
