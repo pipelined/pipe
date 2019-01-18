@@ -23,7 +23,6 @@ type Processor interface {
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
 	ID() string
-	// RunSink(sourceID string) SinkRunner
 	Sink(string) (SinkFunc, error)
 }
 
@@ -69,12 +68,6 @@ type (
 		At     int64         // sample position of this param.
 		AtTime time.Duration // time position of this param.
 	}
-)
-
-// Generic types
-type (
-// BufferSize represents a buffer size value
-// BufferSize int
 )
 
 // Metrics types.
