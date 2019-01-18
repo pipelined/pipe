@@ -70,8 +70,8 @@ func five() {
 		test.Out.Example5,
 		wavPump1.SampleRate(),
 		wavPump1.NumChannels(),
-		wavPump1.WavBitDepth(),
-		wavPump1.WavAudioFormat(),
+		wavPump1.BitDepth(),
+		wavPump1.Format(),
 	)
 	check(err)
 

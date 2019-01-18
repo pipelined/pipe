@@ -50,8 +50,8 @@ func four() {
 		test.Out.Example4,
 		wavPump.SampleRate(),
 		wavPump.NumChannels(),
-		wavPump.WavBitDepth(),
-		wavPump.WavAudioFormat(),
+		wavPump.BitDepth(),
+		wavPump.Format(),
 	)
 	// portaudio sink
 	paSink := portaudio.NewSink(

@@ -128,7 +128,7 @@ func TestWavMixer(t *testing.T) {
 	p2, _ := wav.NewPump(test.Data.Wav2, bs)
 	sampleRate := p1.SampleRate()
 
-	s, _ := wav.NewSink(test.Out.Mixer, p1.SampleRate(), p1.NumChannels(), p1.WavBitDepth(), p1.WavAudioFormat())
+	s, _ := wav.NewSink(test.Out.Mixer, p1.SampleRate(), p1.NumChannels(), p1.BitDepth(), p1.Format())
 
 	m := mixer.New(bs, p1.NumChannels())
 
