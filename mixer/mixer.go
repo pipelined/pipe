@@ -11,8 +11,8 @@ import (
 type Mixer struct {
 	phono.UID
 	log.Logger
-	numChannels phono.NumChannels
-	bufferSize  phono.BufferSize
+	numChannels int
+	bufferSize  int
 	out         chan *frame       // channel to send frames ready for mix
 	in          chan *inMessage   // channel to send incoming messages
 	frames      map[string]*frame // frames sinking data
@@ -36,7 +36,7 @@ type frame struct {
 }
 
 // sum returns mixed samplein.
-func (f *frame) sum(numChannels phono.NumChannels, bufferSize phono.BufferSize) phono.Buffer {
+func (f *frame) sum(numChannels int, bufferSize int) phono.Buffer {
 	var sum float64
 	var frames float64
 	result := phono.Buffer(make([][]float64, numChannels))
@@ -62,13 +62,13 @@ const (
 )
 
 // New returns new mixer.
-func New(bs phono.BufferSize, nc phono.NumChannels) *Mixer {
+func New(bufferSize int, numChannels int) *Mixer {
 	m := &Mixer{
 		UID:         phono.NewUID(),
 		Logger:      log.GetLogger(),
 		frames:      make(map[string]*frame),
-		numChannels: nc,
-		bufferSize:  bs,
+		numChannels: numChannels,
+		bufferSize:  bufferSize,
 		in:          make(chan *inMessage, 1),
 		register:    make(chan string, maxInputs),
 		cancel:      make(chan struct{}),

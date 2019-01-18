@@ -21,24 +21,24 @@ const (
 )
 
 var tests = []struct {
-	phono.BufferSize
-	inFile   string
-	outFile  string
-	messages int64
-	samples  int64
+	BufferSize int
+	inFile     string
+	outFile    string
+	messages   int
+	samples    int
 }{
 	{
 		BufferSize: bufferSize,
 		inFile:     test.Data.Wav1,
 		outFile:    test.Out.Wav1,
-		messages:   int64(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
+		messages:   int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
 		samples:    test.Data.Wav1Samples,
 	},
 	{
 		BufferSize: bufferSize,
 		inFile:     test.Out.Wav1,
 		outFile:    test.Out.Wav2,
-		messages:   int64(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
+		messages:   int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
 		samples:    test.Data.Wav1Samples,
 	},
 }
@@ -47,8 +47,8 @@ func TestWavPipe(t *testing.T) {
 	for _, test := range tests {
 		pump, err := wav.NewPump(test.inFile, bufferSize)
 		assert.Nil(t, err)
-		sampleRate := pump.WavSampleRate()
-		sink, err := wav.NewSink(test.outFile, pump.WavSampleRate(), pump.WavNumChannels(), pump.WavBitDepth(), pump.WavAudioFormat())
+		sampleRate := pump.SampleRate()
+		sink, err := wav.NewSink(test.outFile, pump.SampleRate(), pump.NumChannels(), pump.BitDepth(), pump.Format())
 		assert.Nil(t, err)
 
 		processor := &mock.Processor{UID: phono.NewUID()}
@@ -80,8 +80,8 @@ func TestIntBufferToSamples(t *testing.T) {
 	}
 	samples, err := wav.AsSamples(buf)
 	assert.Nil(t, err)
-	assert.Equal(t, phono.NumChannels(2), samples.NumChannels())
-	assert.Equal(t, phono.BufferSize(8), samples.Size())
+	assert.Equal(t, 2, samples.NumChannels())
+	assert.Equal(t, 8, samples.Size())
 	for _, v := range (samples)[0] {
 		assert.Equal(t, float64(1)/0x8000, v)
 	}
