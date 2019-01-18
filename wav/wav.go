@@ -3,6 +3,7 @@ package wav
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 
@@ -95,7 +96,7 @@ func (p *Pump) Pump(string) (phono.PumpFunc, error) {
 		}
 
 		if readSamples == 0 {
-			return nil, phono.ErrEOP
+			return nil, io.EOF
 		}
 		// prune buffer to actual size
 		p.ib.Data = p.ib.Data[:readSamples]

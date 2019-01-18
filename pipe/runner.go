@@ -1,6 +1,7 @@
 package pipe
 
 import (
+	"io"
 	"time"
 
 	"github.com/pipelined/phono"
@@ -208,7 +209,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			m.applyTo(r.ID())      // apply params
 			m.Buffer, err = r.fn() // pump new buffer
 			if err != nil {
-				if err == phono.ErrEOP {
+				if err == io.EOF {
 					call(r.flush, sourceID, errc) // flush hook
 				} else {
 					errc <- err
