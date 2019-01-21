@@ -4,6 +4,7 @@ import (
 	"go.uber.org/goleak"
 	"fmt"
 	"testing"
+	"io"
 
 	"github.com/stretchr/testify/assert"
 
@@ -240,7 +241,7 @@ func TestMixerInterruptPump(t *testing.T) {
 	err = pipe.Wait(playback.Close())
 	assert.Nil(t, err)
 	err = pipe.Wait(trackRun)
-	assert.Equal(t, phono.ErrInterrupted, err)
+	assert.Equal(t, io.ErrClosedPipe, err)
 	err = pipe.Wait(track.Close())
 	assert.Nil(t, err)
 	

@@ -100,8 +100,6 @@ func SingleUse(once *sync.Once) (err error) {
 var (
 	// ErrSingleUseReused is returned when object designed for single-use is being reused.
 	ErrSingleUseReused = errors.New("Error reuse single-use object")
-	// ErrInterrupted is returned when pipe's execution was interrupted due to error.
-	ErrInterrupted = errors.New("Pipe execution interrupted")
 )
 
 // NewUID returns new UID value.
