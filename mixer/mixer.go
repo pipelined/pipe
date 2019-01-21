@@ -85,7 +85,7 @@ func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
 		case m.in <- &inMessage{inputID: inputID, Buffer: b}:
 			return nil
 		case <-m.cancel:
-			return phono.ErrInterrupted
+			return io.ErrClosedPipe
 		}
 	}, nil
 }
