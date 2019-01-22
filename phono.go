@@ -8,7 +8,13 @@ import (
 	"github.com/rs/xid"
 )
 
-// Pump is a source of samples
+// Pump is a source of samples. Pump method returns a new buffer with signal data.
+// Implentetions should use next error conventions:
+// 		- nil if a full buffer was read;
+// 		- io.EOF if no data was read;
+// 		- io.ErrUnexpectedEOF if not a full buffer was read.
+// The latest case means that pump executed as expected, but not enough data was available.
+// This incomplete buffer still will be sent further and pump will be finished gracefully.
 type Pump interface {
 	ID() string
 	Pump(string) (PumpFunc, error)
@@ -100,10 +106,6 @@ func SingleUse(once *sync.Once) (err error) {
 var (
 	// ErrSingleUseReused is returned when object designed for single-use is being reused.
 	ErrSingleUseReused = errors.New("Error reuse single-use object")
-	// ErrEOP is returned if pump finished processing and indicates a gracefull ending.
-	ErrEOP = errors.New("End of pipe")
-	// ErrInterrupted is returned when pipe's execution was interrupted due to error.
-	ErrInterrupted = errors.New("Pipe execution interrupted")
 )
 
 // NewUID returns new UID value.
@@ -213,8 +215,23 @@ func (b Buffer) Ints() []int {
 	return ints
 }
 
-// ReadInts converts PCM to float64 buffer.
+// ReadInts converts PCM encoded as ints to float64 buffer.
 func (b Buffer) ReadInts(ints []int) {
+	if b == nil {
+		return
+	}
+	intsLen := len(ints)
+	numChannels := int(b.NumChannels())
+	for i := range b {
+		b[i] = make([]float64, 0, intsLen)
+		for j := i; j < intsLen; j = j + numChannels {
+			b[i] = append(b[i], float64(ints[j])/0x8000)
+		}
+	}
+}
+
+// ReadInts16 converts PCM encoded as ints16 to float64 buffer.
+func (b Buffer) ReadInts16(ints []int16) {
 	if b == nil {
 		return
 	}

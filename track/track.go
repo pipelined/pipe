@@ -1,6 +1,8 @@
 package track
 
 import (
+	"io"
+
 	"github.com/pipelined/phono"
 )
 
@@ -64,7 +66,7 @@ func (t *Track) Pump(string) (phono.PumpFunc, error) {
 	t.nextIndex = 0
 	return func() (phono.Buffer, error) {
 		if t.nextIndex >= t.clipsEnd() {
-			return nil, phono.ErrEOP
+			return nil, io.EOF
 		}
 		b := t.bufferAt(t.nextIndex)
 		t.nextIndex += t.bufferSize

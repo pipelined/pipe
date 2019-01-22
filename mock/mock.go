@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"io"
 	"time"
 
 	"github.com/pipelined/phono"
@@ -81,7 +82,7 @@ func (m *Pump) NumChannelsParam(numChannels int) phono.Param {
 func (m *Pump) Pump(string) (phono.PumpFunc, error) {
 	return func() (phono.Buffer, error) {
 		if Limit(m.Messages()) >= m.Limit {
-			return nil, phono.ErrEOP
+			return nil, io.EOF
 		}
 		time.Sleep(m.Interval)
 
