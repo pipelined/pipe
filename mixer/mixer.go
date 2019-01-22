@@ -1,6 +1,7 @@
 package mixer
 
 import (
+	"io"
 	"sync/atomic"
 
 	"github.com/pipelined/phono"
@@ -84,7 +85,7 @@ func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
 		case m.in <- &inMessage{inputID: inputID, Buffer: b}:
 			return nil
 		case <-m.cancel:
-			return phono.ErrInterrupted
+			return io.ErrClosedPipe
 		}
 	}, nil
 }
@@ -119,7 +120,7 @@ func (m *Mixer) Pump(outputID string) (phono.PumpFunc, error) {
 		// receive new buffer
 		f, ok := <-m.out
 		if !ok {
-			return nil, phono.ErrEOP
+			return nil, io.EOF
 		}
 		return f.sum(m.numChannels, m.bufferSize), nil
 	}, nil

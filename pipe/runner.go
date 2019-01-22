@@ -1,6 +1,7 @@
 package pipe
 
 import (
+	"io"
 	"time"
 
 	"github.com/pipelined/phono"
@@ -188,6 +189,7 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 		var err error
 		var m message
 		meter := newMeter(r.ID(), sampleRate, metric)
+		var done bool // done flag
 		for {
 			// request new message
 			select {
@@ -208,21 +210,28 @@ func (r *pumpRunner) run(cancel chan struct{}, sourceID string, provide chan str
 			m.applyTo(r.ID())      // apply params
 			m.Buffer, err = r.fn() // pump new buffer
 			if err != nil {
-				if err == phono.ErrEOP {
+				switch err {
+				case io.EOF:
 					call(r.flush, sourceID, errc) // flush hook
-				} else {
+					return
+				case io.ErrUnexpectedEOF:
+					call(r.flush, sourceID, errc) // flush hook
+					done = true
+				default:
 					errc <- err
+					return
 				}
-				return
 			}
 
 			meter = meter.sample(int64(m.Buffer.Size())).message()
-
 			m.feedback.applyTo(r.ID()) // apply feedback
 
 			// push message further
 			select {
 			case out <- m:
+				if done {
+					return
+				}
 			case <-cancel:
 				call(r.interrupt, sourceID, errc) // interrupt hook
 				return

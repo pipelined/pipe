@@ -3,6 +3,9 @@ package mp3_test
 import (
 	"testing"
 
+	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/mock"
+
 	"github.com/pipelined/phono/mp3"
 	"github.com/pipelined/phono/pipe"
 
@@ -18,13 +21,16 @@ func TestSink(t *testing.T) {
 	assert.Nil(t, err)
 	sampleRate := pump.SampleRate()
 	sink, err := mp3.NewSink(test.Out.Mp3, pump.SampleRate(), pump.NumChannels(), 192, 2)
+	mockSink := &mock.Sink{UID: phono.NewUID()}
 	assert.Nil(t, err)
 	p, err := pipe.New(
 		sampleRate,
 		pipe.WithPump(pump),
-		pipe.WithSinks(sink),
+		pipe.WithSinks(sink, mockSink),
 	)
 	assert.Nil(t, err)
 	err = pipe.Wait(p.Run())
 	assert.Nil(t, err)
+	_, samples := mockSink.Count()
+	assert.Equal(t, test.Data.Wav1Samples, samples)
 }

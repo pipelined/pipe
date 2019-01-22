@@ -2,7 +2,7 @@ package wav
 
 import (
 	"errors"
-	"fmt"
+	"io"
 	"os"
 	"sync"
 
@@ -95,14 +95,14 @@ func (p *Pump) Pump(string) (phono.PumpFunc, error) {
 		}
 
 		if readSamples == 0 {
-			return nil, phono.ErrEOP
+			return nil, io.EOF
 		}
 		// prune buffer to actual size
 		p.ib.Data = p.ib.Data[:readSamples]
-		// convert buffer to buffer
-		b, err := AsSamples(p.ib)
-		if err != nil {
-			return nil, err
+		b := phono.EmptyBuffer(p.numChannels, p.ib.NumFrames())
+		b.ReadInts(p.ib.Data)
+		if b.Size() != p.bufferSize {
+			return b, io.ErrUnexpectedEOF
 		}
 		return b, nil
 	}, nil
@@ -166,48 +166,7 @@ func (s *Sink) Flush(string) error {
 // Sink returns new Sink function instance.
 func (s *Sink) Sink(string) (phono.SinkFunc, error) {
 	return func(b phono.Buffer) error {
-		err := AsBuffer(b, s.ib)
-		if err != nil {
-			return err
-		}
+		s.ib.Data = b.Ints()
 		return s.encoder.Write(s.ib)
 	}, nil
-}
-
-// AsSamples converts from audio.Buffer to [][]float64 buffer.
-func AsSamples(ab audio.Buffer) (phono.Buffer, error) {
-	if ab == nil {
-		return nil, nil
-	}
-
-	if ab.PCMFormat() == nil {
-		return nil, errors.New("Format for Buffer is not defined")
-	}
-
-	b := phono.EmptyBuffer(ab.PCMFormat().NumChannels, ab.NumFrames())
-
-	switch ab.(type) {
-	case *audio.IntBuffer:
-		ib := ab.(*audio.IntBuffer)
-		b.ReadInts(ib.Data)
-		return b, nil
-	default:
-		return nil, fmt.Errorf("Conversion to [][]float64 from %T is not defined", ab)
-	}
-}
-
-// AsBuffer converts from [][]float64 to audio.Buffer.
-func AsBuffer(b phono.Buffer, ab audio.Buffer) error {
-	if ab == nil || b == nil {
-		return nil
-	}
-
-	switch ab.(type) {
-	case *audio.IntBuffer:
-		ib := ab.(*audio.IntBuffer)
-		ib.Data = b.Ints()
-		return nil
-	default:
-		return fmt.Errorf("Conversion to %T from [][]float64 is not defined", ab)
-	}
 }
