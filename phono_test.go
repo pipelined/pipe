@@ -152,6 +152,38 @@ func TestReadInts(t *testing.T) {
 	}
 }
 
+func TestReadInts16(t *testing.T) {
+	tests := []struct {
+		label       string
+		ints        []int16
+		NumChannels int
+		BufferSize  int
+		expected    phono.Buffer
+	}{
+		{
+			label:       "Simple case",
+			ints:        []int16{1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2},
+			NumChannels: 2,
+			BufferSize:  8,
+			expected: phono.Buffer([][]float64{
+				[]float64{1, 1, 1, 1, 1, 1, 1, 1},
+				[]float64{2, 2, 2, 2, 2, 2, 2, 2},
+			}),
+		},
+	}
+	for _, test := range tests {
+		b := phono.EmptyBuffer(test.NumChannels, test.BufferSize)
+		b.ReadInts16(test.ints)
+		assert.Equal(t, test.expected.NumChannels(), b.NumChannels(), test.label)
+		assert.Equal(t, test.expected.Size(), b.Size(), test.label)
+		for i := range test.expected {
+			for j := range test.expected[i] {
+				assert.Equal(t, test.expected[i][j]/0x8000, b[i][j], test.label)
+			}
+		}
+	}
+}
+
 func TestInts(t *testing.T) {
 	tests := []struct {
 		phono.Buffer
