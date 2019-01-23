@@ -62,18 +62,6 @@ type (
 type (
 	// UID is a string unique identifier
 	UID string
-
-	// ParamFunc represents a function which mutates the pipe element (e.g. Pump, Processor or Sink)
-	ParamFunc func()
-
-	// Param is a structure for delayed parameters apply
-	// used as return type in functions which enable Params support for different packages
-	Param struct {
-		ID     string        // id of mutable object.
-		Apply  ParamFunc     // mutator.
-		At     int64         // sample position of this param.
-		AtTime time.Duration // time position of this param.
-	}
 )
 
 // Metrics types.
@@ -119,12 +107,9 @@ func (id UID) ID() string {
 }
 
 // ReceivedBy returns channel which is closed when param received by identified entity
-func ReceivedBy(wg *sync.WaitGroup, id string) Param {
-	return Param{
-		ID: id,
-		Apply: func() {
-			wg.Done()
-		},
+func ReceivedBy(wg *sync.WaitGroup, id string) func() {
+	return func() {
+		wg.Done()
 	}
 }
 

@@ -282,13 +282,13 @@ func (s activePausing) transition(p *Pipe, e eventMessage) (state, error) {
 func (s activePausing) sendMessage(p *Pipe) state {
 	m := p.newMessage()
 	if len(m.feedback) == 0 {
-		m.feedback = make(map[string][]phono.ParamFunc)
+		m.feedback = make(map[string][]func())
 	}
 	var wg sync.WaitGroup
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
 		param := phono.ReceivedBy(&wg, sink.ID())
-		m.feedback = m.feedback.add(param)
+		m.feedback = m.feedback.add(sink.ID(), param)
 	}
 	p.consume <- m
 	wg.Wait()

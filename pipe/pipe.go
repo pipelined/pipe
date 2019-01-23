@@ -18,7 +18,7 @@ type message struct {
 }
 
 // params represent a set of parameters mapped to ID of their receivers.
-type params map[string][]phono.ParamFunc
+type params map[string][]func()
 
 // Pipe is a pipeline with fully defined sound processing sequence
 // it has:
@@ -66,8 +66,8 @@ func New(sampleRate int, options ...Option) (*Pipe, error) {
 		log:        log.GetLogger(),
 		processors: make([]*processRunner, 0),
 		sinks:      make([]*sinkRunner, 0),
-		params:     make(map[string][]phono.ParamFunc),
-		feedback:   make(map[string][]phono.ParamFunc),
+		params:     make(map[string][]func()),
+		feedback:   make(map[string][]func()),
 		events:     make(chan eventMessage, 1),
 		provide:    make(chan struct{}),
 		consume:    make(chan message),
@@ -153,14 +153,14 @@ func WithSinks(sinks ...phono.Sink) Option {
 
 // Push new params into pipe.
 // Calling this method after pipe is closed causes a panic.
-func (p *Pipe) Push(values ...phono.Param) {
-	if len(values) == 0 {
+func (p *Pipe) Push(componentID string, paramFuncs ...func()) {
+	if len(paramFuncs) == 0 {
 		return
 	}
-	params := params(make(map[string][]phono.ParamFunc))
+	params := params(make(map[string][]func()))
 	p.events <- eventMessage{
 		event:  push,
-		params: params.add(values...),
+		params: params.add(componentID, paramFuncs...),
 	}
 }
 
@@ -258,11 +258,11 @@ func (p *Pipe) newMessage() message {
 	m := message{sourceID: p.ID()}
 	if len(p.params) > 0 {
 		m.params = p.params
-		p.params = make(map[string][]phono.ParamFunc)
+		p.params = make(map[string][]func())
 	}
 	if len(p.feedback) > 0 {
 		m.feedback = p.feedback
-		p.feedback = make(map[string][]phono.ParamFunc)
+		p.feedback = make(map[string][]func())
 	}
 	return m
 }
@@ -291,16 +291,14 @@ func (p *Pipe) String() string {
 }
 
 // add appends a slice of params.
-func (p params) add(params ...phono.Param) params {
-	for _, param := range params {
-		private, ok := p[param.ID]
-		if !ok {
-			private = make([]phono.ParamFunc, 0, len(params))
-		}
-		private = append(private, param.Apply)
-
-		p[param.ID] = private
+func (p params) add(componentID string, paramFuncs ...func()) params {
+	var private []func()
+	if _, ok := p[componentID]; !ok {
+		private = make([]func(), 0, len(paramFuncs))
 	}
+	private = append(private, paramFuncs...)
+
+	p[componentID] = private
 	return p
 }
 
@@ -334,7 +332,7 @@ func (p params) detach(id string) params {
 		return nil
 	}
 	if v, ok := p[id]; ok {
-		d := params(make(map[string][]phono.ParamFunc))
+		d := params(make(map[string][]func()))
 		d[id] = v
 		return d
 	}

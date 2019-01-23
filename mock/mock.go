@@ -39,42 +39,30 @@ type Processor struct {
 }
 
 // IntervalParam pushes new interval value for pump.
-func (m *Pump) IntervalParam(i time.Duration) phono.Param {
-	return phono.Param{
-		ID: m.ID(),
-		Apply: func() {
-			m.Interval = i
-		},
+func (m *Pump) IntervalParam(i time.Duration) func() {
+	return func() {
+		m.Interval = i
 	}
 }
 
 // LimitParam pushes new limit value for pump.
-func (m *Pump) LimitParam(l Limit) phono.Param {
-	return phono.Param{
-		ID: m.ID(),
-		Apply: func() {
-			m.Limit = l
-		},
+func (m *Pump) LimitParam(l Limit) func() {
+	return func() {
+		m.Limit = l
 	}
 }
 
 // ValueParam pushes new signal value for pump.
-func (m *Pump) ValueParam(v float64) phono.Param {
-	return phono.Param{
-		ID: m.ID(),
-		Apply: func() {
-			m.Value = v
-		},
+func (m *Pump) ValueParam(v float64) func() {
+	return func() {
+		m.Value = v
 	}
 }
 
 // NumChannelsParam pushes new number of channels for pump
-func (m *Pump) NumChannelsParam(numChannels int) phono.Param {
-	return phono.Param{
-		ID: m.ID(),
-		Apply: func() {
-			m.NumChannels = numChannels
-		},
+func (m *Pump) NumChannelsParam(numChannels int) func() {
+	return func() {
+		m.NumChannels = numChannels
 	}
 }
 
