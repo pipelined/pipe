@@ -1,10 +1,11 @@
 package mixer_test
 
 import (
-	"go.uber.org/goleak"
 	"fmt"
-	"testing"
 	"io"
+	"testing"
+
+	"go.uber.org/goleak"
 
 	"github.com/stretchr/testify/assert"
 
@@ -85,11 +86,11 @@ func TestMixer(t *testing.T) {
 	assert.Nil(t, err)
 
 	for _, test := range tests {
-		track1.Push(
+		track1.Push(track1.ID(),
 			pump1.LimitParam(test.Limit),
 			pump1.ValueParam(test.value1),
 		)
-		track2.Push(
+		track2.Push(track2.ID(),
 			pump2.LimitParam(test.Limit),
 			pump2.ValueParam(test.value2),
 		)
@@ -177,7 +178,7 @@ func TestMixerInterruptSink(t *testing.T) {
 		Limit:       10,
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
-		Interval: 	 100,
+		Interval:    100,
 	}
 	sampleRate := 44100
 	mix := mixer.New(bufferSize, numChannels)
@@ -214,7 +215,7 @@ func TestMixerInterruptPump(t *testing.T) {
 		Limit:       10,
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
-		Interval: 	 100,
+		Interval:    100,
 	}
 	sampleRate := 44100
 	mix := mixer.New(bufferSize, numChannels)
@@ -244,6 +245,6 @@ func TestMixerInterruptPump(t *testing.T) {
 	assert.Equal(t, io.ErrClosedPipe, err)
 	err = pipe.Wait(track.Close())
 	assert.Nil(t, err)
-	
+
 	goleak.VerifyNoLeaks(t)
 }

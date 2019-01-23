@@ -51,12 +51,9 @@ func New(bufferSize int, numChannels int) (t *Track) {
 }
 
 // BufferSizeParam pushes new limit value for pump.
-func (t *Track) BufferSizeParam(bufferSize int) phono.Param {
-	return phono.Param{
-		ID: t.ID(),
-		Apply: func() {
-			t.bufferSize = bufferSize
-		},
+func (t *Track) BufferSizeParam(bufferSize int) func() {
+	return func() {
+		t.bufferSize = bufferSize
 	}
 }
 

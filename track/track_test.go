@@ -26,10 +26,10 @@ var (
 
 	overlapTests = []struct {
 		BufferSize int
-		clips   []phono.Clip
-		clipsAt []int
-		result  []float64
-		msg     string
+		clips      []phono.Clip
+		clipsAt    []int
+		result     []float64
+		msg        string
 	}{
 		{
 			BufferSize: 2,
@@ -195,7 +195,7 @@ func TestSliceOverlaps(t *testing.T) {
 		)
 		assert.Nil(t, err)
 		if test.BufferSize > 0 {
-			p.Push(track.BufferSizeParam(test.BufferSize))
+			p.Push(track.ID(), track.BufferSizeParam(test.BufferSize))
 		}
 
 		_ = pipe.Wait(p.Run())

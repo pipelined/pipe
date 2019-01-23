@@ -56,6 +56,7 @@ func TestPipe(t *testing.T) {
 		)
 		assert.Nil(t, err)
 		p.Push(
+			pump.ID(),
 			pump.LimitParam(test.Limit),
 			pump.NumChannelsParam(test.NumChannels),
 			pump.ValueParam(test.value),
