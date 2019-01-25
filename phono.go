@@ -4,8 +4,6 @@ import (
 	"errors"
 	"sync"
 	"time"
-
-	"github.com/rs/xid"
 )
 
 // Pump is a source of samples. Pump method returns a new buffer with signal data.
@@ -16,19 +14,16 @@ import (
 // The latest case means that pump executed as expected, but not enough data was available.
 // This incomplete buffer still will be sent further and pump will be finished gracefully.
 type Pump interface {
-	ID() string
 	Pump(string) (PumpFunc, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	ID() string
 	Process(string) (ProcessFunc, error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	ID() string
 	Sink(string) (SinkFunc, error)
 }
 
@@ -56,12 +51,6 @@ type (
 		Start int
 		Len   int
 	}
-)
-
-// Param-related types
-type (
-	// UID is a string unique identifier
-	UID string
 )
 
 // Metrics types.
@@ -95,16 +84,6 @@ var (
 	// ErrSingleUseReused is returned when object designed for single-use is being reused.
 	ErrSingleUseReused = errors.New("Error reuse single-use object")
 )
-
-// NewUID returns new UID value.
-func NewUID() UID {
-	return UID(xid.New().String())
-}
-
-// ID returns string value of unique identifier. Should be used to satisfy Identifiable interface.
-func (id UID) ID() string {
-	return string(id)
-}
 
 // ReceivedBy returns channel which is closed when param received by identified entity
 func ReceivedBy(wg *sync.WaitGroup, id string) func() {
