@@ -40,11 +40,10 @@ var (
 func TestPipe(t *testing.T) {
 	for _, test := range tests {
 		pump := &mock.Pump{
-			UID:        phono.NewUID(),
 			Limit:      1,
 			BufferSize: bufferSize,
 		}
-		processor := &mock.Processor{UID: phono.NewUID()}
+		processor := &mock.Processor{}
 		sampleRate := 44100
 		sink := asset.New()
 		p, err := pipe.New(
@@ -56,7 +55,7 @@ func TestPipe(t *testing.T) {
 		)
 		assert.Nil(t, err)
 		p.Push(
-			pump.ID(),
+			pump,
 			pump.LimitParam(test.Limit),
 			pump.NumChannelsParam(test.NumChannels),
 			pump.ValueParam(test.value),
@@ -83,7 +82,5 @@ func TestPipe(t *testing.T) {
 		err = pipe.Wait(p.Run())
 		assert.NotNil(t, err)
 		assert.Equal(t, phono.ErrSingleUseReused, err)
-		// err = pipe.Wait(p.Close())
-		// assert.Nil(t, err)
 	}
 }
