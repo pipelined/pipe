@@ -9,7 +9,6 @@ import (
 // Asset is a sink which uses a regular buffer as underlying storage.
 // It can be used as processing input and always should be copied.
 type Asset struct {
-	phono.UID
 	phono.Buffer
 
 	once sync.Once
@@ -17,9 +16,7 @@ type Asset struct {
 
 // New creates asset.
 func New() *Asset {
-	return &Asset{
-		UID: phono.NewUID(),
-	}
+	return &Asset{}
 }
 
 // Reset implements pipe.Resetter
