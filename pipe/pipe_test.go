@@ -1,12 +1,12 @@
 package pipe_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
 	"go.uber.org/goleak"
@@ -159,16 +159,18 @@ func TestLeaks(t *testing.T) {
 // This is a constructor of test pipe
 func newPipe(t *testing.T) *pipe.Pipe {
 	pump := &mock.Pump{
-		UID:         phono.NewUID(),
+		// UID:         phono.NewUID(),
 		Limit:       5,
 		Interval:    10 * time.Microsecond,
 		BufferSize:  10,
 		NumChannels: 1,
 	}
-	proc1 := &mock.Processor{UID: phono.NewUID()}
-	proc2 := &mock.Processor{UID: phono.NewUID()}
-	sink1 := &mock.Sink{UID: phono.NewUID()}
-	sink2 := &mock.Sink{UID: phono.NewUID()}
+	proc1 := &mock.Processor{}
+	proc2 := &mock.Processor{}
+	sink1 := &mock.Sink{}
+	sink2 := &mock.Sink{}
+
+	fmt.Printf("Testing with sinks: %p %p\n", sink1, sink2)
 
 	p, err := pipe.New(
 		sampleRate,
