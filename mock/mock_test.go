@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
 )
@@ -41,12 +40,12 @@ var (
 
 func TestPipe(t *testing.T) {
 	pump := &mock.Pump{
-		UID:        phono.NewUID(),
+		// UID:        phono.NewUID(),
 		Limit:      1,
 		BufferSize: bufferSize,
 	}
-	processor := &mock.Processor{UID: phono.NewUID()}
-	sink := &mock.Sink{UID: phono.NewUID()}
+	processor := &mock.Processor{}
+	sink := &mock.Sink{}
 	p, err := pipe.New(
 		sampleRate,
 		pipe.WithName("Mock"),
@@ -57,7 +56,7 @@ func TestPipe(t *testing.T) {
 	assert.Nil(t, err)
 
 	for _, test := range tests {
-		p.Push(pump.ID(),
+		p.Push(pump,
 			pump.LimitParam(test.Limit),
 			pump.NumChannelsParam(test.NumChannels),
 			pump.ValueParam(test.value),
@@ -84,16 +83,15 @@ func TestPipe(t *testing.T) {
 
 func TestComponentsReuse(t *testing.T) {
 	pump := &mock.Pump{
-		UID:         phono.NewUID(),
 		Limit:       5,
 		Interval:    10 * time.Microsecond,
 		BufferSize:  10,
 		NumChannels: 1,
 	}
-	proc1 := &mock.Processor{UID: phono.NewUID()}
-	proc2 := &mock.Processor{UID: phono.NewUID()}
-	sink1 := &mock.Sink{UID: phono.NewUID()}
-	sink2 := &mock.Sink{UID: phono.NewUID()}
+	proc1 := &mock.Processor{}
+	proc2 := &mock.Processor{}
+	sink1 := &mock.Sink{}
+	sink2 := &mock.Sink{}
 
 	p, err := pipe.New(
 		sampleRate,

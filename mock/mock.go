@@ -15,7 +15,6 @@ type (
 
 // Pump mocks a pipe.Pump interface.
 type Pump struct {
-	phono.UID
 	counter
 	Interval time.Duration
 	Limit
@@ -27,14 +26,12 @@ type Pump struct {
 // Sink mocks up a pipe.Sink interface.
 // Buffer is not thread-safe, so should not be checked while pipe is running.
 type Sink struct {
-	phono.UID
 	counter
 	phono.Buffer
 }
 
 // Processor mocks a pipe.Processor interface.
 type Processor struct {
-	phono.UID
 	counter
 }
 
