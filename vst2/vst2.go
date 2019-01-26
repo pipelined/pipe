@@ -35,7 +35,7 @@ func NewProcessor(plugin *vst2.Plugin, bufferSize int, sampleRate int, numChanne
 }
 
 // Process returns processor function with default settings initialized.
-func (p *Processor) Process(string) (phono.ProcessFunc, error) {
+func (p *Processor) Process(string) (func(phono.Buffer) (phono.Buffer, error), error) {
 	p.plugin.SetCallback(p.callback())
 	p.plugin.SetBufferSize(int(p.bufferSize))
 	p.plugin.SetSampleRate(int(p.sampleRate))

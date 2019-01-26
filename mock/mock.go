@@ -90,7 +90,7 @@ func (m *Pump) Reset(string) error {
 }
 
 // Process implementation for runner
-func (m *Processor) Process(string) (phono.ProcessFunc, error) {
+func (m *Processor) Process(string) (func(phono.Buffer) (phono.Buffer, error), error) {
 	return func(b phono.Buffer) (phono.Buffer, error) {
 		m.Advance(b)
 		return b, nil

@@ -17,7 +17,7 @@ type pumpRunner struct {
 // processRunner represents processor's runner.
 type processRunner struct {
 	phono.Processor
-	fn  phono.ProcessFunc
+	fn  func(phono.Buffer) (phono.Buffer, error)
 	in  <-chan message
 	out chan message
 	hooks
