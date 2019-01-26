@@ -40,7 +40,7 @@ type Pipe struct {
 	processors []*processRunner
 	sinks      []*sinkRunner
 
-	metric   phono.Metric
+	metric   Metric
 	params   params            //cahced params
 	feedback params            //cached feedback
 	errc     chan error        // errors channel
@@ -101,7 +101,7 @@ func WithName(n string) Option {
 }
 
 // WithMetric adds meterics for this pipe and all components.
-func WithMetric(m phono.Metric) Option {
+func WithMetric(m Metric) Option {
 	return func(p *Pipe) error {
 		p.metric = m
 		return nil
@@ -349,4 +349,12 @@ func (p params) detach(id string) params {
 		return d
 	}
 	return nil
+}
+
+// ComponentID returns component id.
+func (p *Pipe) ComponentID(component interface{}) string {
+	if p == nil || p.components == nil {
+		return ""
+	}
+	return p.components[component]
 }
