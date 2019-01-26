@@ -14,7 +14,6 @@ import (
 type (
 	// Pump reads from wav file.
 	Pump struct {
-		phono.UID
 		bufferSize int
 
 		// properties of decoded wav.
@@ -31,7 +30,6 @@ type (
 
 	// Sink sink saves audio to wav file.
 	Sink struct {
-		phono.UID
 		sampleRate  int
 		numChannels int
 		bitDepth    int
@@ -56,7 +54,6 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 	}
 
 	return &Pump{
-		UID:         phono.NewUID(),
 		file:        file,
 		decoder:     decoder,
 		bufferSize:  bufferSize,
@@ -138,7 +135,6 @@ func NewSink(path string, sampleRate int, numChannels int, bitDepth int, format 
 	e := wav.NewEncoder(f, sampleRate, bitDepth, numChannels, format)
 
 	return &Sink{
-		UID:         phono.NewUID(),
 		file:        f,
 		encoder:     e,
 		sampleRate:  sampleRate,
