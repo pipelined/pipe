@@ -40,7 +40,7 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 }
 
 // Pump reads buffer from mp3.
-func (p *Pump) Pump(string) (phono.PumpFunc, error) {
+func (p *Pump) Pump(string) (func() (phono.Buffer, error), error) {
 	return func() (phono.Buffer, error) {
 		capacity := p.bufferSize * p.numChannels
 		ints := make([]int, 0, capacity)

@@ -14,7 +14,7 @@ import (
 // The latest case means that pump executed as expected, but not enough data was available.
 // This incomplete buffer still will be sent further and pump will be finished gracefully.
 type Pump interface {
-	Pump(string) (PumpFunc, error)
+	Pump(string) (func() (Buffer, error), error)
 }
 
 // Processor defines interface for pipe-processors
@@ -30,7 +30,7 @@ type Sink interface {
 // Components closure types.
 type (
 	// PumpFunc produces new buffer of data.
-	PumpFunc func() (Buffer, error)
+	// PumpFunc func() (Buffer, error)
 
 	// ProcessFunc consumes and returns new buffer of data.
 	ProcessFunc func(Buffer) (Buffer, error)

@@ -80,7 +80,7 @@ func (p *Pump) Reset(string) error {
 }
 
 // Pump starts the pump process once executed, wav attributes are accessible.
-func (p *Pump) Pump(string) (phono.PumpFunc, error) {
+func (p *Pump) Pump(string) (func() (phono.Buffer, error), error) {
 	return func() (phono.Buffer, error) {
 		if p.decoder == nil {
 			return nil, errors.New("Source is not defined")

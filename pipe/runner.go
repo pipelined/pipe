@@ -9,7 +9,7 @@ import (
 // pumpRunner is pump's runner.
 type pumpRunner struct {
 	phono.Pump
-	fn  phono.PumpFunc
+	fn  func() (phono.Buffer, error)
 	out chan message
 	hooks
 }
