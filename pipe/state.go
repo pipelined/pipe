@@ -288,7 +288,6 @@ func (s activePausing) sendMessage(p *Pipe) state {
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
 		uid := p.components[sink.Sink]
-		fmt.Printf("Sink: %p id: %v\n", sink, uid)
 		param := phono.ReceivedBy(&wg, uid)
 		m.feedback = m.feedback.add(uid, param)
 	}

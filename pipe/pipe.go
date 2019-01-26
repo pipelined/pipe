@@ -144,7 +144,6 @@ func WithSinks(sinks ...phono.Sink) Option {
 		for _, sink := range sinks {
 			uid := newUID()
 			p.components[sink] = uid
-			fmt.Printf("Add sink: %p with uid: %v components: %v\n", sink, uid, p.components)
 			r, err := newSinkRunner(p.uid, sink)
 			if err != nil {
 				return err
