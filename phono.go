@@ -24,19 +24,19 @@ type Processor interface {
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Sink(string) (SinkFunc, error)
+	Sink(string) (func(Buffer) error, error)
 }
 
 // Components closure types.
 type (
-	// PumpFunc produces new buffer of data.
-	// PumpFunc func() (Buffer, error)
+// PumpFunc produces new buffer of data.
+// PumpFunc func() (Buffer, error)
 
-	// ProcessFunc consumes and returns new buffer of data.
-	// ProcessFunc func(Buffer) (Buffer, error)
+// ProcessFunc consumes and returns new buffer of data.
+// ProcessFunc func(Buffer) (Buffer, error)
 
-	// SinkFunc consumes buffer of data.
-	SinkFunc func(Buffer) error
+// SinkFunc consumes buffer of data.
+// SinkFunc func(Buffer) error
 )
 
 type (

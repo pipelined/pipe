@@ -53,7 +53,7 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink writes buffer into file.
-func (s *Sink) Sink(string) (phono.SinkFunc, error) {
+func (s *Sink) Sink(string) (func(phono.Buffer) error, error) {
 	return func(b phono.Buffer) error {
 		buf := new(bytes.Buffer)
 		ints := b.Ints()

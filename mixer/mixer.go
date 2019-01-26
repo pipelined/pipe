@@ -76,7 +76,7 @@ func New(bufferSize int, numChannels int) *Mixer {
 }
 
 // Sink registers new input.
-func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
+func (m *Mixer) Sink(inputID string) (func(phono.Buffer) error, error) {
 	m.register <- inputID
 	return func(b phono.Buffer) error {
 		select {

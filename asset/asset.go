@@ -25,7 +25,7 @@ func (a *Asset) Reset(string) error {
 }
 
 // Sink appends buffers to asset.
-func (a *Asset) Sink(string) (phono.SinkFunc, error) {
+func (a *Asset) Sink(string) (func(phono.Buffer) error, error) {
 	return func(b phono.Buffer) error {
 		a.Buffer = a.Buffer.Append(b)
 		return nil
