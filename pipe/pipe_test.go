@@ -1,7 +1,6 @@
 package pipe_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -169,8 +168,6 @@ func newPipe(t *testing.T) *pipe.Pipe {
 	proc2 := &mock.Processor{}
 	sink1 := &mock.Sink{}
 	sink2 := &mock.Sink{}
-
-	fmt.Printf("Testing with sinks: %p %p\n", sink1, sink2)
 
 	p, err := pipe.New(
 		sampleRate,
