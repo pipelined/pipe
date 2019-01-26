@@ -3,7 +3,6 @@ package mp3_test
 import (
 	"testing"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/mock"
 
 	"github.com/pipelined/phono/mp3"
@@ -21,7 +20,7 @@ func TestSink(t *testing.T) {
 	assert.Nil(t, err)
 	sampleRate := pump.SampleRate()
 	sink, err := mp3.NewSink(test.Out.Mp3, pump.SampleRate(), pump.NumChannels(), 192, 2)
-	mockSink := &mock.Sink{UID: phono.NewUID()}
+	mockSink := &mock.Sink{}
 	assert.Nil(t, err)
 	p, err := pipe.New(
 		sampleRate,
