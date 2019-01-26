@@ -56,7 +56,7 @@ func (t *Track) BufferSizeParam(bufferSize int) func() {
 }
 
 // Pump implements track pump with a sequence of not overlapped clips.
-func (t *Track) Pump(string) (phono.PumpFunc, error) {
+func (t *Track) Pump(string) (func() (phono.Buffer, error), error) {
 	t.newIndex = make(chan int)
 	t.nextIndex = 0
 	return func() (phono.Buffer, error) {

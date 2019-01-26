@@ -64,7 +64,7 @@ func (m *Pump) NumChannelsParam(numChannels int) func() {
 }
 
 // Pump returns new buffer for pipe.
-func (m *Pump) Pump(string) (phono.PumpFunc, error) {
+func (m *Pump) Pump(string) (func() (phono.Buffer, error), error) {
 	return func() (phono.Buffer, error) {
 		if Limit(m.Messages()) >= m.Limit {
 			return nil, io.EOF

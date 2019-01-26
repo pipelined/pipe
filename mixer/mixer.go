@@ -112,7 +112,7 @@ func (m *Mixer) isOutput(sourceID string) bool {
 }
 
 // Pump returns a pump function which allows to read the out channel.
-func (m *Mixer) Pump(outputID string) (phono.PumpFunc, error) {
+func (m *Mixer) Pump(outputID string) (func() (phono.Buffer, error), error) {
 	m.outputID.Store(outputID)
 	return func() (phono.Buffer, error) {
 		// receive new buffer
