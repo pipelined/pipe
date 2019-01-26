@@ -10,7 +10,6 @@ import (
 
 // Mixer summs up multiple channels of messages into a single channel.
 type Mixer struct {
-	phono.UID
 	log.Logger
 	numChannels int
 	bufferSize  int
@@ -65,7 +64,6 @@ const (
 // New returns new mixer.
 func New(bufferSize int, numChannels int) *Mixer {
 	m := &Mixer{
-		UID:         phono.NewUID(),
 		Logger:      log.GetLogger(),
 		frames:      make(map[string]*frame),
 		numChannels: numChannels,
@@ -78,7 +76,7 @@ func New(bufferSize int, numChannels int) *Mixer {
 }
 
 // Sink registers new input.
-func (m *Mixer) Sink(inputID string) (phono.SinkFunc, error) {
+func (m *Mixer) Sink(inputID string) (func(phono.Buffer) error, error) {
 	m.register <- inputID
 	return func(b phono.Buffer) error {
 		select {
@@ -114,7 +112,7 @@ func (m *Mixer) isOutput(sourceID string) bool {
 }
 
 // Pump returns a pump function which allows to read the out channel.
-func (m *Mixer) Pump(outputID string) (phono.PumpFunc, error) {
+func (m *Mixer) Pump(outputID string) (func() (phono.Buffer, error), error) {
 	m.outputID.Store(outputID)
 	return func() (phono.Buffer, error) {
 		// receive new buffer

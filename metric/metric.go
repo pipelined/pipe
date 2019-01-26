@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/pipe"
 )
 
 // Metric contains component's Meters.
@@ -15,14 +15,13 @@ type Metric struct {
 }
 
 // Meter read-only immutable map of atomic Counters.
-// probably...
 type Meter struct {
 	values map[string]*atomic.Value
 }
 
 // Meter returns new Meter for provided id. Existing Meter is flushed.
 // If no match found, new Meter is added and returned.
-func (m *Metric) Meter(id string, counters ...string) phono.Meter {
+func (m *Metric) Meter(id string, counters ...string) pipe.Meter {
 	m.m.Lock()
 	defer m.m.Unlock()
 
@@ -45,7 +44,7 @@ func (m *Metric) Meter(id string, counters ...string) phono.Meter {
 }
 
 // Measure returns Metric's measures.
-func (m *Metric) Measure() phono.Measure {
+func (m *Metric) Measure() pipe.Measure {
 	r := make(map[string]map[string]interface{})
 	m.m.Lock()
 	defer m.m.Unlock()

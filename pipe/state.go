@@ -212,7 +212,7 @@ func (s idleReady) transition(p *Pipe, e eventMessage) (state, error) {
 	case cancel:
 		return nil, nil
 	case push:
-		e.params.applyTo(p.ID())
+		e.params.applyTo(p.uid)
 		p.params = p.params.merge(e.params)
 		return s, nil
 	case measure:
@@ -238,11 +238,11 @@ func (s activeRunning) transition(p *Pipe, e eventMessage) (state, error) {
 		err := Wait(p.errc)
 		return nil, err
 	case measure:
-		e.params.applyTo(p.ID())
+		e.params.applyTo(p.uid)
 		p.feedback = p.feedback.merge(e.params)
 		return s, nil
 	case push:
-		e.params.applyTo(p.ID())
+		e.params.applyTo(p.uid)
 		p.params = p.params.merge(e.params)
 		return s, nil
 	case pause:
@@ -267,11 +267,11 @@ func (s activePausing) transition(p *Pipe, e eventMessage) (state, error) {
 		err := Wait(p.errc)
 		return nil, err
 	case measure:
-		e.params.applyTo(p.ID())
+		e.params.applyTo(p.uid)
 		p.feedback = p.feedback.merge(e.params)
 		return s, nil
 	case push:
-		e.params.applyTo(p.ID())
+		e.params.applyTo(p.uid)
 		p.params = p.params.merge(e.params)
 		return s, nil
 	}
@@ -282,13 +282,14 @@ func (s activePausing) transition(p *Pipe, e eventMessage) (state, error) {
 func (s activePausing) sendMessage(p *Pipe) state {
 	m := p.newMessage()
 	if len(m.feedback) == 0 {
-		m.feedback = make(map[string][]phono.ParamFunc)
+		m.feedback = make(map[string][]func())
 	}
 	var wg sync.WaitGroup
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
-		param := phono.ReceivedBy(&wg, sink.ID())
-		m.feedback = m.feedback.add(param)
+		uid := p.components[sink.Sink]
+		param := phono.ReceivedBy(&wg, uid)
+		m.feedback = m.feedback.add(uid, param)
 	}
 	p.consume <- m
 	wg.Wait()
@@ -306,7 +307,7 @@ func (s idlePaused) transition(p *Pipe, e eventMessage) (state, error) {
 		err := Wait(p.errc)
 		return nil, err
 	case push:
-		e.params.applyTo(p.ID())
+		e.params.applyTo(p.uid)
 		p.params = p.params.merge(e.params)
 		return s, nil
 	case measure:

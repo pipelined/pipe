@@ -4,8 +4,6 @@ import (
 	"errors"
 	"sync"
 	"time"
-
-	"github.com/rs/xid"
 )
 
 // Pump is a source of samples. Pump method returns a new buffer with signal data.
@@ -16,32 +14,29 @@ import (
 // The latest case means that pump executed as expected, but not enough data was available.
 // This incomplete buffer still will be sent further and pump will be finished gracefully.
 type Pump interface {
-	ID() string
-	Pump(string) (PumpFunc, error)
+	Pump(string) (func() (Buffer, error), error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	ID() string
-	Process(string) (ProcessFunc, error)
+	Process(string) (func(Buffer) (Buffer, error), error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	ID() string
-	Sink(string) (SinkFunc, error)
+	Sink(string) (func(Buffer) error, error)
 }
 
 // Components closure types.
 type (
-	// PumpFunc produces new buffer of data.
-	PumpFunc func() (Buffer, error)
+// PumpFunc produces new buffer of data.
+// PumpFunc func() (Buffer, error)
 
-	// ProcessFunc consumes and returns new buffer of data.
-	ProcessFunc func(Buffer) (Buffer, error)
+// ProcessFunc consumes and returns new buffer of data.
+// ProcessFunc func(Buffer) (Buffer, error)
 
-	// SinkFunc consumes buffer of data.
-	SinkFunc func(Buffer) error
+// SinkFunc consumes buffer of data.
+// SinkFunc func(Buffer) error
 )
 
 type (
@@ -58,42 +53,6 @@ type (
 	}
 )
 
-// Param-related types
-type (
-	// UID is a string unique identifier
-	UID string
-
-	// ParamFunc represents a function which mutates the pipe element (e.g. Pump, Processor or Sink)
-	ParamFunc func()
-
-	// Param is a structure for delayed parameters apply
-	// used as return type in functions which enable Params support for different packages
-	Param struct {
-		ID     string        // id of mutable object.
-		Apply  ParamFunc     // mutator.
-		At     int64         // sample position of this param.
-		AtTime time.Duration // time position of this param.
-	}
-)
-
-// Metrics types.
-type (
-	// Metric stores meters of pipe components.
-	Metric interface {
-		Meter(id string, counters ...string) Meter
-		Measure() Measure
-	}
-
-	// Meter stores counters values.
-	Meter interface {
-		Store(counter string, value interface{})
-		Load(counter string) interface{}
-	}
-
-	// Measure is a snapshot of full metric with all counters.
-	Measure map[string]map[string]interface{}
-)
-
 // SingleUse is designed to be used in runner-return functions to define a single-use pipe components.
 func SingleUse(once *sync.Once) (err error) {
 	err = ErrSingleUseReused
@@ -108,23 +67,10 @@ var (
 	ErrSingleUseReused = errors.New("Error reuse single-use object")
 )
 
-// NewUID returns new UID value.
-func NewUID() UID {
-	return UID(xid.New().String())
-}
-
-// ID returns string value of unique identifier. Should be used to satisfy Identifiable interface.
-func (id UID) ID() string {
-	return string(id)
-}
-
 // ReceivedBy returns channel which is closed when param received by identified entity
-func ReceivedBy(wg *sync.WaitGroup, id string) Param {
-	return Param{
-		ID: id,
-		Apply: func() {
-			wg.Done()
-		},
+func ReceivedBy(wg *sync.WaitGroup, id string) func() {
+	return func() {
+		wg.Done()
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 
 // Sink allows to send data to mp3 files.
 type Sink struct {
-	phono.UID
 	f    *os.File
 	wr   *lame.LameWriter
 	once sync.Once
@@ -25,9 +24,8 @@ func NewSink(path string, sampleRate int, numChannels int, bitRate int, quality 
 		return nil, err
 	}
 	s := Sink{
-		UID: phono.NewUID(),
-		f:   f,
-		wr:  lame.NewWriter(f),
+		f:  f,
+		wr: lame.NewWriter(f),
 	}
 	s.wr.Encoder.SetBitrate(bitRate)
 	s.wr.Encoder.SetQuality(quality)
@@ -55,7 +53,7 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink writes buffer into file.
-func (s *Sink) Sink(string) (phono.SinkFunc, error) {
+func (s *Sink) Sink(string) (func(phono.Buffer) error, error) {
 	return func(b phono.Buffer) error {
 		buf := new(bytes.Buffer)
 		ints := b.Ints()

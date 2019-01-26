@@ -7,7 +7,13 @@ import (
 
 	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/log"
+	"github.com/rs/xid"
 )
+
+// newUID returns new unique id value.
+func newUID() string {
+	return xid.New().String()
+}
 
 // Message is a main structure for pipe transport
 type message struct {
@@ -18,7 +24,7 @@ type message struct {
 }
 
 // params represent a set of parameters mapped to ID of their receivers.
-type params map[string][]phono.ParamFunc
+type params map[string][]func()
 
 // Pipe is a pipeline with fully defined sound processing sequence
 // it has:
@@ -26,7 +32,7 @@ type params map[string][]phono.ParamFunc
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
-	phono.UID
+	uid        string
 	name       string
 	sampleRate int
 
@@ -34,7 +40,7 @@ type Pipe struct {
 	processors []*processRunner
 	sinks      []*sinkRunner
 
-	metric   phono.Metric
+	metric   Metric
 	params   params            //cahced params
 	feedback params            //cached feedback
 	errc     chan error        // errors channel
@@ -43,6 +49,12 @@ type Pipe struct {
 
 	provide chan struct{} // ask for new message request
 	consume chan message  // emission of messages
+
+	// components is a map of components and their ids.
+	// this makes the case when one component is used across multiple pipes to have
+	// different id in different pipes.
+	// this will be a part of runner later.
+	components map[interface{}]string
 
 	log log.Logger
 }
@@ -54,23 +66,21 @@ type Option func(p *Pipe) error
 // ErrInvalidState is returned if pipe method cannot be executed at this moment.
 var ErrInvalidState = errors.New("invalid state")
 
-// ErrComponentNoID is used to cause a panic when new component without ID is added to pipe.
-var ErrComponentNoID = errors.New("component have no ID value")
-
 // New creates a new pipe and applies provided options.
 // Returned pipe is in Ready state.
 func New(sampleRate int, options ...Option) (*Pipe, error) {
 	p := &Pipe{
-		UID:        phono.NewUID(),
+		uid:        newUID(),
 		sampleRate: sampleRate,
 		log:        log.GetLogger(),
 		processors: make([]*processRunner, 0),
 		sinks:      make([]*sinkRunner, 0),
-		params:     make(map[string][]phono.ParamFunc),
-		feedback:   make(map[string][]phono.ParamFunc),
+		params:     make(map[string][]func()),
+		feedback:   make(map[string][]func()),
 		events:     make(chan eventMessage, 1),
 		provide:    make(chan struct{}),
 		consume:    make(chan message),
+		components: make(map[interface{}]string),
 	}
 	for _, option := range options {
 		err := option(p)
@@ -91,7 +101,7 @@ func WithName(n string) Option {
 }
 
 // WithMetric adds meterics for this pipe and all components.
-func WithMetric(m phono.Metric) Option {
+func WithMetric(m Metric) Option {
 	return func(p *Pipe) error {
 		p.metric = m
 		return nil
@@ -100,11 +110,10 @@ func WithMetric(m phono.Metric) Option {
 
 // WithPump sets pump to Pipe
 func WithPump(pump phono.Pump) Option {
-	if pump.ID() == "" {
-		panic(ErrComponentNoID)
-	}
 	return func(p *Pipe) error {
-		r, err := newPumpRunner(p.ID(), pump)
+		uid := newUID()
+		p.components[pump] = uid
+		r, err := newPumpRunner(p.uid, pump)
 		if err != nil {
 			return err
 		}
@@ -115,14 +124,11 @@ func WithPump(pump phono.Pump) Option {
 
 // WithProcessors sets processors to Pipe
 func WithProcessors(processors ...phono.Processor) Option {
-	for i := range processors {
-		if processors[i].ID() == "" {
-			panic(ErrComponentNoID)
-		}
-	}
 	return func(p *Pipe) error {
 		for _, proc := range processors {
-			r, err := newProcessRunner(p.ID(), proc)
+			uid := newUID()
+			p.components[proc] = uid
+			r, err := newProcessRunner(p.uid, proc)
 			if err != nil {
 				return err
 			}
@@ -134,14 +140,11 @@ func WithProcessors(processors ...phono.Processor) Option {
 
 // WithSinks sets sinks to Pipe
 func WithSinks(sinks ...phono.Sink) Option {
-	for _, sink := range sinks {
-		if sink.ID() == "" {
-			panic(ErrComponentNoID)
-		}
-	}
 	return func(p *Pipe) error {
 		for _, sink := range sinks {
-			r, err := newSinkRunner(p.ID(), sink)
+			uid := newUID()
+			p.components[sink] = uid
+			r, err := newSinkRunner(p.uid, sink)
 			if err != nil {
 				return err
 			}
@@ -153,14 +156,16 @@ func WithSinks(sinks ...phono.Sink) Option {
 
 // Push new params into pipe.
 // Calling this method after pipe is closed causes a panic.
-func (p *Pipe) Push(values ...phono.Param) {
-	if len(values) == 0 {
+func (p *Pipe) Push(component interface{}, paramFuncs ...func()) {
+	var componentID string
+	var ok bool
+	if componentID, ok = p.components[component]; !ok && len(paramFuncs) == 0 {
 		return
 	}
-	params := params(make(map[string][]phono.ParamFunc))
+	params := params(make(map[string][]func()))
 	p.events <- eventMessage{
 		event:  push,
-		params: params.add(values...),
+		params: params.add(componentID, paramFuncs...),
 	}
 }
 
@@ -169,12 +174,16 @@ func (p *Pipe) start() {
 	p.cancel = make(chan struct{})
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	// start pump
-	out, errc := p.pump.run(p.cancel, p.ID(), p.provide, p.consume, p.sampleRate, p.metric)
+	componentID := p.components[p.pump.Pump]
+	meter := newMeter(componentID, p.sampleRate, p.metric)
+	out, errc := p.pump.run(p.uid, componentID, p.cancel, p.provide, p.consume, meter)
 	errcList = append(errcList, errc)
 
 	// start chained processesing
 	for _, proc := range p.processors {
-		out, errc = proc.run(p.cancel, p.ID(), out, p.sampleRate, p.metric)
+		componentID = p.components[proc.Processor]
+		meter := newMeter(componentID, p.sampleRate, p.metric)
+		out, errc = proc.run(p.uid, componentID, p.cancel, out, meter)
 		errcList = append(errcList, errc)
 	}
 
@@ -195,7 +204,9 @@ func (p *Pipe) broadcastToSinks(in <-chan message) []<-chan error {
 
 	//start broadcast
 	for i, s := range p.sinks {
-		errc := s.run(p.cancel, p.ID(), broadcasts[i], p.sampleRate, p.metric)
+		componentID := p.components[s.Sink]
+		meter := newMeter(componentID, p.sampleRate, p.metric)
+		errc := s.run(p.uid, componentID, p.cancel, broadcasts[i], meter)
 		errcList = append(errcList, errc)
 	}
 
@@ -211,8 +222,8 @@ func (p *Pipe) broadcastToSinks(in <-chan message) []<-chan error {
 				m := message{
 					sourceID: msg.sourceID,
 					Buffer:   msg.Buffer,
-					params:   msg.params.detach(p.sinks[i].ID()),
-					feedback: msg.feedback.detach(p.sinks[i].ID()),
+					params:   msg.params.detach(p.components[p.sinks[i].Sink]),
+					feedback: msg.feedback.detach(p.components[p.sinks[i].Sink]),
 				}
 				select {
 				case broadcasts[i] <- m:
@@ -255,14 +266,14 @@ func mergeErrors(errcList ...<-chan error) (errc chan error) {
 // newMessage creates a new message with cached params.
 // if new params are pushed into pipe - next message will contain them.
 func (p *Pipe) newMessage() message {
-	m := message{sourceID: p.ID()}
+	m := message{sourceID: p.uid}
 	if len(p.params) > 0 {
 		m.params = p.params
-		p.params = make(map[string][]phono.ParamFunc)
+		p.params = make(map[string][]func())
 	}
 	if len(p.feedback) > 0 {
 		m.feedback = p.feedback
-		p.feedback = make(map[string][]phono.ParamFunc)
+		p.feedback = make(map[string][]func())
 	}
 	return m
 }
@@ -285,22 +296,20 @@ func (e event) String() string {
 // Convert pipe to string. If name is included if has value.
 func (p *Pipe) String() string {
 	if p.name == "" {
-		return p.ID()
+		return p.uid
 	}
-	return fmt.Sprintf("%v %v", p.name, p.ID())
+	return fmt.Sprintf("%v %v", p.name, p.uid)
 }
 
 // add appends a slice of params.
-func (p params) add(params ...phono.Param) params {
-	for _, param := range params {
-		private, ok := p[param.ID]
-		if !ok {
-			private = make([]phono.ParamFunc, 0, len(params))
-		}
-		private = append(private, param.Apply)
-
-		p[param.ID] = private
+func (p params) add(componentID string, paramFuncs ...func()) params {
+	var private []func()
+	if _, ok := p[componentID]; !ok {
+		private = make([]func(), 0, len(paramFuncs))
 	}
+	private = append(private, paramFuncs...)
+
+	p[componentID] = private
 	return p
 }
 
@@ -334,9 +343,17 @@ func (p params) detach(id string) params {
 		return nil
 	}
 	if v, ok := p[id]; ok {
-		d := params(make(map[string][]phono.ParamFunc))
+		d := params(make(map[string][]func()))
 		d[id] = v
 		return d
 	}
 	return nil
+}
+
+// ComponentID returns component id.
+func (p *Pipe) ComponentID(component interface{}) string {
+	if p == nil || p.components == nil {
+		return ""
+	}
+	return p.components[component]
 }

@@ -8,7 +8,6 @@ import (
 
 // Track is a sequence of pipes which are executed one after another.
 type Track struct {
-	phono.UID
 	bufferSize  int
 	numChannels int
 
@@ -42,7 +41,6 @@ func (c *clip) End() int {
 // New creates a new track in a session.
 func New(bufferSize int, numChannels int) (t *Track) {
 	t = &Track{
-		UID:         phono.NewUID(),
 		nextIndex:   0,
 		bufferSize:  bufferSize,
 		numChannels: numChannels,
@@ -51,17 +49,14 @@ func New(bufferSize int, numChannels int) (t *Track) {
 }
 
 // BufferSizeParam pushes new limit value for pump.
-func (t *Track) BufferSizeParam(bufferSize int) phono.Param {
-	return phono.Param{
-		ID: t.ID(),
-		Apply: func() {
-			t.bufferSize = bufferSize
-		},
+func (t *Track) BufferSizeParam(bufferSize int) func() {
+	return func() {
+		t.bufferSize = bufferSize
 	}
 }
 
 // Pump implements track pump with a sequence of not overlapped clips.
-func (t *Track) Pump(string) (phono.PumpFunc, error) {
+func (t *Track) Pump(string) (func() (phono.Buffer, error), error) {
 	t.newIndex = make(chan int)
 	t.nextIndex = 0
 	return func() (phono.Buffer, error) {
