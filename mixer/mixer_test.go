@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/mixer"
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
@@ -49,20 +48,18 @@ var (
 
 func TestMixer(t *testing.T) {
 	pump1 := &mock.Pump{
-		UID:         phono.NewUID(),
 		Limit:       1,
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
 	}
 	pump2 := &mock.Pump{
-		UID:         phono.NewUID(),
 		Limit:       1,
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
 	}
 	sampleRate := 44100
 	mix := mixer.New(bufferSize, numChannels)
-	sink := &mock.Sink{UID: phono.NewUID()}
+	sink := &mock.Sink{}
 	playback, err := pipe.New(
 		sampleRate,
 		pipe.WithName("Playback"),
@@ -86,11 +83,11 @@ func TestMixer(t *testing.T) {
 	assert.Nil(t, err)
 
 	for _, test := range tests {
-		track1.Push(track1.ID(),
+		track1.Push(pump1,
 			pump1.LimitParam(test.Limit),
 			pump1.ValueParam(test.value1),
 		)
-		track2.Push(track2.ID(),
+		track2.Push(pump2,
 			pump2.LimitParam(test.Limit),
 			pump2.ValueParam(test.value2),
 		)
@@ -172,9 +169,8 @@ func TestWavMixer(t *testing.T) {
 	playback.Close()
 }
 
-func TestMixerInterruptSink(t *testing.T) {
+func TestInterruptSink(t *testing.T) {
 	pump := &mock.Pump{
-		UID:         phono.NewUID(),
 		Limit:       10,
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
@@ -182,7 +178,7 @@ func TestMixerInterruptSink(t *testing.T) {
 	}
 	sampleRate := 44100
 	mix := mixer.New(bufferSize, numChannels)
-	sink := &mock.Sink{UID: phono.NewUID()}
+	sink := &mock.Sink{}
 	playback, err := pipe.New(
 		sampleRate,
 		pipe.WithName("Playback"),
@@ -209,9 +205,8 @@ func TestMixerInterruptSink(t *testing.T) {
 	goleak.VerifyNoLeaks(t)
 }
 
-func TestMixerInterruptPump(t *testing.T) {
+func TestInterruptPump(t *testing.T) {
 	pump := &mock.Pump{
-		UID:         phono.NewUID(),
 		Limit:       10,
 		BufferSize:  bufferSize,
 		NumChannels: numChannels,
@@ -219,7 +214,7 @@ func TestMixerInterruptPump(t *testing.T) {
 	}
 	sampleRate := 44100
 	mix := mixer.New(bufferSize, numChannels)
-	sink := &mock.Sink{UID: phono.NewUID()}
+	sink := &mock.Sink{}
 	playback, err := pipe.New(
 		sampleRate,
 		pipe.WithName("Playback"),

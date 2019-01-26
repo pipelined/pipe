@@ -10,7 +10,6 @@ import (
 
 // Mixer summs up multiple channels of messages into a single channel.
 type Mixer struct {
-	phono.UID
 	log.Logger
 	numChannels int
 	bufferSize  int
@@ -65,7 +64,6 @@ const (
 // New returns new mixer.
 func New(bufferSize int, numChannels int) *Mixer {
 	m := &Mixer{
-		UID:         phono.NewUID(),
 		Logger:      log.GetLogger(),
 		frames:      make(map[string]*frame),
 		numChannels: numChannels,
