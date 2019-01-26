@@ -26,7 +26,7 @@ type processRunner struct {
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
 	phono.Sink
-	fn phono.SinkFunc
+	fn func(phono.Buffer) error
 	in <-chan message
 	hooks
 }

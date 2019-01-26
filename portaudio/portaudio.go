@@ -27,7 +27,7 @@ func NewSink(bufferSize int, sampleRate int, numChannels int) *Sink {
 
 // Sink writes the buffer of data to portaudio stream.
 // It aslo initilizes a portaudio api with default stream.
-func (s *Sink) Sink(string) (phono.SinkFunc, error) {
+func (s *Sink) Sink(string) (func(phono.Buffer) error, error) {
 	s.buf = make([]float32, s.bufferSize*s.numChannels)
 	err := portaudio.Initialize()
 	if err != nil {

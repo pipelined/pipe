@@ -160,7 +160,7 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink returns new Sink function instance.
-func (s *Sink) Sink(string) (phono.SinkFunc, error) {
+func (s *Sink) Sink(string) (func(phono.Buffer) error, error) {
 	return func(b phono.Buffer) error {
 		s.ib.Data = b.Ints()
 		return s.encoder.Write(s.ib)

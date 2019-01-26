@@ -104,7 +104,7 @@ func (m *Processor) Reset(string) error {
 }
 
 // Sink implementation for runner.
-func (m *Sink) Sink(string) (phono.SinkFunc, error) {
+func (m *Sink) Sink(string) (func(phono.Buffer) error, error) {
 	return func(b phono.Buffer) error {
 		m.Buffer = m.Buffer.Append(b)
 		m.Advance(b)
