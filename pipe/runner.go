@@ -67,21 +67,6 @@ func bindHooks(v interface{}) hooks {
 
 var do struct{}
 
-const (
-	// MessageCounter measures number of messages.
-	MessageCounter = "Messages"
-	// SampleCounter measures number of samples.
-	SampleCounter = "Samples"
-	// StartCounter fixes when runner started.
-	StartCounter = "Start"
-	// LatencyCounter measures latency between processing calls.
-	LatencyCounter = "Latency"
-	// ElapsedCounter fixes when runner ended.
-	ElapsedCounter = "Elapsed"
-	// DurationCounter counts what's the duration of signal.
-	DurationCounter = "Duration"
-)
-
 // flusher checks if interface implements Flusher and if so, return it.
 func flusher(i interface{}) hook {
 	if v, ok := i.(Flusher); ok {

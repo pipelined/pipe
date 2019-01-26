@@ -85,5 +85,20 @@ func (m *meter) sample(s int64) *meter {
 	return m
 }
 
+const (
+	// MessageCounter measures number of messages.
+	MessageCounter = "Messages"
+	// SampleCounter measures number of samples.
+	SampleCounter = "Samples"
+	// StartCounter fixes when runner started.
+	StartCounter = "Start"
+	// LatencyCounter measures latency between processing calls.
+	LatencyCounter = "Latency"
+	// ElapsedCounter fixes when runner ended.
+	ElapsedCounter = "Elapsed"
+	// DurationCounter counts what's the duration of signal.
+	DurationCounter = "Duration"
+)
+
 // counters is a structure for metrics initialization.
 var counters = []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter}
