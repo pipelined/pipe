@@ -8,7 +8,6 @@ import (
 
 // Track is a sequence of pipes which are executed one after another.
 type Track struct {
-	phono.UID
 	bufferSize  int
 	numChannels int
 
@@ -42,7 +41,6 @@ func (c *clip) End() int {
 // New creates a new track in a session.
 func New(bufferSize int, numChannels int) (t *Track) {
 	t = &Track{
-		UID:         phono.NewUID(),
 		nextIndex:   0,
 		bufferSize:  bufferSize,
 		numChannels: numChannels,

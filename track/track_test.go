@@ -177,7 +177,7 @@ func TestTrackWavSlices(t *testing.T) {
 }
 
 func TestSliceOverlaps(t *testing.T) {
-	sink := &mock.Sink{UID: phono.NewUID()}
+	sink := &mock.Sink{}
 	bufferSize := 2
 	track := track.New(bufferSize, buffer1.NumChannels())
 	for _, test := range overlapTests {
@@ -195,7 +195,7 @@ func TestSliceOverlaps(t *testing.T) {
 		)
 		assert.Nil(t, err)
 		if test.BufferSize > 0 {
-			p.Push(track.ID(), track.BufferSizeParam(test.BufferSize))
+			p.Push(track, track.BufferSizeParam(test.BufferSize))
 		}
 
 		_ = pipe.Wait(p.Run())
