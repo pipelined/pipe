@@ -12,7 +12,6 @@ import (
 
 // Pump allows to read mp3 files.
 type Pump struct {
-	phono.UID
 	bufferSize  int
 	numChannels int
 	f           *os.File
@@ -35,14 +34,13 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 	return &Pump{
 		d:           d,
 		f:           f,
-		UID:         phono.NewUID(),
 		bufferSize:  bufferSize,
 		numChannels: 2,
 	}, nil
 }
 
 // Pump reads buffer from mp3.
-func (p *Pump) Pump(string) (phono.PumpFunc, error) {
+func (p *Pump) Pump(string) (func() (phono.Buffer, error), error) {
 	return func() (phono.Buffer, error) {
 		capacity := p.bufferSize * p.numChannels
 		ints := make([]int, 0, capacity)

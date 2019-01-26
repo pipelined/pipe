@@ -14,7 +14,6 @@ import (
 type (
 	// Pump reads from wav file.
 	Pump struct {
-		phono.UID
 		bufferSize int
 
 		// properties of decoded wav.
@@ -31,7 +30,6 @@ type (
 
 	// Sink sink saves audio to wav file.
 	Sink struct {
-		phono.UID
 		sampleRate  int
 		numChannels int
 		bitDepth    int
@@ -56,7 +54,6 @@ func NewPump(path string, bufferSize int) (*Pump, error) {
 	}
 
 	return &Pump{
-		UID:         phono.NewUID(),
 		file:        file,
 		decoder:     decoder,
 		bufferSize:  bufferSize,
@@ -83,7 +80,7 @@ func (p *Pump) Reset(string) error {
 }
 
 // Pump starts the pump process once executed, wav attributes are accessible.
-func (p *Pump) Pump(string) (phono.PumpFunc, error) {
+func (p *Pump) Pump(string) (func() (phono.Buffer, error), error) {
 	return func() (phono.Buffer, error) {
 		if p.decoder == nil {
 			return nil, errors.New("Source is not defined")
@@ -138,7 +135,6 @@ func NewSink(path string, sampleRate int, numChannels int, bitDepth int, format 
 	e := wav.NewEncoder(f, sampleRate, bitDepth, numChannels, format)
 
 	return &Sink{
-		UID:         phono.NewUID(),
 		file:        f,
 		encoder:     e,
 		sampleRate:  sampleRate,
@@ -164,7 +160,7 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink returns new Sink function instance.
-func (s *Sink) Sink(string) (phono.SinkFunc, error) {
+func (s *Sink) Sink(string) (func(phono.Buffer) error, error) {
 	return func(b phono.Buffer) error {
 		s.ib.Data = b.Ints()
 		return s.encoder.Write(s.ib)
