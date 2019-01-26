@@ -53,24 +53,6 @@ type (
 	}
 )
 
-// Metrics types.
-type (
-	// Metric stores meters of pipe components.
-	Metric interface {
-		Meter(id string, counters ...string) Meter
-		Measure() Measure
-	}
-
-	// Meter stores counters values.
-	Meter interface {
-		Store(counter string, value interface{})
-		Load(counter string) interface{}
-	}
-
-	// Measure is a snapshot of full metric with all counters.
-	Measure map[string]map[string]interface{}
-)
-
 // SingleUse is designed to be used in runner-return functions to define a single-use pipe components.
 func SingleUse(once *sync.Once) (err error) {
 	err = ErrSingleUseReused

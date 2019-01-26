@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/metric"
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
@@ -44,7 +43,7 @@ func TestMeter(t *testing.T) {
 	}
 
 	// function to test meter.
-	testFn := func(c phono.Meter, wg *sync.WaitGroup, counter string, inc int64, iter int) {
+	testFn := func(c pipe.Meter, wg *sync.WaitGroup, counter string, inc int64, iter int) {
 		var v int64
 		for i := 0; i < iter; i++ {
 			v = v + inc
@@ -87,16 +86,15 @@ func TestInvalidCounter(t *testing.T) {
 func TestPipe(t *testing.T) {
 	sampleRate := 44100
 	pump := &mock.Pump{
-		UID:         phono.NewUID(),
 		Limit:       5,
 		Interval:    10 * time.Microsecond,
 		BufferSize:  10,
 		NumChannels: 1,
 	}
-	proc1 := &mock.Processor{UID: phono.NewUID()}
-	proc2 := &mock.Processor{UID: phono.NewUID()}
-	sink1 := &mock.Sink{UID: phono.NewUID()}
-	sink2 := &mock.Sink{UID: phono.NewUID()}
+	proc1 := &mock.Processor{}
+	proc2 := &mock.Processor{}
+	sink1 := &mock.Sink{}
+	sink2 := &mock.Sink{}
 	metric := &metric.Metric{}
 	p, _ := pipe.New(
 		sampleRate,
@@ -108,9 +106,11 @@ func TestPipe(t *testing.T) {
 	)
 	pipe.Wait(p.Run())
 
+	pumpID := p.ComponentID(pump)
+
 	m := metric.Measure()
-	assert.Equal(t, 1133786*time.Nanosecond, m[pump.ID()][pipe.DurationCounter])
+	assert.Equal(t, 1133786*time.Nanosecond, m[pumpID][pipe.DurationCounter])
 	pipe.Wait(p.Run())
 	m = metric.Measure()
-	assert.Equal(t, 1133786*time.Nanosecond, m[pump.ID()][pipe.DurationCounter])
+	assert.Equal(t, 1133786*time.Nanosecond, m[pumpID][pipe.DurationCounter])
 }

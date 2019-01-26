@@ -2,7 +2,6 @@ package pipe
 
 import (
 	"io"
-	"time"
 
 	"github.com/pipelined/phono"
 )
@@ -65,70 +64,6 @@ func bindHooks(v interface{}) hooks {
 		reset:     resetter(v),
 	}
 }
-
-type meter struct {
-	phono.Meter
-	sampleRate  int
-	startedAt   time.Time     // StartCounter
-	messages    int64         // MessageCounter
-	samples     int64         // SampleCounter
-	latency     time.Duration // LatencyCounter
-	processedAt time.Time
-	elapsed     time.Duration // ElapsedCounter
-	duration    time.Duration // DurationCounter
-}
-
-// newMeter creates new meter with counters.
-func newMeter(componentID string, sampleRate int, m phono.Metric) *meter {
-	if m == nil {
-		return nil
-	}
-	meter := meter{
-		sampleRate:  sampleRate,
-		startedAt:   time.Now(),
-		processedAt: time.Now(),
-	}
-	if m != nil {
-		meter.Meter = m.Meter(componentID, counters...)
-		meter.Store(StartCounter, meter.startedAt)
-	}
-
-	return &meter
-}
-
-// message capture metrics after message is processed.
-func (m *meter) message() *meter {
-	if m == nil {
-		return nil
-	}
-	m.messages++
-	m.latency = time.Since(m.processedAt)
-	m.processedAt = time.Now()
-	m.elapsed = time.Since(m.startedAt)
-	if m.Meter != nil {
-		m.Store(MessageCounter, m.messages)
-		m.Store(LatencyCounter, m.latency)
-		m.Store(ElapsedCounter, m.elapsed)
-	}
-	return m
-}
-
-// sample capture metrics after samples are processed.
-func (m *meter) sample(s int64) *meter {
-	if m == nil {
-		return nil
-	}
-	m.samples = m.samples + s
-	m.duration = phono.DurationOf(m.sampleRate, m.samples)
-	if m.Meter != nil {
-		m.Store(SampleCounter, m.samples)
-		m.Store(DurationCounter, m.duration)
-	}
-	return m
-}
-
-// counters is a structure for metrics initialization.
-var counters = []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter}
 
 var do struct{}
 
