@@ -19,7 +19,7 @@ type Pump interface {
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	Process(string) (ProcessFunc, error)
+	Process(string) (func(Buffer) (Buffer, error), error)
 }
 
 // Sink is an interface for final stage in audio pipeline
@@ -33,7 +33,7 @@ type (
 	// PumpFunc func() (Buffer, error)
 
 	// ProcessFunc consumes and returns new buffer of data.
-	ProcessFunc func(Buffer) (Buffer, error)
+	// ProcessFunc func(Buffer) (Buffer, error)
 
 	// SinkFunc consumes buffer of data.
 	SinkFunc func(Buffer) error
