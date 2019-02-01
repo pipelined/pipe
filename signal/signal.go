@@ -24,6 +24,8 @@ const (
 	BitDepth8 = BitDepth(8)
 	// BitDepth16 is 16 bit depth.
 	BitDepth16 = BitDepth(16)
+	// BitDepth32 is 32 bit depth.
+	BitDepth32 = BitDepth(32)
 )
 
 // InterInt is an interleaved int signal.
@@ -43,6 +45,8 @@ func (bitDepth BitDepth) devider() int {
 		return math.MaxInt8
 	case BitDepth16:
 		return math.MaxInt16
+	case BitDepth32:
+		return math.MaxInt32
 	default:
 		return 1
 	}
@@ -55,6 +59,8 @@ func (bitDepth BitDepth) multiplier() int {
 		return math.MaxInt8 - 1
 	case BitDepth16:
 		return math.MaxInt16 - 1
+	case BitDepth32:
+		return math.MaxInt32 - 1
 	default:
 		return 1
 	}
