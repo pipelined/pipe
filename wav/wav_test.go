@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/pipelined/phono/mock"
+	"github.com/pipelined/phono/signal"
 	"github.com/pipelined/phono/test"
 
 	"github.com/pipelined/phono"
@@ -17,40 +18,37 @@ const (
 	bufferSize = 512
 )
 
-var tests = []struct {
-	BufferSize int
-	inFile     string
-	outFile    string
-	messages   int
-	samples    int
-}{
-	{
-		BufferSize: bufferSize,
-		inFile:     test.Data.Wav1,
-		outFile:    test.Out.Wav1,
-		messages:   int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
-		samples:    test.Data.Wav1Samples,
-	},
-	{
-		BufferSize: bufferSize,
-		inFile:     test.Out.Wav1,
-		outFile:    test.Out.Wav2,
-		messages:   int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
-		samples:    test.Data.Wav1Samples,
-	},
-}
-
 func TestWavPipe(t *testing.T) {
+	tests := []struct {
+		BufferSize int
+		inFile     string
+		outFile    string
+		messages   int
+		samples    int
+	}{
+		{
+			BufferSize: bufferSize,
+			inFile:     test.Data.Wav1,
+			outFile:    test.Out.Wav1,
+			messages:   int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
+			samples:    test.Data.Wav1Samples,
+		},
+		{
+			BufferSize: bufferSize,
+			inFile:     test.Out.Wav1,
+			outFile:    test.Out.Wav2,
+			messages:   int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
+			samples:    test.Data.Wav1Samples,
+		},
+	}
+
 	for _, test := range tests {
-		pump, err := wav.NewPump(test.inFile, bufferSize)
-		assert.Nil(t, err)
-		sampleRate := pump.SampleRate()
-		sink, err := wav.NewSink(test.outFile, pump.SampleRate(), pump.NumChannels(), pump.BitDepth(), pump.Format())
+		pump := wav.NewPump(test.inFile, bufferSize)
+		sink, err := wav.NewSink(test.outFile, signal.BitDepth16)
 		assert.Nil(t, err)
 
 		processor := &mock.Processor{}
 		p, err := pipe.New(
-			sampleRate,
 			pipe.WithPump(pump),
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),
@@ -65,4 +63,38 @@ func TestWavPipe(t *testing.T) {
 		err = pipe.Wait(p.Run())
 		assert.Equal(t, phono.ErrSingleUseReused, err)
 	}
+}
+
+func TestWavPumpErrors(t *testing.T) {
+	tests := []struct {
+		path string
+	}{
+		{
+			path: "non-existing file",
+		},
+		{
+			path: test.Data.Mp3,
+		},
+		{
+			path: test.Data.Wav8Bit,
+		},
+	}
+
+	for _, test := range tests {
+		pump := wav.NewPump(test.path, 0)
+		_, _, _, err := pump.Pump("")
+		assert.NotNil(t, err)
+	}
+}
+
+func TestWavSinkErrors(t *testing.T) {
+	// test unsupported bit depth
+	_, err := wav.NewSink("test", signal.BitDepth8)
+	assert.NotNil(t, err)
+
+	// test empty file name
+	sink, err := wav.NewSink("", signal.BitDepth16)
+	assert.Nil(t, err)
+	_, err = sink.Sink("test", 0, 0)
+	assert.NotNil(t, err)
 }
