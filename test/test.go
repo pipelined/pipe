@@ -15,11 +15,13 @@ var (
 	Data = struct {
 		Wav1        string
 		Wav2        string
+		Wav8Bit     string
 		Mp3         string
 		Wav1Samples int
 	}{
-		Wav1:        resolvePath(testdata + "sample1.wav"), // Wav1 is the wav file with bass slap sample.
-		Wav2:        resolvePath(testdata + "sample2.wav"), // Wav2 is the wav file with trimmed reversed bass slap sample.
+		Wav1:        resolvePath(testdata + "sample1.wav"),    // Wav1 is the wav file with bass slap sample.
+		Wav2:        resolvePath(testdata + "sample2.wav"),    // Wav2 is the wav file with trimmed reversed bass slap sample.
+		Wav8Bit:     resolvePath(testdata + "sample8bit.wav"), // Wav8Bit is the 8 bit wav file.
 		Mp3:         resolvePath(testdata + "sample.mp3"),
 		Wav1Samples: 330534,
 	}

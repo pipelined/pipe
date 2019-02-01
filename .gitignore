@@ -20,6 +20,7 @@ Gopkg.lock
 *.wav
 !sample1.wav
 !sample2.wav
+!sample8bit.wav
 
 *.mp3
 !sample.mp3
