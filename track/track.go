@@ -10,6 +10,7 @@ import (
 type Track struct {
 	bufferSize  int
 	numChannels int
+	sampleRate  int
 
 	start   *clip
 	end     *clip
@@ -39,10 +40,11 @@ func (c *clip) End() int {
 }
 
 // New creates a new track in a session.
-func New(bufferSize int, numChannels int) (t *Track) {
+func New(bufferSize int, sampleRate int, numChannels int) (t *Track) {
 	t = &Track{
 		nextIndex:   0,
 		bufferSize:  bufferSize,
+		sampleRate:  sampleRate,
 		numChannels: numChannels,
 	}
 	return
@@ -56,7 +58,7 @@ func (t *Track) BufferSizeParam(bufferSize int) func() {
 }
 
 // Pump implements track pump with a sequence of not overlapped clips.
-func (t *Track) Pump(string) (func() (phono.Buffer, error), error) {
+func (t *Track) Pump(string) (func() (phono.Buffer, error), int, int, error) {
 	t.newIndex = make(chan int)
 	t.nextIndex = 0
 	return func() (phono.Buffer, error) {
@@ -66,7 +68,7 @@ func (t *Track) Pump(string) (func() (phono.Buffer, error), error) {
 		b := t.bufferAt(t.nextIndex)
 		t.nextIndex += t.bufferSize
 		return b, nil
-	}, nil
+	}, t.sampleRate, t.numChannels, nil
 }
 
 // Reset flushes all clips from track.
