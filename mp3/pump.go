@@ -2,8 +2,11 @@ package mp3
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
+
+	"github.com/pipelined/phono/signal"
 
 	"github.com/pipelined/phono"
 
@@ -12,35 +15,43 @@ import (
 
 // Pump allows to read mp3 files.
 type Pump struct {
+	path        string
 	bufferSize  int
 	numChannels int
+	sampleRate  int
 	f           *os.File
 	d           *mp3.Decoder
 }
 
 // NewPump creates new mp3 Pump.
-// NOTE: current decoder always provides stereo, so return constant.
-func NewPump(path string, bufferSize int) (*Pump, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-
-	d, err := mp3.NewDecoder(f)
-	if err != nil {
-		return nil, err
-	}
-
+func NewPump(path string, bufferSize int) *Pump {
 	return &Pump{
-		d:           d,
-		f:           f,
-		bufferSize:  bufferSize,
-		numChannels: 2,
-	}, nil
+		path:       path,
+		bufferSize: bufferSize,
+	}
 }
 
 // Pump reads buffer from mp3.
-func (p *Pump) Pump(string) (func() (phono.Buffer, error), error) {
+func (p *Pump) Pump(string) (func() (phono.Buffer, error), int, int, error) {
+	var err error
+
+	p.f, err = os.Open(p.path)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	p.d, err = mp3.NewDecoder(p.f)
+	if err != nil {
+		errClose := p.f.Close()
+		if err != nil {
+			return nil, 0, 0, fmt.Errorf("Failed to close file %v: %v caused by %v", p.path, errClose, err)
+		}
+		return nil, 0, 0, err
+	}
+
+	// current decoder always provides stereo, so constant
+	p.numChannels = 2
+
 	return func() (phono.Buffer, error) {
 		capacity := p.bufferSize * p.numChannels
 		ints := make([]int, 0, capacity)
@@ -61,33 +72,16 @@ func (p *Pump) Pump(string) (func() (phono.Buffer, error), error) {
 			}
 		}
 
-		b := phono.EmptyBuffer(p.numChannels, len(ints)/p.numChannels)
-		b.ReadInts(ints)
+		b := phono.Buffer(signal.InterInt{Data: ints, NumChannels: p.numChannels, BitDepth: signal.BitDepth16}.AsFloat64())
 		// read not enough samples
 		if b.Size() != p.bufferSize {
 			return b, io.ErrUnexpectedEOF
 		}
 		return b, nil
-	}, nil
+	}, p.sampleRate, p.numChannels, nil
 }
 
 // Flush all buffers.
 func (p *Pump) Flush(string) error {
 	return p.d.Close()
-}
-
-// SampleRate returns sample rate of decoded file.
-func (p *Pump) SampleRate() int {
-	if p == nil || p.d == nil {
-		return 0
-	}
-	return p.d.SampleRate()
-}
-
-// NumChannels returns number of channels.
-func (p *Pump) NumChannels() int {
-	if p == nil {
-		return 0
-	}
-	return p.numChannels
 }
