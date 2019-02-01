@@ -12,12 +12,12 @@ import (
 
 var (
 	tests = []struct {
-		BufferSize  int
 		NumChannels int
 		mock.Limit
 		value    float64
 		messages int
 		samples  int
+		interval time.Duration
 	}{
 		{
 			NumChannels: 1,
@@ -25,6 +25,7 @@ var (
 			value:       0.5,
 			messages:    10,
 			samples:     100,
+			interval:    10 * time.Nanosecond,
 		},
 		{
 			NumChannels: 2,
@@ -47,7 +48,6 @@ func TestPipe(t *testing.T) {
 	processor := &mock.Processor{}
 	sink := &mock.Sink{}
 	p, err := pipe.New(
-		sampleRate,
 		pipe.WithName("Mock"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(processor),
@@ -57,6 +57,7 @@ func TestPipe(t *testing.T) {
 
 	for _, test := range tests {
 		p.Push(pump,
+			pump.IntervalParam(test.interval),
 			pump.LimitParam(test.Limit),
 			pump.NumChannelsParam(test.NumChannels),
 			pump.ValueParam(test.value),
@@ -94,7 +95,6 @@ func TestComponentsReuse(t *testing.T) {
 	sink2 := &mock.Sink{}
 
 	p, err := pipe.New(
-		sampleRate,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
@@ -107,7 +107,6 @@ func TestComponentsReuse(t *testing.T) {
 	err = pipe.Wait(p.Close())
 	assert.Nil(t, err)
 	p, err = pipe.New(
-		sampleRate,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
