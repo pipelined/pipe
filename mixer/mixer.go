@@ -21,6 +21,7 @@ type Mixer struct {
 	outputID    atomic.Value      // id of the pipe which is output of mixer
 	*frame                        // last processed frame
 	cancel      chan struct{}     // cancel is closed only when pump is interrupted
+	sampleRate  int
 }
 
 type inMessage struct {
@@ -62,21 +63,22 @@ const (
 )
 
 // New returns new mixer.
-func New(bufferSize int, numChannels int) *Mixer {
-	m := &Mixer{
-		Logger:      log.GetLogger(),
-		frames:      make(map[string]*frame),
-		numChannels: numChannels,
-		bufferSize:  bufferSize,
-		in:          make(chan *inMessage, 1),
-		register:    make(chan string, maxInputs),
-		cancel:      make(chan struct{}),
+func New(bufferSize int) *Mixer {
+	m := Mixer{
+		Logger:     log.GetLogger(),
+		frames:     make(map[string]*frame),
+		bufferSize: bufferSize,
+		in:         make(chan *inMessage, 1),
+		register:   make(chan string, maxInputs),
+		cancel:     make(chan struct{}),
 	}
-	return m
+	return &m
 }
 
 // Sink registers new input.
-func (m *Mixer) Sink(inputID string) (func(phono.Buffer) error, error) {
+func (m *Mixer) Sink(inputID string, sampleRate, numChannel int) (func(phono.Buffer) error, error) {
+	m.sampleRate = sampleRate
+	m.numChannels = numChannel
 	m.register <- inputID
 	return func(b phono.Buffer) error {
 		select {
@@ -112,7 +114,7 @@ func (m *Mixer) isOutput(sourceID string) bool {
 }
 
 // Pump returns a pump function which allows to read the out channel.
-func (m *Mixer) Pump(outputID string) (func() (phono.Buffer, error), error) {
+func (m *Mixer) Pump(outputID string) (func() (phono.Buffer, error), int, int, error) {
 	m.outputID.Store(outputID)
 	return func() (phono.Buffer, error) {
 		// receive new buffer
@@ -121,7 +123,7 @@ func (m *Mixer) Pump(outputID string) (func() (phono.Buffer, error), error) {
 			return nil, io.EOF
 		}
 		return f.sum(m.numChannels, m.bufferSize), nil
-	}, nil
+	}, m.sampleRate, m.numChannels, nil
 }
 
 // Interrupt impliments pipe.Interrupter.

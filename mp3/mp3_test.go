@@ -9,15 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPump(t *testing.T) {
+func TestMp3(t *testing.T) {
 	bufferSize := 512
-	pump, err := mp3.NewPump(test.Data.Mp3, bufferSize)
-	assert.Nil(t, err)
-	sampleRate := pump.SampleRate()
-	sink, err := mp3.NewSink(test.Out.Mp3, pump.SampleRate(), 2, 192, 2)
-	assert.Nil(t, err)
+	pump := mp3.NewPump(test.Data.Mp3, bufferSize)
+	sink := mp3.NewSink(test.Out.Mp3, 192, 2)
 	p, err := pipe.New(
-		sampleRate,
 		pipe.WithPump(pump),
 		pipe.WithSinks(sink),
 	)

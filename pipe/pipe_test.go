@@ -158,7 +158,7 @@ func TestLeaks(t *testing.T) {
 // This is a constructor of test pipe
 func newPipe(t *testing.T) *pipe.Pipe {
 	pump := &mock.Pump{
-		// UID:         phono.NewUID(),
+		// SampleRate:  44100,
 		Limit:       5,
 		Interval:    10 * time.Microsecond,
 		BufferSize:  10,
@@ -170,7 +170,6 @@ func newPipe(t *testing.T) *pipe.Pipe {
 	sink2 := &mock.Sink{}
 
 	p, err := pipe.New(
-		sampleRate,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),

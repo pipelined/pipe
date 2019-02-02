@@ -84,8 +84,8 @@ func TestInvalidCounter(t *testing.T) {
 }
 
 func TestPipe(t *testing.T) {
-	sampleRate := 44100
 	pump := &mock.Pump{
+		SampleRate:  44100,
 		Limit:       5,
 		Interval:    10 * time.Microsecond,
 		BufferSize:  10,
@@ -97,7 +97,6 @@ func TestPipe(t *testing.T) {
 	sink2 := &mock.Sink{}
 	metric := &metric.Metric{}
 	p, _ := pipe.New(
-		sampleRate,
 		pipe.WithMetric(metric),
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),

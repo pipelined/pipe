@@ -21,6 +21,7 @@ type Pump struct {
 	Value       float64
 	BufferSize  int
 	NumChannels int
+	SampleRate  int
 }
 
 // Sink mocks up a pipe.Sink interface.
@@ -64,7 +65,7 @@ func (m *Pump) NumChannelsParam(numChannels int) func() {
 }
 
 // Pump returns new buffer for pipe.
-func (m *Pump) Pump(string) (func() (phono.Buffer, error), error) {
+func (m *Pump) Pump(string) (func() (phono.Buffer, error), int, int, error) {
 	return func() (phono.Buffer, error) {
 		if Limit(m.Messages()) >= m.Limit {
 			return nil, io.EOF
@@ -80,7 +81,7 @@ func (m *Pump) Pump(string) (func() (phono.Buffer, error), error) {
 		}
 		m.counter.Advance(b)
 		return b, nil
-	}, nil
+	}, m.SampleRate, m.NumChannels, nil
 }
 
 // Reset implements pipe.Resetter.
@@ -90,7 +91,7 @@ func (m *Pump) Reset(string) error {
 }
 
 // Process implementation for runner
-func (m *Processor) Process(string) (func(phono.Buffer) (phono.Buffer, error), error) {
+func (m *Processor) Process(pipeID string, sampleRate, numChannels int) (func(phono.Buffer) (phono.Buffer, error), error) {
 	return func(b phono.Buffer) (phono.Buffer, error) {
 		m.Advance(b)
 		return b, nil
@@ -104,7 +105,7 @@ func (m *Processor) Reset(string) error {
 }
 
 // Sink implementation for runner.
-func (m *Sink) Sink(string) (func(phono.Buffer) error, error) {
+func (m *Sink) Sink(pipeID string, sampleRate, numChannels int) (func(phono.Buffer) error, error) {
 	return func(b phono.Buffer) error {
 		m.Buffer = m.Buffer.Append(b)
 		m.Advance(b)
