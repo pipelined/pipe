@@ -14,17 +14,17 @@ import (
 // The latest case means that pump executed as expected, but not enough data was available.
 // This incomplete buffer still will be sent further and pump will be finished gracefully.
 type Pump interface {
-	Pump(string) (func() (Buffer, error), error)
+	Pump(pipeID string) (func() (Buffer, error), int, int, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	Process(string) (func(Buffer) (Buffer, error), error)
+	Process(pipeID string, sampleRate, numChannels int) (func(Buffer) (Buffer, error), error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Sink(string) (func(Buffer) error, error)
+	Sink(pipeID string, sampleRate, numChannels int) (func(Buffer) error, error)
 }
 
 // Components closure types.
@@ -143,51 +143,6 @@ func (b Buffer) Clip(start int, len int) Clip {
 		Buffer: b,
 		Start:  start,
 		Len:    len,
-	}
-}
-
-// Ints converts [][]float64 buffer to []int of PCM data.
-func (b Buffer) Ints() []int {
-	if b == nil {
-		return nil
-	}
-	numChannels := int(b.NumChannels())
-	ints := make([]int, int(b.Size())*numChannels)
-	for i := range b[0] {
-		for j := range b {
-			ints[i*numChannels+j] = int(b[j][i] * 0x7fff)
-		}
-	}
-	return ints
-}
-
-// ReadInts converts PCM encoded as ints to float64 buffer.
-func (b Buffer) ReadInts(ints []int) {
-	if b == nil {
-		return
-	}
-	intsLen := len(ints)
-	numChannels := int(b.NumChannels())
-	for i := range b {
-		b[i] = make([]float64, 0, intsLen)
-		for j := i; j < intsLen; j = j + numChannels {
-			b[i] = append(b[i], float64(ints[j])/0x8000)
-		}
-	}
-}
-
-// ReadInts16 converts PCM encoded as ints16 to float64 buffer.
-func (b Buffer) ReadInts16(ints []int16) {
-	if b == nil {
-		return
-	}
-	intsLen := len(ints)
-	numChannels := int(b.NumChannels())
-	for i := range b {
-		b[i] = make([]float64, 0, intsLen)
-		for j := i; j < intsLen; j = j + numChannels {
-			b[i] = append(b[i], float64(ints[j])/0x8000)
-		}
 	}
 }
 

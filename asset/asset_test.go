@@ -44,10 +44,8 @@ func TestPipe(t *testing.T) {
 			BufferSize: bufferSize,
 		}
 		processor := &mock.Processor{}
-		sampleRate := 44100
 		sink := asset.New()
 		p, err := pipe.New(
-			sampleRate,
 			pipe.WithName("Mock"),
 			pipe.WithPump(pump),
 			pipe.WithProcessors(processor),
