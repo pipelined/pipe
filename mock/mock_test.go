@@ -42,12 +42,12 @@ var (
 func TestPipe(t *testing.T) {
 	pump := &mock.Pump{
 		// UID:        phono.NewUID(),
-		Limit:      1,
-		BufferSize: bufferSize,
+		Limit: 1,
 	}
 	processor := &mock.Processor{}
 	sink := &mock.Sink{}
 	p, err := pipe.New(
+		bufferSize,
 		pipe.WithName("Mock"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(processor),
@@ -86,7 +86,6 @@ func TestComponentsReuse(t *testing.T) {
 	pump := &mock.Pump{
 		Limit:       5,
 		Interval:    10 * time.Microsecond,
-		BufferSize:  10,
 		NumChannels: 1,
 	}
 	proc1 := &mock.Processor{}
@@ -95,6 +94,7 @@ func TestComponentsReuse(t *testing.T) {
 	sink2 := &mock.Sink{}
 
 	p, err := pipe.New(
+		bufferSize,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
@@ -107,6 +107,7 @@ func TestComponentsReuse(t *testing.T) {
 	err = pipe.Wait(p.Close())
 	assert.Nil(t, err)
 	p, err = pipe.New(
+		bufferSize,
 		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),

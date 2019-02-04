@@ -17,10 +17,10 @@ import (
 	"github.com/pipelined/phono/wav"
 )
 
-var (
-	bufferSize  = 10
-	numChannels = 1
-	tests       = []struct {
+func TestMixer(t *testing.T) {
+	bufferSize := 10
+	numChannels := 1
+	tests := []struct {
 		mock.Limit
 		value1   float64
 		value2   float64
@@ -45,37 +45,35 @@ var (
 			samples:  100,
 		},
 	}
-)
-
-func TestMixer(t *testing.T) {
 	pump1 := &mock.Pump{
 		Limit:       1,
-		BufferSize:  bufferSize,
 		NumChannels: numChannels,
 	}
 	pump2 := &mock.Pump{
 		Limit:       1,
-		BufferSize:  bufferSize,
 		NumChannels: numChannels,
 	}
-	mix := mixer.New(bufferSize)
+	mix := mixer.New()
 	sink := &mock.Sink{}
-	playback, err := pipe.New(
-		pipe.WithName("Playback"),
-		pipe.WithPump(mix),
-		pipe.WithSinks(sink),
-	)
-	assert.Nil(t, err)
 	track1, err := pipe.New(
+		bufferSize,
 		pipe.WithName("Track 1"),
 		pipe.WithPump(pump1),
 		pipe.WithSinks(mix),
 	)
 	assert.Nil(t, err)
 	track2, err := pipe.New(
+		bufferSize,
 		pipe.WithName("Track 2"),
 		pipe.WithPump(pump2),
 		pipe.WithSinks(mix),
+	)
+	assert.Nil(t, err)
+	playback, err := pipe.New(
+		bufferSize,
+		pipe.WithName("Playback"),
+		pipe.WithPump(mix),
+		pipe.WithSinks(sink),
 	)
 	assert.Nil(t, err)
 
@@ -118,26 +116,29 @@ func TestMixer(t *testing.T) {
 }
 
 func TestWavMixer(t *testing.T) {
-	bs := 512
+	bufferSize := 512
 
-	p1 := wav.NewPump(test.Data.Wav1, bs)
-	p2 := wav.NewPump(test.Data.Wav2, bs)
+	p1 := wav.NewPump(test.Data.Wav1)
+	p2 := wav.NewPump(test.Data.Wav2)
 
 	s, err := wav.NewSink(test.Out.Mixer, signal.BitDepth16)
 
-	m := mixer.New(bs)
+	m := mixer.New()
 
 	track1, err := pipe.New(
+		bufferSize,
 		pipe.WithPump(p1),
 		pipe.WithSinks(m),
 	)
 	assert.Nil(t, err)
 	track2, err := pipe.New(
+		bufferSize,
 		pipe.WithPump(p2),
 		pipe.WithSinks(m),
 	)
 	assert.Nil(t, err)
 	playback, err := pipe.New(
+		bufferSize,
 		pipe.WithPump(m),
 		pipe.WithSinks(s),
 	)
@@ -163,21 +164,23 @@ func TestWavMixer(t *testing.T) {
 }
 
 func TestInterruptSink(t *testing.T) {
+	bufferSize := 10
 	pump := &mock.Pump{
 		Limit:       10,
-		BufferSize:  bufferSize,
-		NumChannels: numChannels,
+		NumChannels: 2,
 		Interval:    100,
 	}
-	mix := mixer.New(bufferSize)
+	mix := mixer.New()
 	sink := &mock.Sink{}
 	playback, err := pipe.New(
+		bufferSize,
 		pipe.WithName("Playback"),
 		pipe.WithPump(mix),
 		pipe.WithSinks(sink),
 	)
 	assert.Nil(t, err)
 	track, err := pipe.New(
+		bufferSize,
 		pipe.WithName("Track 1"),
 		pipe.WithPump(pump),
 		pipe.WithSinks(mix),
@@ -196,21 +199,23 @@ func TestInterruptSink(t *testing.T) {
 }
 
 func TestInterruptPump(t *testing.T) {
+	bufferSize := 10
 	pump := &mock.Pump{
 		Limit:       10,
-		BufferSize:  bufferSize,
-		NumChannels: numChannels,
+		NumChannels: 2,
 		Interval:    100,
 	}
-	mix := mixer.New(bufferSize)
+	mix := mixer.New()
 	sink := &mock.Sink{}
 	playback, err := pipe.New(
+		bufferSize,
 		pipe.WithName("Playback"),
 		pipe.WithPump(mix),
 		pipe.WithSinks(sink),
 	)
 	assert.Nil(t, err)
 	track, err := pipe.New(
+		bufferSize,
 		pipe.WithName("Track 1"),
 		pipe.WithPump(pump),
 		pipe.WithSinks(mix),

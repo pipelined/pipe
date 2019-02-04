@@ -19,24 +19,20 @@ import (
 
 // Pump allows to read mp3 files.
 type Pump struct {
-	path        string
-	bufferSize  int
-	numChannels int
-	sampleRate  int
-	f           *os.File
-	d           *mp3.Decoder
+	path string
+	f    *os.File
+	d    *mp3.Decoder
 }
 
 // NewPump creates new mp3 Pump.
-func NewPump(path string, bufferSize int) *Pump {
+func NewPump(path string) *Pump {
 	return &Pump{
-		path:       path,
-		bufferSize: bufferSize,
+		path: path,
 	}
 }
 
 // Pump reads buffer from mp3.
-func (p *Pump) Pump(string) (func() (phono.Buffer, error), int, int, error) {
+func (p *Pump) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, error), int, int, error) {
 	var err error
 
 	p.f, err = os.Open(p.path)
@@ -54,10 +50,11 @@ func (p *Pump) Pump(string) (func() (phono.Buffer, error), int, int, error) {
 	}
 
 	// current decoder always provides stereo, so constant
-	p.numChannels = 2
+	numChannels := 2
+	sampleRate := p.d.SampleRate()
 
 	return func() (phono.Buffer, error) {
-		capacity := p.bufferSize * p.numChannels
+		capacity := bufferSize * numChannels
 		ints := make([]int, 0, capacity)
 
 		var val int16
@@ -76,13 +73,13 @@ func (p *Pump) Pump(string) (func() (phono.Buffer, error), int, int, error) {
 			}
 		}
 
-		b := phono.Buffer(signal.InterInt{Data: ints, NumChannels: p.numChannels, BitDepth: signal.BitDepth16}.AsFloat64())
+		b := phono.Buffer(signal.InterInt{Data: ints, NumChannels: numChannels, BitDepth: signal.BitDepth16}.AsFloat64())
 		// read not enough samples
-		if b.Size() != p.bufferSize {
+		if b.Size() != bufferSize {
 			return b, io.ErrUnexpectedEOF
 		}
 		return b, nil
-	}, p.sampleRate, p.numChannels, nil
+	}, sampleRate, numChannels, nil
 }
 
 // Flush all buffers.
@@ -126,7 +123,7 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink writes buffer into file.
-func (s *Sink) Sink(sourceID string, sampleRate int, numChannels int) (func(phono.Buffer) error, error) {
+func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) error, error) {
 	var err error
 	s.f, err = os.Create(s.path)
 	if err != nil {

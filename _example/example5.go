@@ -3,6 +3,7 @@ package example
 import (
 	"github.com/pipelined/phono/mixer"
 	"github.com/pipelined/phono/pipe"
+	"github.com/pipelined/phono/signal"
 	"github.com/pipelined/phono/test"
 	"github.com/pipelined/phono/vst2"
 	"github.com/pipelined/phono/wav"
@@ -18,23 +19,20 @@ import (
 // NOTE: For example both wav files have same characteristics i.e: sample rate, bit depth and number of channels.
 // In real life implicit conversion will be needed.
 func five() {
-	bs := 512
+	bufferSize := 512
 
 	// wav pump 1
-	wavPump1, err := wav.NewPump(test.Data.Wav1, bs)
-	check(err)
+	wavPump1 := wav.NewPump(test.Data.Wav1)
 
 	// wav pump 2
-	wavPump2, err := wav.NewPump(test.Data.Wav2, bs)
-	check(err)
+	wavPump2 := wav.NewPump(test.Data.Wav2)
 
-	sampleRate := wavPump1.SampleRate()
 	// mixer
-	mixer := mixer.New(bs, wavPump1.NumChannels())
+	mixer := mixer.New()
 
 	// track 1
 	track1, err := pipe.New(
-		sampleRate,
+		bufferSize,
 		pipe.WithPump(wavPump1),
 		pipe.WithSinks(mixer),
 	)
@@ -42,7 +40,7 @@ func five() {
 	defer track1.Close()
 	// track 2
 	track2, err := pipe.New(
-		sampleRate,
+		bufferSize,
 		pipe.WithPump(wavPump2),
 		pipe.WithSinks(mixer),
 	)
@@ -58,26 +56,18 @@ func five() {
 	check(err)
 	defer vst2plugin.Close()
 
-	vst2processor := vst2.NewProcessor(
-		vst2plugin,
-		bs,
-		wavPump1.SampleRate(),
-		wavPump1.NumChannels(),
-	)
+	vst2processor := vst2.NewProcessor(vst2plugin)
 
 	// wav sink
 	wavSink, err := wav.NewSink(
 		test.Out.Example5,
-		wavPump1.SampleRate(),
-		wavPump1.NumChannels(),
-		wavPump1.BitDepth(),
-		wavPump1.Format(),
+		signal.BitDepth16,
 	)
 	check(err)
 
 	// out pipe
 	out, err := pipe.New(
-		sampleRate,
+		bufferSize,
 		pipe.WithPump(mixer),
 		pipe.WithProcessors(vst2processor),
 		pipe.WithSinks(wavSink),

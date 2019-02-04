@@ -24,18 +24,18 @@ type Processor struct {
 }
 
 // NewProcessor creates new vst2 processor.
-func NewProcessor(plugin *vst2.Plugin, bufferSize int, sampleRate int, numChannels int) *Processor {
+func NewProcessor(plugin *vst2.Plugin) *Processor {
 	return &Processor{
 		plugin:          plugin,
 		currentPosition: 0,
-		bufferSize:      bufferSize,
-		sampleRate:      sampleRate,
-		numChannels:     numChannels,
 	}
 }
 
 // Process returns processor function with default settings initialized.
-func (p *Processor) Process(string) (func(phono.Buffer) (phono.Buffer, error), error) {
+func (p *Processor) Process(pipeID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) (phono.Buffer, error), error) {
+	p.bufferSize = bufferSize
+	p.sampleRate = sampleRate
+	p.numChannels = numChannels
 	p.plugin.SetCallback(p.callback())
 	p.plugin.SetBufferSize(int(p.bufferSize))
 	p.plugin.SetSampleRate(int(p.sampleRate))
