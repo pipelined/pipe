@@ -14,30 +14,18 @@ import (
 // The latest case means that pump executed as expected, but not enough data was available.
 // This incomplete buffer still will be sent further and pump will be finished gracefully.
 type Pump interface {
-	Pump(pipeID string) (func() (Buffer, error), int, int, error)
+	Pump(pipeID string, bufferSize int) (func() (Buffer, error), int, int, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	Process(pipeID string, sampleRate, numChannels int) (func(Buffer) (Buffer, error), error)
+	Process(pipeID string, sampleRate, numChannels, bufferSize int) (func(Buffer) (Buffer, error), error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Sink(pipeID string, sampleRate, numChannels int) (func(Buffer) error, error)
+	Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func(Buffer) error, error)
 }
-
-// Components closure types.
-type (
-// PumpFunc produces new buffer of data.
-// PumpFunc func() (Buffer, error)
-
-// ProcessFunc consumes and returns new buffer of data.
-// ProcessFunc func(Buffer) (Buffer, error)
-
-// SinkFunc consumes buffer of data.
-// SinkFunc func(Buffer) error
-)
 
 type (
 	// Buffer represent a sample data sliced per channel

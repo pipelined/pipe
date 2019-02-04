@@ -2,6 +2,7 @@ package mixer
 
 import (
 	"io"
+	"sync"
 	"sync/atomic"
 
 	"github.com/pipelined/phono"
@@ -11,17 +12,18 @@ import (
 // Mixer summs up multiple channels of messages into a single channel.
 type Mixer struct {
 	log.Logger
-	numChannels int
-	bufferSize  int
-	out         chan *frame       // channel to send frames ready for mix
-	in          chan *inMessage   // channel to send incoming messages
-	frames      map[string]*frame // frames sinking data
-	done        []string          // done inputs ids
-	register    chan string       // register new input input, buffered
-	outputID    atomic.Value      // id of the pipe which is output of mixer
-	*frame                        // last processed frame
-	cancel      chan struct{}     // cancel is closed only when pump is interrupted
+	out      chan *frame       // channel to send frames ready for mix
+	in       chan *inMessage   // channel to send incoming messages
+	frames   map[string]*frame // frames sinking data
+	done     []string          // done inputs ids
+	register chan string       // register new input input, buffered
+	outputID atomic.Value      // id of the pipe which is output of mixer
+	*frame                     // last processed frame
+	cancel   chan struct{}     // cancel is closed only when pump is interrupted
+
+	m           sync.Mutex
 	sampleRate  int
+	numChannels int
 }
 
 type inMessage struct {
@@ -43,7 +45,7 @@ func (f *frame) sum(numChannels int, bufferSize int) phono.Buffer {
 	result := phono.Buffer(make([][]float64, numChannels))
 	for nc := 0; nc < int(numChannels); nc++ {
 		result[nc] = make([]float64, 0, bufferSize)
-		for bs := 0; bs < int(bufferSize); bs++ {
+		for bs := 0; bs < bufferSize; bs++ {
 			sum = 0
 			frames = 0
 			// additional check to sum shorten blockin.
@@ -63,22 +65,23 @@ const (
 )
 
 // New returns new mixer.
-func New(bufferSize int) *Mixer {
+func New() *Mixer {
 	m := Mixer{
-		Logger:     log.GetLogger(),
-		frames:     make(map[string]*frame),
-		bufferSize: bufferSize,
-		in:         make(chan *inMessage, 1),
-		register:   make(chan string, maxInputs),
-		cancel:     make(chan struct{}),
+		Logger:   log.GetLogger(),
+		frames:   make(map[string]*frame),
+		in:       make(chan *inMessage, 1),
+		register: make(chan string, maxInputs),
+		cancel:   make(chan struct{}),
 	}
 	return &m
 }
 
-// Sink registers new input.
-func (m *Mixer) Sink(inputID string, sampleRate, numChannel int) (func(phono.Buffer) error, error) {
+// Sink registers new input. SampleRate and NumChannels are propagated here, due to that Sink pipes should be called before Pump.
+func (m *Mixer) Sink(inputID string, sampleRate, numChannel, bufferSize int) (func(phono.Buffer) error, error) {
+	m.m.Lock()
 	m.sampleRate = sampleRate
 	m.numChannels = numChannel
+	m.m.Unlock()
 	m.register <- inputID
 	return func(b phono.Buffer) error {
 		select {
@@ -114,7 +117,11 @@ func (m *Mixer) isOutput(sourceID string) bool {
 }
 
 // Pump returns a pump function which allows to read the out channel.
-func (m *Mixer) Pump(outputID string) (func() (phono.Buffer, error), int, int, error) {
+func (m *Mixer) Pump(outputID string, bufferSize int) (func() (phono.Buffer, error), int, int, error) {
+	m.m.Lock()
+	sampleRate := m.sampleRate
+	numChannels := m.numChannels
+	m.m.Unlock()
 	m.outputID.Store(outputID)
 	return func() (phono.Buffer, error) {
 		// receive new buffer
@@ -122,8 +129,8 @@ func (m *Mixer) Pump(outputID string) (func() (phono.Buffer, error), int, int, e
 		if !ok {
 			return nil, io.EOF
 		}
-		return f.sum(m.numChannels, m.bufferSize), nil
-	}, m.sampleRate, m.numChannels, nil
+		return f.sum(numChannels, bufferSize), nil
+	}, sampleRate, numChannels, nil
 }
 
 // Interrupt impliments pipe.Interrupter.
