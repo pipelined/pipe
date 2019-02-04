@@ -4,6 +4,7 @@ import (
 	"github.com/pipelined/phono/asset"
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/portaudio"
+	"github.com/pipelined/phono/signal"
 	"github.com/pipelined/phono/test"
 	"github.com/pipelined/phono/track"
 	"github.com/pipelined/phono/wav"
@@ -18,16 +19,14 @@ func four() {
 	bufferSize := 512
 
 	// wav pump
-	wavPump, err := wav.NewPump(test.Data.Wav1, bufferSize)
-	check(err)
-	sampleRate := wavPump.SampleRate()
+	wavPump := wav.NewPump(test.Data.Wav1)
 
 	// asset sink
 	asset := asset.New()
 
 	// import pipe
 	importAsset, err := pipe.New(
-		sampleRate,
+		bufferSize,
 		pipe.WithPump(wavPump),
 		pipe.WithSinks(asset),
 	)
@@ -38,7 +37,7 @@ func four() {
 	check(err)
 
 	// track pump
-	track := track.New(bufferSize, asset.NumChannels())
+	track := track.New(44100, asset.NumChannels())
 
 	// add samples
 	track.AddClip(198450, asset.Clip(0, 44100))
@@ -48,21 +47,14 @@ func four() {
 	// wav sink
 	wavSink, err := wav.NewSink(
 		test.Out.Example4,
-		wavPump.SampleRate(),
-		wavPump.NumChannels(),
-		wavPump.BitDepth(),
-		wavPump.Format(),
+		signal.BitDepth16,
 	)
 	// portaudio sink
-	paSink := portaudio.NewSink(
-		bufferSize,
-		wavPump.SampleRate(),
-		wavPump.NumChannels(),
-	)
+	paSink := portaudio.NewSink()
 
 	// final pipe
 	p, err := pipe.New(
-		sampleRate,
+		bufferSize,
 		pipe.WithPump(track),
 		pipe.WithSinks(wavSink, paSink),
 	)

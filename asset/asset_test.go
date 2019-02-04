@@ -12,7 +12,6 @@ import (
 
 var (
 	tests = []struct {
-		BufferSize  int
 		NumChannels int
 		mock.Limit
 		value    float64
@@ -40,12 +39,12 @@ var (
 func TestPipe(t *testing.T) {
 	for _, test := range tests {
 		pump := &mock.Pump{
-			Limit:      1,
-			BufferSize: bufferSize,
+			Limit: 1,
 		}
 		processor := &mock.Processor{}
 		sink := asset.New()
 		p, err := pipe.New(
+			bufferSize,
 			pipe.WithName("Mock"),
 			pipe.WithPump(pump),
 			pipe.WithProcessors(processor),

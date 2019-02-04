@@ -13,24 +13,16 @@ import (
 func one() {
 	bufferSize := 512
 	// wav pump
-	wavPump, err := wav.NewPump(
+	wavPump := wav.NewPump(
 		test.Data.Wav1,
-		bufferSize,
 	)
-	check(err)
-	// take wav's sample rate as base
-	sampleRate := wavPump.SampleRate()
 
 	// portaudio sink
-	paSink := portaudio.NewSink(
-		bufferSize,
-		wavPump.SampleRate(),
-		wavPump.NumChannels(),
-	)
+	paSink := portaudio.NewSink()
 
 	// build pipe
 	p, err := pipe.New(
-		sampleRate,
+		bufferSize,
 		pipe.WithPump(wavPump),
 		pipe.WithSinks(paSink),
 	)

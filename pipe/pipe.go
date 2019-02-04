@@ -36,6 +36,7 @@ type Pipe struct {
 	name        string
 	sampleRate  int
 	numChannels int
+	bufferSize  int
 
 	pump       *pumpRunner
 	processors []*processRunner
@@ -69,9 +70,10 @@ var ErrInvalidState = errors.New("invalid state")
 
 // New creates a new pipe and applies provided options.
 // Returned pipe is in Ready state.
-func New(options ...Option) (*Pipe, error) {
+func New(bufferSize int, options ...Option) (*Pipe, error) {
 	p := &Pipe{
 		uid:        newUID(),
+		bufferSize: bufferSize,
 		log:        log.GetLogger(),
 		processors: make([]*processRunner, 0),
 		sinks:      make([]*sinkRunner, 0),
@@ -113,7 +115,7 @@ func WithPump(pump phono.Pump) Option {
 	return func(p *Pipe) error {
 		uid := newUID()
 		p.components[pump] = uid
-		r, sampleRate, numChannels, err := newPumpRunner(p.uid, pump)
+		r, sampleRate, numChannels, err := newPumpRunner(p.uid, p.bufferSize, pump)
 		if err != nil {
 			return err
 		}
@@ -130,7 +132,7 @@ func WithProcessors(processors ...phono.Processor) Option {
 		for _, proc := range processors {
 			uid := newUID()
 			p.components[proc] = uid
-			r, err := newProcessRunner(p.uid, p.sampleRate, p.numChannels, proc)
+			r, err := newProcessRunner(p.uid, p.sampleRate, p.numChannels, p.bufferSize, proc)
 			if err != nil {
 				return err
 			}
@@ -146,7 +148,7 @@ func WithSinks(sinks ...phono.Sink) Option {
 		for _, sink := range sinks {
 			uid := newUID()
 			p.components[sink] = uid
-			r, err := newSinkRunner(p.uid, p.sampleRate, p.numChannels, sink)
+			r, err := newSinkRunner(p.uid, p.sampleRate, p.numChannels, p.bufferSize, sink)
 			if err != nil {
 				return err
 			}
