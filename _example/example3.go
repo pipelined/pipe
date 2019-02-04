@@ -3,6 +3,7 @@ package example
 import (
 	"github.com/pipelined/phono/mixer"
 	"github.com/pipelined/phono/pipe"
+	"github.com/pipelined/phono/signal"
 	"github.com/pipelined/phono/test"
 	"github.com/pipelined/phono/wav"
 )
@@ -15,40 +16,35 @@ import (
 // NOTE: For example both wav files have same characteristics i.e: sample rate, bit depth and number of channels.
 // In real life implicit conversion will be needed.
 func three() {
-	bs := 512
+	bufferSize := 512
 
-	wavPump1, err := wav.NewPump(test.Data.Wav1, bs)
-	check(err)
-	wavPump2, err := wav.NewPump(test.Data.Wav2, bs)
-	check(err)
-	sampleRate := wavPump1.SampleRate()
+	wavPump1 := wav.NewPump(test.Data.Wav1)
+
+	wavPump2 := wav.NewPump(test.Data.Wav2)
 
 	wavSink, err := wav.NewSink(
 		test.Out.Example3,
-		wavPump1.SampleRate(),
-		wavPump1.NumChannels(),
-		wavPump1.BitDepth(),
-		wavPump1.Format(),
+		signal.BitDepth16,
 	)
 	check(err)
-	mixer := mixer.New(bs, wavPump1.NumChannels())
+	mixer := mixer.New()
 
 	track1, err := pipe.New(
-		sampleRate,
+		bufferSize,
 		pipe.WithPump(wavPump1),
 		pipe.WithSinks(mixer),
 	)
 	check(err)
 	defer track1.Close()
 	track2, err := pipe.New(
-		sampleRate,
+		bufferSize,
 		pipe.WithPump(wavPump2),
 		pipe.WithSinks(mixer),
 	)
 	check(err)
 	defer track2.Close()
 	out, err := pipe.New(
-		sampleRate,
+		bufferSize,
 		pipe.WithPump(mixer),
 		pipe.WithSinks(wavSink),
 	)

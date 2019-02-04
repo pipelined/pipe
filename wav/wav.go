@@ -16,10 +16,9 @@ import (
 type (
 	// Pump reads from wav file.
 	Pump struct {
-		bufferSize int
-		path       string
-		file       *os.File
-		decoder    *wav.Decoder
+		path    string
+		file    *os.File
+		decoder *wav.Decoder
 		// Once for single-use.
 		once sync.Once
 	}
@@ -38,8 +37,13 @@ type (
 var ErrUnsupportedBitDepth = errors.New("Only 16 and 32 bit depth is supported")
 
 // NewPump creates a new wav pump and sets wav props.
-func NewPump(path string, bufferSize int) *Pump {
-	return &Pump{path: path, bufferSize: bufferSize}
+func NewPump(path string) *Pump {
+	return &Pump{path: path}
+}
+
+// Reset ensures that file is read only once.
+func (p *Pump) Reset(string) error {
+	return phono.SingleUse(&p.once)
 }
 
 // Flush closes the file.
@@ -47,13 +51,8 @@ func (p *Pump) Flush(string) error {
 	return p.file.Close()
 }
 
-// Reset implements pipe.Resetter.
-func (p *Pump) Reset(string) error {
-	return phono.SingleUse(&p.once)
-}
-
 // Pump starts the pump process once executed, wav attributes are accessible.
-func (p *Pump) Pump(string) (func() (phono.Buffer, error), int, int, error) {
+func (p *Pump) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, error), int, int, error) {
 	file, err := os.Open(p.path)
 	if err != nil {
 		return nil, 0, 0, err
@@ -80,7 +79,7 @@ func (p *Pump) Pump(string) (func() (phono.Buffer, error), int, int, error) {
 
 	ib := &audio.IntBuffer{
 		Format:         decoder.Format(),
-		Data:           make([]int, p.bufferSize*decoder.Format().NumChannels),
+		Data:           make([]int, bufferSize*decoder.Format().NumChannels),
 		SourceBitDepth: int(decoder.BitDepth),
 	}
 
@@ -95,7 +94,7 @@ func (p *Pump) Pump(string) (func() (phono.Buffer, error), int, int, error) {
 		}
 		// prune buffer to actual size
 		b := phono.Buffer(signal.InterInt{Data: ib.Data[:readSamples], NumChannels: numChannels, BitDepth: signal.BitDepth(bitDepth)}.AsFloat64())
-		if b.Size() != p.bufferSize {
+		if b.Size() != bufferSize {
 			return b, io.ErrUnexpectedEOF
 		}
 		return b, nil
@@ -124,7 +123,7 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink returns new Sink function instance.
-func (s *Sink) Sink(pipeID string, sampleRate, numChannels int) (func(phono.Buffer) error, error) {
+func (s *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) error, error) {
 	f, err := os.Create(s.path)
 	if err != nil {
 		return nil, err

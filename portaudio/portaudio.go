@@ -8,28 +8,25 @@ import (
 type (
 	// Sink represets portaudio sink which allows to play audio using default device.
 	Sink struct {
-		buf        []float32
-		stream     *portaudio.Stream
-		bufferSize int
+		buf    []float32
+		stream *portaudio.Stream
 	}
 )
 
 // NewSink returns new initialized sink which allows to play pipe.
-func NewSink(bufferSize int) *Sink {
-	return &Sink{
-		bufferSize: bufferSize,
-	}
+func NewSink() *Sink {
+	return &Sink{}
 }
 
 // Sink writes the buffer of data to portaudio stream.
 // It aslo initilizes a portaudio api with default stream.
-func (s *Sink) Sink(sourceID string, sampleRate, numChannels int) (func(phono.Buffer) error, error) {
-	s.buf = make([]float32, s.bufferSize*numChannels)
+func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) error, error) {
+	s.buf = make([]float32, bufferSize*numChannels)
 	err := portaudio.Initialize()
 	if err != nil {
 		return nil, err
 	}
-	s.stream, err = portaudio.OpenDefaultStream(0, numChannels, float64(sampleRate), s.bufferSize, &s.buf)
+	s.stream, err = portaudio.OpenDefaultStream(0, numChannels, float64(sampleRate), bufferSize, &s.buf)
 	if err != nil {
 		return nil, err
 	}

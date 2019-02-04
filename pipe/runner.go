@@ -93,8 +93,8 @@ func resetter(i interface{}) hook {
 
 // newPumpRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newPumpRunner(pipeID string, p phono.Pump) (*pumpRunner, int, int, error) {
-	fn, sampleRate, numChannels, err := p.Pump(pipeID)
+func newPumpRunner(pipeID string, bufferSize int, p phono.Pump) (*pumpRunner, int, int, error) {
+	fn, sampleRate, numChannels, err := p.Pump(pipeID, bufferSize)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -171,8 +171,8 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 
 // newProcessRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newProcessRunner(pipeID string, sampleRate, numChannels int, p phono.Processor) (*processRunner, error) {
-	fn, err := p.Process(pipeID, sampleRate, numChannels)
+func newProcessRunner(pipeID string, sampleRate, numChannels, bufferSize int, p phono.Processor) (*processRunner, error) {
+	fn, err := p.Process(pipeID, sampleRate, numChannels, bufferSize)
 	if err != nil {
 		return nil, err
 	}
@@ -234,8 +234,8 @@ func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in
 
 // newSinkRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newSinkRunner(pipeID string, sampleRate, numChannels int, s phono.Sink) (*sinkRunner, error) {
-	fn, err := s.Sink(pipeID, sampleRate, numChannels)
+func newSinkRunner(pipeID string, sampleRate, numChannels, bufferSize int, s phono.Sink) (*sinkRunner, error) {
+	fn, err := s.Sink(pipeID, sampleRate, numChannels, bufferSize)
 	if err != nil {
 		return nil, err
 	}

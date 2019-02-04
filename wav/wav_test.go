@@ -4,11 +4,12 @@ import (
 	"math"
 	"testing"
 
+	"github.com/pipelined/phono"
+
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/signal"
 	"github.com/pipelined/phono/test"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/wav"
 	"github.com/stretchr/testify/assert"
@@ -20,35 +21,33 @@ const (
 
 func TestWavPipe(t *testing.T) {
 	tests := []struct {
-		BufferSize int
-		inFile     string
-		outFile    string
-		messages   int
-		samples    int
+		inFile   string
+		outFile  string
+		messages int
+		samples  int
 	}{
 		{
-			BufferSize: bufferSize,
-			inFile:     test.Data.Wav1,
-			outFile:    test.Out.Wav1,
-			messages:   int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
-			samples:    test.Data.Wav1Samples,
+			inFile:   test.Data.Wav1,
+			outFile:  test.Out.Wav1,
+			messages: int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
+			samples:  test.Data.Wav1Samples,
 		},
 		{
-			BufferSize: bufferSize,
-			inFile:     test.Out.Wav1,
-			outFile:    test.Out.Wav2,
-			messages:   int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
-			samples:    test.Data.Wav1Samples,
+			inFile:   test.Out.Wav1,
+			outFile:  test.Out.Wav2,
+			messages: int(math.Ceil(float64(test.Data.Wav1Samples) / float64(bufferSize))),
+			samples:  test.Data.Wav1Samples,
 		},
 	}
 
 	for _, test := range tests {
-		pump := wav.NewPump(test.inFile, bufferSize)
+		pump := wav.NewPump(test.inFile)
 		sink, err := wav.NewSink(test.outFile, signal.BitDepth16)
 		assert.Nil(t, err)
 
 		processor := &mock.Processor{}
 		p, err := pipe.New(
+			bufferSize,
 			pipe.WithPump(pump),
 			pipe.WithProcessors(processor),
 			pipe.WithSinks(sink),
@@ -81,8 +80,8 @@ func TestWavPumpErrors(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		pump := wav.NewPump(test.path, 0)
-		_, _, _, err := pump.Pump("")
+		pump := wav.NewPump(test.path)
+		_, _, _, err := pump.Pump("", 0)
 		assert.NotNil(t, err)
 	}
 }
@@ -95,6 +94,6 @@ func TestWavSinkErrors(t *testing.T) {
 	// test empty file name
 	sink, err := wav.NewSink("", signal.BitDepth16)
 	assert.Nil(t, err)
-	_, err = sink.Sink("test", 0, 0)
+	_, err = sink.Sink("test", 0, 0, 0)
 	assert.NotNil(t, err)
 }

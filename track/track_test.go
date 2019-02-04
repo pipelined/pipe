@@ -18,22 +18,16 @@ import (
 )
 
 var (
-	bufferSize  = 512
-	sampleRate  = 44100
-	numChannels = 1
-
 	buffer1 = phono.Buffer([][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}})
 	buffer2 = phono.Buffer([][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}})
 
 	overlapTests = []struct {
-		BufferSize int
-		clips      []phono.Clip
-		clipsAt    []int
-		result     []float64
-		msg        string
+		clips   []phono.Clip
+		clipsAt []int
+		result  []float64
+		msg     string
 	}{
 		{
-			BufferSize: 2,
 			clips: []phono.Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
@@ -43,17 +37,15 @@ var (
 			msg:     "Sequence",
 		},
 		{
-			BufferSize: 3,
 			clips: []phono.Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
 			clipsAt: []int{3, 4},
-			result:  []float64{0, 0, 0, 1, 2, 2, 2, 0, 0},
+			result:  []float64{0, 0, 0, 1, 2, 2, 2, 0},
 			msg:     "Sequence increased bufferSize",
 		},
 		{
-			BufferSize: 2,
 			clips: []phono.Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
@@ -63,7 +55,6 @@ var (
 			msg:     "Sequence shifted left",
 		},
 		{
-			BufferSize: 2,
 			clips: []phono.Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
@@ -142,10 +133,12 @@ var (
 )
 
 func TestTrackWavSlices(t *testing.T) {
-	wavPump := wav.NewPump(test.Data.Wav1, bufferSize)
+	bufferSize := 512
+	wavPump := wav.NewPump(test.Data.Wav1)
 	asset := asset.New()
 
 	p1, err := pipe.New(
+		bufferSize,
 		pipe.WithPump(wavPump),
 		pipe.WithSinks(asset),
 	)
@@ -157,13 +150,14 @@ func TestTrackWavSlices(t *testing.T) {
 		test.Out.Track,
 		signal.BitDepth16,
 	)
-	track := track.New(bufferSize, 44100, asset.NumChannels())
+	track := track.New(44100, asset.NumChannels())
 
 	track.AddClip(198450, asset.Clip(0, 44100))
 	track.AddClip(66150, asset.Clip(44100, 44100))
 	track.AddClip(132300, asset.Clip(0, 44100))
 
 	p2, err := pipe.New(
+		bufferSize,
 		pipe.WithPump(track),
 		pipe.WithSinks(wavSink),
 	)
@@ -174,7 +168,8 @@ func TestTrackWavSlices(t *testing.T) {
 func TestSliceOverlaps(t *testing.T) {
 	sink := &mock.Sink{}
 	bufferSize := 2
-	track := track.New(bufferSize, sampleRate, buffer1.NumChannels())
+	sampleRate := 44100
+	track := track.New(sampleRate, buffer1.NumChannels())
 	for _, test := range overlapTests {
 		fmt.Printf("Starting: %v\n", test.msg)
 		track.Reset()
@@ -184,13 +179,11 @@ func TestSliceOverlaps(t *testing.T) {
 		}
 
 		p, err := pipe.New(
+			bufferSize,
 			pipe.WithPump(track),
 			pipe.WithSinks(sink),
 		)
 		assert.Nil(t, err)
-		if test.BufferSize > 0 {
-			p.Push(track, track.BufferSizeParam(test.BufferSize))
-		}
 
 		_ = pipe.Wait(p.Run())
 		assert.Equal(t, len(test.result), len(sink.Buffer[0]), test.msg)

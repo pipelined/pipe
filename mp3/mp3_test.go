@@ -11,9 +11,10 @@ import (
 
 func TestMp3(t *testing.T) {
 	bufferSize := 512
-	pump := mp3.NewPump(test.Data.Mp3, bufferSize)
+	pump := mp3.NewPump(test.Data.Mp3)
 	sink := mp3.NewSink(test.Out.Mp3, 192, 2)
 	p, err := pipe.New(
+		bufferSize,
 		pipe.WithPump(pump),
 		pipe.WithSinks(sink),
 	)
