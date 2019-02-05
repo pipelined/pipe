@@ -32,7 +32,7 @@ func NewPump(path string) *Pump {
 }
 
 // Pump reads buffer from mp3.
-func (p *Pump) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, error), int, int, error) {
+func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error), int, int, error) {
 	var err error
 
 	p.f, err = os.Open(p.path)
@@ -53,7 +53,7 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, erro
 	numChannels := 2
 	sampleRate := p.d.SampleRate()
 
-	return func() (phono.Buffer, error) {
+	return func() ([][]float64, error) {
 		capacity := bufferSize * numChannels
 		ints := make([]int, 0, capacity)
 
@@ -73,7 +73,7 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, erro
 			}
 		}
 
-		b := phono.Buffer(signal.InterInt{Data: ints, NumChannels: numChannels, BitDepth: signal.BitDepth16}.AsFloat64())
+		b := signal.InterInt{Data: ints, NumChannels: numChannels, BitDepth: signal.BitDepth16}.AsFloat64()
 		// read not enough samples
 		if b.Size() != bufferSize {
 			return b, io.ErrUnexpectedEOF
@@ -123,7 +123,7 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink writes buffer into file.
-func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) error, error) {
+func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error) {
 	var err error
 	s.f, err = os.Create(s.path)
 	if err != nil {
@@ -139,7 +139,7 @@ func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (f
 	s.wr.Encoder.SetVBR(lame.VBR_RH)
 	s.wr.Encoder.InitParams()
 
-	return func(b phono.Buffer) error {
+	return func(b [][]float64) error {
 		buf := new(bytes.Buffer)
 		ints := signal.Float64(b).AsInterInt(signal.BitDepth16)
 		for i := range ints {
