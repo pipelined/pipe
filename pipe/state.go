@@ -3,8 +3,6 @@ package pipe
 import (
 	"fmt"
 	"sync"
-
-	"github.com/pipelined/phono"
 )
 
 // state identifies one of the possible states pipe can be in.
@@ -288,7 +286,7 @@ func (s activePausing) sendMessage(p *Pipe) state {
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
 		uid := p.components[sink.Sink]
-		param := phono.ReceivedBy(&wg, uid)
+		param := receivedBy(&wg, uid)
 		m.feedback = m.feedback.add(uid, param)
 	}
 	p.consume <- m
@@ -348,5 +346,12 @@ func (t target) handle(err error) {
 		t.errc <- err
 	} else {
 		panic(err)
+	}
+}
+
+// receivedBy returns channel which is closed when param received by identified entity
+func receivedBy(wg *sync.WaitGroup, id string) func() {
+	return func() {
+		wg.Done()
 	}
 }

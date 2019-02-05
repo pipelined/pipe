@@ -39,10 +39,3 @@ var (
 	// ErrSingleUseReused is returned when object designed for single-use is being reused.
 	ErrSingleUseReused = errors.New("Error reuse single-use object")
 )
-
-// ReceivedBy returns channel which is closed when param received by identified entity
-func ReceivedBy(wg *sync.WaitGroup, id string) func() {
-	return func() {
-		wg.Done()
-	}
-}
