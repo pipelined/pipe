@@ -13,22 +13,20 @@ import (
 	"github.com/pipelined/phono/wav"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/pipelined/phono"
 )
 
 var (
-	buffer1 = phono.Buffer([][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}})
-	buffer2 = phono.Buffer([][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}})
+	buffer1 = signal.Float64([][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}})
+	buffer2 = signal.Float64([][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}})
 
 	overlapTests = []struct {
-		clips   []phono.Clip
+		clips   []signal.Float64Clip
 		clipsAt []int
 		result  []float64
 		msg     string
 	}{
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
@@ -37,7 +35,7 @@ var (
 			msg:     "Sequence",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
@@ -46,7 +44,7 @@ var (
 			msg:     "Sequence increased bufferSize",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
@@ -55,7 +53,7 @@ var (
 			msg:     "Sequence shifted left",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
@@ -64,7 +62,7 @@ var (
 			msg:     "Sequence with interval",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 3),
 				buffer2.Clip(5, 2),
 			},
@@ -73,7 +71,7 @@ var (
 			msg:     "Overlap previous",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 3),
 				buffer2.Clip(5, 2),
 			},
@@ -82,7 +80,7 @@ var (
 			msg:     "Overlap next",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 5),
 				buffer2.Clip(5, 2),
 			},
@@ -91,7 +89,7 @@ var (
 			msg:     "Overlap single in the middle",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 2),
 				buffer1.Clip(3, 2),
 				buffer2.Clip(5, 2),
@@ -101,7 +99,7 @@ var (
 			msg:     "Overlap two in the middle",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 2),
 				buffer1.Clip(5, 2),
 				buffer2.Clip(3, 2),
@@ -111,7 +109,7 @@ var (
 			msg:     "Overlap two in the middle shifted",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 2),
 				buffer2.Clip(3, 5),
 			},
@@ -120,7 +118,7 @@ var (
 			msg:     "Overlap single completely",
 		},
 		{
-			clips: []phono.Clip{
+			clips: []signal.Float64Clip{
 				buffer1.Clip(3, 2),
 				buffer1.Clip(5, 2),
 				buffer2.Clip(1, 8),
@@ -135,12 +133,12 @@ var (
 func TestTrackWavSlices(t *testing.T) {
 	bufferSize := 512
 	wavPump := wav.NewPump(test.Data.Wav1)
-	asset := asset.New()
+	assetSink := &asset.Asset{}
 
 	p1, err := pipe.New(
 		bufferSize,
 		pipe.WithPump(wavPump),
-		pipe.WithSinks(asset),
+		pipe.WithSinks(assetSink),
 	)
 	assert.Nil(t, err)
 	err = pipe.Wait(p1.Run())
@@ -150,6 +148,7 @@ func TestTrackWavSlices(t *testing.T) {
 		test.Out.Track,
 		signal.BitDepth16,
 	)
+	asset := assetSink.Asset()
 	track := track.New(44100, asset.NumChannels())
 
 	track.AddClip(198450, asset.Clip(0, 44100))
@@ -186,9 +185,9 @@ func TestSliceOverlaps(t *testing.T) {
 		assert.Nil(t, err)
 
 		_ = pipe.Wait(p.Run())
-		assert.Equal(t, len(test.result), len(sink.Buffer[0]), test.msg)
-		for i, v := range sink.Buffer[0] {
-			assert.Equal(t, test.result[i], v, "Test: %v Index: %v Full expected: %v Full result:%v", test.msg, i, test.result, sink.Buffer[0])
+		assert.Equal(t, len(test.result), sink.Buffer().Size(), test.msg)
+		for i, v := range sink.Buffer()[0] {
+			assert.Equal(t, test.result[i], v, "Test: %v Index: %v Full expected: %v Full result:%v", test.msg, i, test.result, sink.Buffer()[0])
 		}
 	}
 

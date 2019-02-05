@@ -4,7 +4,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/signal"
 )
 
 // Param types
@@ -27,7 +27,7 @@ type Pump struct {
 // Buffer is not thread-safe, so should not be checked while pipe is running.
 type Sink struct {
 	counter
-	phono.Buffer
+	buffer signal.Float64
 }
 
 // Processor mocks a pipe.Processor interface.
@@ -64,14 +64,14 @@ func (m *Pump) NumChannelsParam(numChannels int) func() {
 }
 
 // Pump returns new buffer for pipe.
-func (m *Pump) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, error), int, int, error) {
-	return func() (phono.Buffer, error) {
+func (m *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error), int, int, error) {
+	return func() ([][]float64, error) {
 		if Limit(m.Messages()) >= m.Limit {
 			return nil, io.EOF
 		}
 		time.Sleep(m.Interval)
 
-		b := phono.Buffer(make([][]float64, m.NumChannels))
+		b := make([][]float64, m.NumChannels)
 		for i := range b {
 			b[i] = make([]float64, bufferSize)
 			for j := range b[i] {
@@ -90,8 +90,8 @@ func (m *Pump) Reset(string) error {
 }
 
 // Process implementation for runner
-func (m *Processor) Process(pipeID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) (phono.Buffer, error), error) {
-	return func(b phono.Buffer) (phono.Buffer, error) {
+func (m *Processor) Process(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) ([][]float64, error), error) {
+	return func(b [][]float64) ([][]float64, error) {
 		m.Advance(b)
 		return b, nil
 	}, nil
@@ -104,9 +104,9 @@ func (m *Processor) Reset(string) error {
 }
 
 // Sink implementation for runner.
-func (m *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) error, error) {
-	return func(b phono.Buffer) error {
-		m.Buffer = m.Buffer.Append(b)
+func (m *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error) {
+	return func(b [][]float64) error {
+		m.buffer = signal.Float64(m.buffer).Append(b)
 		m.Advance(b)
 		return nil
 	}, nil
@@ -114,9 +114,14 @@ func (m *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (fun
 
 // Reset implements pipe.Resetter.
 func (m *Sink) Reset(string) error {
-	m.Buffer = nil
+	m.buffer = nil
 	m.reset()
 	return nil
+}
+
+// Buffer returns sink's buffer
+func (m *Sink) Buffer() signal.Float64 {
+	return m.buffer
 }
 
 // Reset resets counter's metrics.
@@ -132,7 +137,7 @@ type counter struct {
 }
 
 // Advance counter's metrics.
-func (c *counter) Advance(buf phono.Buffer) {
+func (c *counter) Advance(buf signal.Float64) {
 	c.messages++
 	c.samples = c.samples + buf.Size()
 }

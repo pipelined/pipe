@@ -2,7 +2,6 @@ package portaudio
 
 import (
 	"github.com/gordonklaus/portaudio"
-	"github.com/pipelined/phono"
 )
 
 type (
@@ -20,7 +19,7 @@ func NewSink() *Sink {
 
 // Sink writes the buffer of data to portaudio stream.
 // It aslo initilizes a portaudio api with default stream.
-func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) error, error) {
+func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error) {
 	s.buf = make([]float32, bufferSize*numChannels)
 	err := portaudio.Initialize()
 	if err != nil {
@@ -34,7 +33,7 @@ func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (f
 	if err != nil {
 		return nil, err
 	}
-	return func(b phono.Buffer) error {
+	return func(b [][]float64) error {
 		for i := range b[0] {
 			for j := range b {
 				s.buf[i*numChannels+j] = float32(b[j][i])

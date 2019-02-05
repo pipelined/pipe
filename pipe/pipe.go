@@ -7,6 +7,7 @@ import (
 
 	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/log"
+	"github.com/pipelined/phono/signal"
 	"github.com/rs/xid"
 )
 
@@ -17,10 +18,10 @@ func newUID() string {
 
 // Message is a main structure for pipe transport
 type message struct {
-	phono.Buffer        // Buffer of message
-	params              // params for pipe
-	sourceID     string // ID of pipe which spawned this message.
-	feedback     params //feedback are params applied after processing happened
+	buffer   signal.Float64 // Buffer of message
+	params                  // params for pipe
+	sourceID string         // ID of pipe which spawned this message.
+	feedback params         //feedback are params applied after processing happened
 }
 
 // params represent a set of parameters mapped to ID of their receivers.
@@ -225,7 +226,7 @@ func (p *Pipe) broadcastToSinks(in <-chan message) []<-chan error {
 			for i := range broadcasts {
 				m := message{
 					sourceID: msg.sourceID,
-					Buffer:   msg.Buffer,
+					buffer:   msg.buffer,
 					params:   msg.params.detach(p.components[p.sinks[i].Sink]),
 					feedback: msg.feedback.detach(p.components[p.sinks[i].Sink]),
 				}

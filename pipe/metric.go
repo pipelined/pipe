@@ -3,7 +3,7 @@ package pipe
 import (
 	"time"
 
-	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/signal"
 )
 
 // Metrics types.
@@ -77,7 +77,7 @@ func (m *meter) sample(s int64) *meter {
 		return nil
 	}
 	m.samples = m.samples + s
-	m.duration = phono.DurationOf(m.sampleRate, m.samples)
+	m.duration = signal.DurationOf(m.sampleRate, m.samples)
 	if m.Meter != nil {
 		m.Store(SampleCounter, m.samples)
 		m.Store(DurationCounter, m.duration)

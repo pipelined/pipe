@@ -3,7 +3,7 @@ package track
 import (
 	"io"
 
-	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/signal"
 )
 
 // Track is a sequence of pipes which are executed one after another.
@@ -25,7 +25,7 @@ type Track struct {
 // It uses double-linked list structure.
 type clip struct {
 	At int
-	phono.Clip
+	signal.Float64Clip
 	Next *clip
 	Prev *clip
 }
@@ -49,11 +49,11 @@ func New(sampleRate int, numChannels int) (t *Track) {
 }
 
 // Pump implements track pump with a sequence of not overlapped clips.
-func (t *Track) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, error), int, int, error) {
+func (t *Track) Pump(sourceID string, bufferSize int) (func() ([][]float64, error), int, int, error) {
 	// bufferSize = bufferSize
 	t.newIndex = make(chan int)
 	t.nextIndex = 0
-	return func() (phono.Buffer, error) {
+	return func() ([][]float64, error) {
 		if t.nextIndex >= t.clipsEnd() {
 			return nil, io.EOF
 		}
@@ -69,23 +69,23 @@ func (t *Track) Reset() {
 	t.end = nil
 }
 
-func (t *Track) bufferAt(index, bufferSize int) (result phono.Buffer) {
+func (t *Track) bufferAt(index, bufferSize int) (result signal.Float64) {
 	if t.current == nil {
 		t.current = t.clipAfter(index)
 	}
-	var buf phono.Buffer
+	var buf signal.Float64
 	bufferEnd := index + bufferSize
 	for bufferSize > result.Size() {
 		// if current clip starts after frame then append empty buffer
 		if t.current == nil || t.current.At >= bufferEnd {
-			result = result.Append(phono.EmptyBuffer(t.numChannels, bufferSize-result.Size()))
+			result = result.Append(signal.EmptyFloat64(t.numChannels, bufferSize-result.Size()))
 		} else {
 			// if clip starts in current frame
 			if t.current.At >= index {
 				// calculate offset buffer size
 				// offset buffer is needed to align a clip start within a buffer
 				offsetBufSize := t.current.At - index
-				result = result.Append(phono.EmptyBuffer(t.numChannels, offsetBufSize))
+				result = result.Append(signal.EmptyFloat64(t.numChannels, offsetBufSize))
 				if bufferEnd >= t.current.End() {
 					buf = t.current.Slice(t.current.Start, t.current.Len)
 				} else {
@@ -131,11 +131,11 @@ func (t *Track) clipsEnd() int {
 }
 
 // AddClip assigns a frame to a track.
-func (t *Track) AddClip(at int, f phono.Clip) {
+func (t *Track) AddClip(at int, f signal.Float64Clip) {
 	t.current = nil
 	c := &clip{
-		At:   at,
-		Clip: f,
+		At:          at,
+		Float64Clip: f,
 	}
 
 	if t.start == nil {
@@ -207,7 +207,7 @@ func (t *Track) alignPrevClip(c *clip) {
 			at := c.At + c.Len
 			start := overlap + c.Len + c.At - prev.At
 			len := overlap - c.Len
-			t.AddClip(at, prev.Buffer.Clip(start, len))
+			t.AddClip(at, prev.Clip(start, len))
 		}
 	}
 }

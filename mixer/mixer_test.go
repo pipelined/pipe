@@ -100,8 +100,8 @@ func TestMixer(t *testing.T) {
 		assert.Nil(t, err)
 		err = pipe.Wait(playbackerrc)
 		assert.Nil(t, err)
-		for i := range sink.Buffer {
-			for _, val := range sink.Buffer[i] {
+		for i := range sink.Buffer() {
+			for _, val := range sink.Buffer()[i] {
 				assert.Equal(t, test.sum, val, fmt.Sprintf("Message: %v\n", i))
 			}
 		}

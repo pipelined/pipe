@@ -9,7 +9,7 @@ import (
 // pumpRunner is pump's runner.
 type pumpRunner struct {
 	phono.Pump
-	fn  func() (phono.Buffer, error)
+	fn  func() ([][]float64, error)
 	out chan message
 	hooks
 }
@@ -17,7 +17,7 @@ type pumpRunner struct {
 // processRunner represents processor's runner.
 type processRunner struct {
 	phono.Processor
-	fn  func(phono.Buffer) (phono.Buffer, error)
+	fn  func([][]float64) ([][]float64, error)
 	in  <-chan message
 	out chan message
 	hooks
@@ -26,7 +26,7 @@ type processRunner struct {
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
 	phono.Sink
-	fn func(phono.Buffer) error
+	fn func([][]float64) error
 	in <-chan message
 	hooks
 }
@@ -136,7 +136,7 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 			}
 
 			m.applyTo(componentID) // apply params
-			m.Buffer, err = r.fn() // pump new buffer
+			m.buffer, err = r.fn() // pump new buffer
 			if err != nil {
 				switch err {
 				case io.EOF:
@@ -151,7 +151,7 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 				}
 			}
 
-			meter = meter.sample(int64(m.Buffer.Size())).message()
+			meter = meter.sample(int64(m.buffer.Size())).message()
 			m.feedback.applyTo(componentID) // apply feedback
 
 			// push message further
@@ -210,13 +210,13 @@ func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in
 			}
 
 			m.applyTo(componentID)         // apply params
-			m.Buffer, err = r.fn(m.Buffer) // process new buffer
+			m.buffer, err = r.fn(m.buffer) // process new buffer
 			if err != nil {
 				errc <- err
 				return
 			}
 
-			meter = meter.sample(int64(m.Buffer.Size())).message()
+			meter = meter.sample(int64(m.buffer.Size())).message()
 
 			m.feedback.applyTo(componentID) // apply feedback
 
@@ -269,13 +269,13 @@ func (r *sinkRunner) run(pipeID, componentID string, cancel chan struct{}, in <-
 			}
 
 			m.params.applyTo(componentID) // apply params
-			err := r.fn(m.Buffer)         // sink a buffer
+			err := r.fn(m.buffer)         // sink a buffer
 			if err != nil {
 				errc <- err
 				return
 			}
 
-			meter = meter.sample(int64(m.Buffer.Size())).message()
+			meter = meter.sample(int64(m.buffer.Size())).message()
 
 			m.feedback.applyTo(componentID) // apply feedback
 		}

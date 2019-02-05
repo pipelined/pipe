@@ -52,7 +52,7 @@ func (p *Pump) Flush(string) error {
 }
 
 // Pump starts the pump process once executed, wav attributes are accessible.
-func (p *Pump) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, error), int, int, error) {
+func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error), int, int, error) {
 	file, err := os.Open(p.path)
 	if err != nil {
 		return nil, 0, 0, err
@@ -83,7 +83,7 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, erro
 		SourceBitDepth: int(decoder.BitDepth),
 	}
 
-	return func() (phono.Buffer, error) {
+	return func() ([][]float64, error) {
 		readSamples, err := p.decoder.PCMBuffer(ib)
 		if err != nil {
 			return nil, err
@@ -93,7 +93,7 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() (phono.Buffer, erro
 			return nil, io.EOF
 		}
 		// prune buffer to actual size
-		b := phono.Buffer(signal.InterInt{Data: ib.Data[:readSamples], NumChannels: numChannels, BitDepth: signal.BitDepth(bitDepth)}.AsFloat64())
+		b := signal.InterInt{Data: ib.Data[:readSamples], NumChannels: numChannels, BitDepth: signal.BitDepth(bitDepth)}.AsFloat64()
 		if b.Size() != bufferSize {
 			return b, io.ErrUnexpectedEOF
 		}
@@ -123,7 +123,7 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink returns new Sink function instance.
-func (s *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) error, error) {
+func (s *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error) {
 	f, err := os.Create(s.path)
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func (s *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (fun
 		SourceBitDepth: int(s.bitDepth),
 	}
 
-	return func(b phono.Buffer) error {
+	return func(b [][]float64) error {
 		ib.Data = signal.Float64(b).AsInterInt(s.bitDepth)
 		return s.encoder.Write(ib)
 	}, nil
