@@ -5,11 +5,31 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/log"
 	"github.com/pipelined/phono/signal"
 	"github.com/rs/xid"
 )
+
+// Pump is a source of samples. Pump method returns a new buffer with signal data.
+// Implentetions should use next error conventions:
+// 		- nil if a full buffer was read;
+// 		- io.EOF if no data was read;
+// 		- io.ErrUnexpectedEOF if not a full buffer was read.
+// The latest case means that pump executed as expected, but not enough data was available.
+// This incomplete buffer still will be sent further and pump will be finished gracefully.
+type Pump interface {
+	Pump(pipeID string, bufferSize int) (func() ([][]float64, error), int, int, error)
+}
+
+// Processor defines interface for pipe-processors
+type Processor interface {
+	Process(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) ([][]float64, error), error)
+}
+
+// Sink is an interface for final stage in audio pipeline
+type Sink interface {
+	Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error)
+}
 
 // newUID returns new unique id value.
 func newUID() string {
@@ -112,7 +132,7 @@ func WithMetric(m Metric) Option {
 }
 
 // WithPump sets pump to Pipe
-func WithPump(pump phono.Pump) Option {
+func WithPump(pump Pump) Option {
 	return func(p *Pipe) error {
 		uid := newUID()
 		p.components[pump] = uid
@@ -128,7 +148,7 @@ func WithPump(pump phono.Pump) Option {
 }
 
 // WithProcessors sets processors to Pipe
-func WithProcessors(processors ...phono.Processor) Option {
+func WithProcessors(processors ...Processor) Option {
 	return func(p *Pipe) error {
 		for _, proc := range processors {
 			uid := newUID()
@@ -144,7 +164,7 @@ func WithProcessors(processors ...phono.Processor) Option {
 }
 
 // WithSinks sets sinks to Pipe
-func WithSinks(sinks ...phono.Sink) Option {
+func WithSinks(sinks ...Sink) Option {
 	return func(p *Pipe) error {
 		for _, sink := range sinks {
 			uid := newUID()
