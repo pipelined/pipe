@@ -2,22 +2,20 @@ package pipe
 
 import (
 	"io"
-
-	"github.com/pipelined/phono"
 )
 
 // pumpRunner is pump's runner.
 type pumpRunner struct {
-	phono.Pump
-	fn  func() (phono.Buffer, error)
+	Pump
+	fn  func() ([][]float64, error)
 	out chan message
 	hooks
 }
 
 // processRunner represents processor's runner.
 type processRunner struct {
-	phono.Processor
-	fn  func(phono.Buffer) (phono.Buffer, error)
+	Processor
+	fn  func([][]float64) ([][]float64, error)
 	in  <-chan message
 	out chan message
 	hooks
@@ -25,8 +23,8 @@ type processRunner struct {
 
 // sinkRunner represents sink's runner.
 type sinkRunner struct {
-	phono.Sink
-	fn func(phono.Buffer) error
+	Sink
+	fn func([][]float64) error
 	in <-chan message
 	hooks
 }
@@ -93,7 +91,7 @@ func resetter(i interface{}) hook {
 
 // newPumpRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newPumpRunner(pipeID string, bufferSize int, p phono.Pump) (*pumpRunner, int, int, error) {
+func newPumpRunner(pipeID string, bufferSize int, p Pump) (*pumpRunner, int, int, error) {
 	fn, sampleRate, numChannels, err := p.Pump(pipeID, bufferSize)
 	if err != nil {
 		return nil, 0, 0, err
@@ -136,7 +134,7 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 			}
 
 			m.applyTo(componentID) // apply params
-			m.Buffer, err = r.fn() // pump new buffer
+			m.buffer, err = r.fn() // pump new buffer
 			if err != nil {
 				switch err {
 				case io.EOF:
@@ -151,7 +149,7 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 				}
 			}
 
-			meter = meter.sample(int64(m.Buffer.Size())).message()
+			meter = meter.sample(int64(m.buffer.Size())).message()
 			m.feedback.applyTo(componentID) // apply feedback
 
 			// push message further
@@ -171,7 +169,7 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 
 // newProcessRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newProcessRunner(pipeID string, sampleRate, numChannels, bufferSize int, p phono.Processor) (*processRunner, error) {
+func newProcessRunner(pipeID string, sampleRate, numChannels, bufferSize int, p Processor) (*processRunner, error) {
 	fn, err := p.Process(pipeID, sampleRate, numChannels, bufferSize)
 	if err != nil {
 		return nil, err
@@ -210,13 +208,13 @@ func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in
 			}
 
 			m.applyTo(componentID)         // apply params
-			m.Buffer, err = r.fn(m.Buffer) // process new buffer
+			m.buffer, err = r.fn(m.buffer) // process new buffer
 			if err != nil {
 				errc <- err
 				return
 			}
 
-			meter = meter.sample(int64(m.Buffer.Size())).message()
+			meter = meter.sample(int64(m.buffer.Size())).message()
 
 			m.feedback.applyTo(componentID) // apply feedback
 
@@ -234,7 +232,7 @@ func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in
 
 // newSinkRunner creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func newSinkRunner(pipeID string, sampleRate, numChannels, bufferSize int, s phono.Sink) (*sinkRunner, error) {
+func newSinkRunner(pipeID string, sampleRate, numChannels, bufferSize int, s Sink) (*sinkRunner, error) {
 	fn, err := s.Sink(pipeID, sampleRate, numChannels, bufferSize)
 	if err != nil {
 		return nil, err
@@ -269,13 +267,13 @@ func (r *sinkRunner) run(pipeID, componentID string, cancel chan struct{}, in <-
 			}
 
 			m.params.applyTo(componentID) // apply params
-			err := r.fn(m.Buffer)         // sink a buffer
+			err := r.fn(m.buffer)         // sink a buffer
 			if err != nil {
 				errc <- err
 				return
 			}
 
-			meter = meter.sample(int64(m.Buffer.Size())).message()
+			meter = meter.sample(int64(m.buffer.Size())).message()
 
 			m.feedback.applyTo(componentID) // apply feedback
 		}

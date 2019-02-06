@@ -4,8 +4,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/pipelined/phono"
-
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/signal"
 	"github.com/pipelined/phono/test"
@@ -60,7 +58,7 @@ func TestWavPipe(t *testing.T) {
 		assert.Equal(t, test.samples, sampleCount)
 
 		err = pipe.Wait(p.Run())
-		assert.Equal(t, phono.ErrSingleUseReused, err)
+		assert.NotNil(t, err)
 	}
 }
 

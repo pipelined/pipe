@@ -22,13 +22,13 @@ func four() {
 	wavPump := wav.NewPump(test.Data.Wav1)
 
 	// asset sink
-	asset := asset.New()
+	assetSink := &asset.Asset{}
 
 	// import pipe
 	importAsset, err := pipe.New(
 		bufferSize,
 		pipe.WithPump(wavPump),
-		pipe.WithSinks(asset),
+		pipe.WithSinks(assetSink),
 	)
 	check(err)
 	defer importAsset.Close()
@@ -36,6 +36,7 @@ func four() {
 	err = pipe.Wait(importAsset.Run())
 	check(err)
 
+	asset := assetSink.Asset()
 	// track pump
 	track := track.New(44100, asset.NumChannels())
 

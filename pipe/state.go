@@ -1,10 +1,9 @@
 package pipe
 
 import (
+	"errors"
 	"fmt"
 	"sync"
-
-	"github.com/pipelined/phono"
 )
 
 // state identifies one of the possible states pipe can be in.
@@ -288,7 +287,7 @@ func (s activePausing) sendMessage(p *Pipe) state {
 	wg.Add(len(p.sinks))
 	for _, sink := range p.sinks {
 		uid := p.components[sink.Sink]
-		param := phono.ReceivedBy(&wg, uid)
+		param := receivedBy(&wg, uid)
 		m.feedback = m.feedback.add(uid, param)
 	}
 	p.consume <- m
@@ -350,3 +349,24 @@ func (t target) handle(err error) {
 		panic(err)
 	}
 }
+
+// receivedBy returns channel which is closed when param received by identified entity
+func receivedBy(wg *sync.WaitGroup, id string) func() {
+	return func() {
+		wg.Done()
+	}
+}
+
+// SingleUse is designed to be used in runner-return functions to define a single-use pipe components.
+func singleUse(once *sync.Once) (err error) {
+	err = errSingleUseReused
+	once.Do(func() {
+		err = nil
+	})
+	return
+}
+
+var (
+	// ErrSingleUseReused is returned when object designed for single-use is being reused.
+	errSingleUseReused = errors.New("Error reuse single-use object")
+)

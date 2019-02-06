@@ -5,8 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/log"
+	"github.com/pipelined/phono/signal"
 )
 
 // Mixer summs up multiple channels of messages into a single channel.
@@ -28,21 +28,21 @@ type Mixer struct {
 
 type inMessage struct {
 	inputID string
-	phono.Buffer
+	buffer  signal.Float64
 }
 
 // frame represents a slice of samples to mix.
 type frame struct {
-	buffers  []phono.Buffer
+	buffers  [][][]float64
 	expected int
 	next     *frame
 }
 
 // sum returns mixed samplein.
-func (f *frame) sum(numChannels int, bufferSize int) phono.Buffer {
+func (f *frame) sum(numChannels int, bufferSize int) [][]float64 {
 	var sum float64
 	var frames float64
-	result := phono.Buffer(make([][]float64, numChannels))
+	result := make([][]float64, numChannels)
 	for nc := 0; nc < int(numChannels); nc++ {
 		result[nc] = make([]float64, 0, bufferSize)
 		for bs := 0; bs < bufferSize; bs++ {
@@ -77,15 +77,15 @@ func New() *Mixer {
 }
 
 // Sink registers new input. SampleRate and NumChannels are propagated here, due to that Sink pipes should be called before Pump.
-func (m *Mixer) Sink(inputID string, sampleRate, numChannel, bufferSize int) (func(phono.Buffer) error, error) {
+func (m *Mixer) Sink(inputID string, sampleRate, numChannel, bufferSize int) (func([][]float64) error, error) {
 	m.m.Lock()
 	m.sampleRate = sampleRate
 	m.numChannels = numChannel
 	m.m.Unlock()
 	m.register <- inputID
-	return func(b phono.Buffer) error {
+	return func(b [][]float64) error {
 		select {
-		case m.in <- &inMessage{inputID: inputID, Buffer: b}:
+		case m.in <- &inMessage{inputID: inputID, buffer: b}:
 			return nil
 		case <-m.cancel:
 			return io.ErrClosedPipe
@@ -117,13 +117,13 @@ func (m *Mixer) isOutput(sourceID string) bool {
 }
 
 // Pump returns a pump function which allows to read the out channel.
-func (m *Mixer) Pump(outputID string, bufferSize int) (func() (phono.Buffer, error), int, int, error) {
+func (m *Mixer) Pump(outputID string, bufferSize int) (func() ([][]float64, error), int, int, error) {
 	m.m.Lock()
 	sampleRate := m.sampleRate
 	numChannels := m.numChannels
 	m.m.Unlock()
 	m.outputID.Store(outputID)
-	return func() (phono.Buffer, error) {
+	return func() ([][]float64, error) {
 		// receive new buffer
 		f, ok := <-m.out
 		if !ok {
@@ -179,8 +179,8 @@ register:
 			resetExpectations(m.frame, len(m.frames))
 		case msg := <-m.in:
 			f := m.frames[msg.inputID]
-			if msg.Buffer != nil {
-				f.buffers = append(f.buffers, msg.Buffer)
+			if msg.buffer != nil {
+				f.buffers = append(f.buffers, msg.buffer)
 				m.frame = send(f, m.out, m.cancel)
 
 				// proceed input to next frame.

@@ -3,7 +3,6 @@ package asset_test
 import (
 	"testing"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/asset"
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
@@ -42,7 +41,7 @@ func TestPipe(t *testing.T) {
 			Limit: 1,
 		}
 		processor := &mock.Processor{}
-		sink := asset.New()
+		sink := &asset.Asset{}
 		p, err := pipe.New(
 			bufferSize,
 			pipe.WithName("Mock"),
@@ -68,16 +67,16 @@ func TestPipe(t *testing.T) {
 		assert.Equal(t, test.messages, messageCount)
 		assert.Equal(t, test.samples, samplesCount)
 
-		assert.Equal(t, test.NumChannels, sink.Buffer.NumChannels())
-		assert.Equal(t, test.samples, sink.Buffer.Size())
+		asset := sink.Asset()
+		assert.Equal(t, test.NumChannels, asset.NumChannels())
+		assert.Equal(t, test.samples, asset.Size())
 
-		for i := range sink.Buffer {
-			for j := range sink.Buffer[i] {
-				assert.Equal(t, test.value, sink.Buffer[i][j])
+		for i := range asset {
+			for j := range asset[i] {
+				assert.Equal(t, test.value, asset[i][j])
 			}
 		}
 		err = pipe.Wait(p.Run())
-		assert.NotNil(t, err)
-		assert.Equal(t, phono.ErrSingleUseReused, err)
+		assert.Nil(t, err)
 	}
 }
