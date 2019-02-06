@@ -5,22 +5,19 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/signal"
 )
 
 type (
 	// Pump reads from wav file.
+	// This component cannot be reused for consequent runs.
 	Pump struct {
 		path    string
 		file    *os.File
 		decoder *wav.Decoder
-		// Once for single-use.
-		once sync.Once
 	}
 
 	// Sink sink saves audio to wav file.
@@ -39,11 +36,6 @@ var ErrUnsupportedBitDepth = errors.New("Only 16 and 32 bit depth is supported")
 // NewPump creates a new wav pump and sets wav props.
 func NewPump(path string) *Pump {
 	return &Pump{path: path}
-}
-
-// Reset ensures that file is read only once.
-func (p *Pump) Reset(string) error {
-	return phono.SingleUse(&p.once)
 }
 
 // Flush closes the file.

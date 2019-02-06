@@ -3,7 +3,6 @@ package asset_test
 import (
 	"testing"
 
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/asset"
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
@@ -78,7 +77,6 @@ func TestPipe(t *testing.T) {
 			}
 		}
 		err = pipe.Wait(p.Run())
-		assert.NotNil(t, err)
-		assert.Equal(t, phono.ErrSingleUseReused, err)
+		assert.Nil(t, err)
 	}
 }
