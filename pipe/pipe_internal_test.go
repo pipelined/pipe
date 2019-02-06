@@ -1,6 +1,7 @@
 package pipe
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -38,4 +39,12 @@ func TestMergeParams(t *testing.T) {
 	p = p.merge(newP)
 	p.applyTo(uid)
 	assert.Equal(t, newInterval, pump.Interval)
+}
+
+func TestSingleUse(t *testing.T) {
+	var once sync.Once
+	err := singleUse(&once)
+	assert.Nil(t, err)
+	err = singleUse(&once)
+	assert.Equal(t, errSingleUseReused, err)
 }

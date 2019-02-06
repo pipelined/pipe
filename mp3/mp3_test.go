@@ -21,4 +21,6 @@ func TestMp3(t *testing.T) {
 	assert.Nil(t, err)
 	err = pipe.Wait(p.Run())
 	assert.Nil(t, err)
+	err = pipe.Wait(p.Run())
+	assert.NotNil(t, err)
 }

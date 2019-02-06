@@ -6,7 +6,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/pipelined/phono"
+	"github.com/pipelined/phono/signal"
+
 	"github.com/pipelined/vst2"
 )
 
@@ -32,7 +33,7 @@ func NewProcessor(plugin *vst2.Plugin) *Processor {
 }
 
 // Process returns processor function with default settings initialized.
-func (p *Processor) Process(pipeID string, sampleRate, numChannels, bufferSize int) (func(phono.Buffer) (phono.Buffer, error), error) {
+func (p *Processor) Process(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) ([][]float64, error), error) {
 	p.bufferSize = bufferSize
 	p.sampleRate = sampleRate
 	p.numChannels = numChannels
@@ -41,9 +42,9 @@ func (p *Processor) Process(pipeID string, sampleRate, numChannels, bufferSize i
 	p.plugin.SetSampleRate(int(p.sampleRate))
 	p.plugin.SetSpeakerArrangement(int(p.numChannels))
 	p.plugin.Resume()
-	return func(b phono.Buffer) (phono.Buffer, error) {
+	return func(b [][]float64) ([][]float64, error) {
 		b = p.plugin.Process(b)
-		p.currentPosition += int64(b.Size())
+		p.currentPosition += int64(signal.Float64(b).Size())
 		return b, nil
 	}, nil
 }

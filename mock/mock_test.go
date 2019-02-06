@@ -77,8 +77,8 @@ func TestPipe(t *testing.T) {
 		assert.Equal(t, test.messages, messageCount)
 		assert.Equal(t, test.samples, samplesCount)
 
-		assert.Equal(t, test.NumChannels, sink.Buffer.NumChannels())
-		assert.Equal(t, test.samples, sink.Buffer.Size())
+		assert.Equal(t, test.NumChannels, sink.Buffer().NumChannels())
+		assert.Equal(t, test.samples, sink.Buffer().Size())
 	}
 }
 

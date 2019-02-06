@@ -5,15 +5,19 @@ package signal
 
 import (
 	"math"
+	"time"
 )
 
 // Float64 is a non-interleaved float64 signal.
 type Float64 [][]float64
 
-// InterFloat64 is an interleaved float64 signal.
-type InterFloat64 struct {
-	Data        []float64
-	NumChannels int
+// Float64Clip represents a segment of float64 buffer.
+//
+// Clip is not a copy of a buffer.
+type Float64Clip struct {
+	Float64
+	Start int
+	Len   int
 }
 
 // Int is a non-interleaved int signal.
@@ -66,8 +70,13 @@ func (bitDepth BitDepth) multiplier() int {
 	}
 }
 
+// DurationOf returns time duration of passed samples for this sample rate.
+func DurationOf(sampleRate int, samples int64) time.Duration {
+	return time.Duration(float64(samples) / float64(sampleRate) * float64(time.Second))
+}
+
 // AsFloat64 converts interleaved int signal to float64.
-func (ints InterInt) AsFloat64() [][]float64 {
+func (ints InterInt) AsFloat64() Float64 {
 	if ints.Data == nil || ints.NumChannels == 0 {
 		return nil
 	}
@@ -106,4 +115,85 @@ func (floats Float64) AsInterInt(bitDepth BitDepth) []int {
 		}
 	}
 	return ints
+}
+
+// EmptyFloat64 returns an empty buffer of specified dimentions.
+func EmptyFloat64(numChannels int, bufferSize int) Float64 {
+	result := make([][]float64, numChannels)
+	for i := range result {
+		result[i] = make([]float64, bufferSize)
+	}
+	return result
+}
+
+// NumChannels returns number of channels in this sample slice
+func (floats Float64) NumChannels() int {
+	if floats == nil {
+		return 0
+	}
+	return len(floats)
+}
+
+// Size returns number of samples in single block in this sample slice
+func (floats Float64) Size() int {
+	if floats.NumChannels() == 0 {
+		return 0
+	}
+	return len(floats[0])
+}
+
+// Append buffers set to existing one one
+// new buffer is returned if b is nil
+func (floats Float64) Append(source Float64) Float64 {
+	if floats == nil {
+		floats = make([][]float64, source.NumChannels())
+		for i := range floats {
+			floats[i] = make([]float64, 0, source.Size())
+		}
+	}
+	for i := range source {
+		floats[i] = append(floats[i], source[i]...)
+	}
+	return floats
+}
+
+// Slice creates a new copy of buffer from start position with defined legth
+// if buffer doesn't have enough samples - shorten block is returned
+//
+// if start >= buffer size, nil is returned
+// if start + len >= buffer size, len is decreased till the end of slice
+// if start < 0, nil is returned
+func (floats Float64) Slice(start int, len int) Float64 {
+	if floats == nil || start >= floats.Size() || start < 0 {
+		return nil
+	}
+	end := start + len
+	result := make([][]float64, floats.NumChannels())
+	for i := range floats {
+		if end > floats.Size() {
+			end = floats.Size()
+		}
+		result[i] = append(result[i], floats[i][start:end]...)
+	}
+	return result
+}
+
+// Clip creates a new clip from buffer with defined start and length.
+//
+// if start >= buffer size, nil is returned
+// if start + len >= buffer size, len is decreased till the end of slice
+// if start < 0, nil is returned
+func (floats Float64) Clip(start int, len int) Float64Clip {
+	if floats == nil || start >= floats.Size() || start < 0 {
+		return Float64Clip{}
+	}
+	end := start + len
+	if end >= floats.Size() {
+		len = int(floats.Size()) - int(start)
+	}
+	return Float64Clip{
+		Float64: floats,
+		Start:   start,
+		Len:     len,
+	}
 }
