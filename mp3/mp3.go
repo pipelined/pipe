@@ -6,18 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 
 	"github.com/viert/lame"
 
 	"github.com/pipelined/phono/signal"
 
-	"github.com/pipelined/phono"
-
 	mp3 "github.com/hajimehoshi/go-mp3"
 )
 
 // Pump allows to read mp3 files.
+// This component cannot be reused for consequent runs.
 type Pump struct {
 	path string
 	f    *os.File
@@ -94,7 +92,6 @@ type Sink struct {
 	quality int
 	f       *os.File
 	wr      *lame.LameWriter
-	once    sync.Once
 }
 
 // NewSink creates new Sink.
@@ -105,11 +102,6 @@ func NewSink(path string, bitRate int, quality int) *Sink {
 		quality: quality,
 	}
 	return &s
-}
-
-// Reset is used to prevent additional runs of the sink.
-func (s *Sink) Reset(string) error {
-	return phono.SingleUse(&s.once)
 }
 
 // Flush cleans up buffers.

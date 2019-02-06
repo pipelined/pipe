@@ -1,6 +1,7 @@
 package pipe
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -355,3 +356,17 @@ func receivedBy(wg *sync.WaitGroup, id string) func() {
 		wg.Done()
 	}
 }
+
+// SingleUse is designed to be used in runner-return functions to define a single-use pipe components.
+func singleUse(once *sync.Once) (err error) {
+	err = errSingleUseReused
+	once.Do(func() {
+		err = nil
+	})
+	return
+}
+
+var (
+	// ErrSingleUseReused is returned when object designed for single-use is being reused.
+	errSingleUseReused = errors.New("Error reuse single-use object")
+)

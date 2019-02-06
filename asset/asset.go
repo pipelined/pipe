@@ -1,9 +1,6 @@
 package asset
 
 import (
-	"sync"
-
-	"github.com/pipelined/phono"
 	"github.com/pipelined/phono/signal"
 )
 
@@ -11,13 +8,6 @@ import (
 // It can be used as processing input and always should be copied.
 type Asset struct {
 	buffer signal.Float64
-
-	once sync.Once
-}
-
-// Reset implements pipe.Resetter
-func (a *Asset) Reset(string) error {
-	return phono.SingleUse(&a.once)
 }
 
 // Sink appends buffers to asset.
