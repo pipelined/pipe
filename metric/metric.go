@@ -11,13 +11,11 @@ import (
 // Metric contains component's Meters.
 type Metric struct {
 	m      sync.Mutex
-	meters map[string]*Meter
+	meters map[string]Meter
 }
 
 // Meter read-only immutable map of atomic Counters.
-type Meter struct {
-	values map[string]*atomic.Value
-}
+type Meter map[string]*atomic.Value
 
 // Meter returns new Meter for provided id. Existing Meter is flushed.
 // If no match found, new Meter is added and returned.
@@ -27,16 +25,16 @@ func (m *Metric) Meter(id string, counters ...string) pipe.Meter {
 
 	// remove current meter.
 	if m.meters == nil {
-		m.meters = make(map[string]*Meter)
+		m.meters = make(map[string]Meter)
 	} else {
 		delete(m.meters, id)
 	}
 
 	// create new meter with provided counters
-	meter := &Meter{values: make(map[string]*atomic.Value)}
+	meter := Meter(make(map[string]*atomic.Value))
 
 	for _, counter := range counters {
-		meter.values[counter] = &atomic.Value{}
+		meter[counter] = &atomic.Value{}
 	}
 
 	m.meters[id] = meter
@@ -51,7 +49,7 @@ func (m *Metric) Measure() pipe.Measure {
 
 	for meterName, meter := range m.meters {
 		meterValues := make(map[string]interface{})
-		for counterName, counter := range meter.values {
+		for counterName, counter := range meter {
 			meterValues[counterName] = counter.Load()
 		}
 		r[meterName] = meterValues
@@ -61,12 +59,12 @@ func (m *Metric) Measure() pipe.Measure {
 }
 
 // Store new counter value.
-func (m *Meter) Store(c string, v interface{}) {
+func (m Meter) Store(c string, v interface{}) {
 	if m == nil {
 		return
 	}
 
-	if counter, ok := m.values[c]; ok {
+	if counter, ok := m[c]; ok {
 		counter.Store(v)
 	} else {
 		panic(fmt.Sprintf("Counter %s does not exist", c))
@@ -74,12 +72,12 @@ func (m *Meter) Store(c string, v interface{}) {
 }
 
 // Load counter value.
-func (m *Meter) Load(c string) interface{} {
+func (m Meter) Load(c string) interface{} {
 	if m == nil {
 		return nil
 	}
 
-	if v, ok := m.values[c]; ok {
+	if v, ok := m[c]; ok {
 		return v.Load()
 	}
 	return nil
