@@ -5,13 +5,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/pipelined/phono/log"
 	"github.com/pipelined/phono/signal"
 )
 
 // Mixer summs up multiple channels of messages into a single channel.
 type Mixer struct {
-	log.Logger
 	out      chan *frame       // channel to send frames ready for mix
 	in       chan *inMessage   // channel to send incoming messages
 	frames   map[string]*frame // frames sinking data
@@ -67,7 +65,6 @@ const (
 // New returns new mixer.
 func New() *Mixer {
 	m := Mixer{
-		Logger:   log.GetLogger(),
 		frames:   make(map[string]*frame),
 		in:       make(chan *inMessage, 1),
 		register: make(chan string, maxInputs),

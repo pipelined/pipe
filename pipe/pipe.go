@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/pipelined/phono/log"
 	"github.com/pipelined/phono/signal"
 	"github.com/rs/xid"
 )
@@ -29,6 +28,12 @@ type Processor interface {
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
 	Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error)
+}
+
+// Logger is a global interface for pipe loggers
+type Logger interface {
+	Debug(...interface{})
+	Info(...interface{})
 }
 
 // newUID returns new unique id value.
@@ -78,8 +83,7 @@ type Pipe struct {
 	// different id in different pipes.
 	// this will be a part of runner later.
 	components map[interface{}]string
-
-	log log.Logger
+	log        Logger
 }
 
 // Option provides a way to set parameters to pipe
@@ -95,7 +99,7 @@ func New(bufferSize int, options ...Option) (*Pipe, error) {
 	p := &Pipe{
 		uid:        newUID(),
 		bufferSize: bufferSize,
-		log:        log.GetLogger(),
+		log:        defaultLogger,
 		processors: make([]*processRunner, 0),
 		sinks:      make([]*sinkRunner, 0),
 		params:     make(map[string][]func()),
@@ -115,7 +119,15 @@ func New(bufferSize int, options ...Option) (*Pipe, error) {
 	return p, nil
 }
 
-// WithName sets name to Pipe
+// WithLogger sets logger to Pipe. If this option is not provided, silent logger is used.
+func WithLogger(logger Logger) Option {
+	return func(p *Pipe) error {
+		p.log = logger
+		return nil
+	}
+}
+
+// WithName sets name to Pipe.
 func WithName(n string) Option {
 	return func(p *Pipe) error {
 		p.name = n
@@ -131,7 +143,7 @@ func WithMetric(m Metric) Option {
 	}
 }
 
-// WithPump sets pump to Pipe
+// WithPump sets pump to Pipe.
 func WithPump(pump Pump) Option {
 	return func(p *Pipe) error {
 		uid := newUID()
@@ -163,7 +175,7 @@ func WithProcessors(processors ...Processor) Option {
 	}
 }
 
-// WithSinks sets sinks to Pipe
+// WithSinks sets sinks to Pipe.
 func WithSinks(sinks ...Sink) Option {
 	return func(p *Pipe) error {
 		for _, sink := range sinks {
@@ -382,3 +394,11 @@ func (p *Pipe) ComponentID(component interface{}) string {
 	}
 	return p.components[component]
 }
+
+type silentLogger struct{}
+
+func (silentLogger) Debug(args ...interface{}) {}
+
+func (silentLogger) Info(args ...interface{}) {}
+
+var defaultLogger silentLogger
