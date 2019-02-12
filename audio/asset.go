@@ -1,4 +1,4 @@
-package asset
+package audio
 
 import (
 	"github.com/pipelined/phono/signal"
