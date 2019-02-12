@@ -1,15 +1,14 @@
-package track_test
+package audio_test
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/pipelined/phono/asset"
+	"github.com/pipelined/phono/audio"
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/signal"
 	"github.com/pipelined/phono/test"
-	"github.com/pipelined/phono/track"
 	"github.com/pipelined/phono/wav"
 
 	"github.com/stretchr/testify/assert"
@@ -133,7 +132,7 @@ var (
 func TestTrackWavSlices(t *testing.T) {
 	bufferSize := 512
 	wavPump := wav.NewPump(test.Data.Wav1)
-	assetSink := &asset.Asset{}
+	assetSink := &audio.Asset{}
 
 	p1, err := pipe.New(
 		bufferSize,
@@ -149,7 +148,7 @@ func TestTrackWavSlices(t *testing.T) {
 		signal.BitDepth16,
 	)
 	asset := assetSink.Asset()
-	track := track.New(44100, asset.NumChannels())
+	track := audio.NewTrack(44100, asset.NumChannels())
 
 	track.AddClip(198450, asset.Clip(0, 44100))
 	track.AddClip(66150, asset.Clip(44100, 44100))
@@ -168,7 +167,7 @@ func TestSliceOverlaps(t *testing.T) {
 	sink := &mock.Sink{}
 	bufferSize := 2
 	sampleRate := 44100
-	track := track.New(sampleRate, buffer1.NumChannels())
+	track := audio.NewTrack(sampleRate, buffer1.NumChannels())
 	for _, test := range overlapTests {
 		fmt.Printf("Starting: %v\n", test.msg)
 		track.Reset()

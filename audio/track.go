@@ -1,4 +1,4 @@
-package track
+package audio
 
 import (
 	"io"
@@ -38,8 +38,8 @@ func (c *clip) End() int {
 	return c.At + c.Len
 }
 
-// New creates a new track in a session.
-func New(sampleRate int, numChannels int) (t *Track) {
+// NewTrack creates a new track in a session.
+func NewTrack(sampleRate int, numChannels int) (t *Track) {
 	t = &Track{
 		nextIndex:   0,
 		sampleRate:  sampleRate,

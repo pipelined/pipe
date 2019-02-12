@@ -1,9 +1,9 @@
-package asset_test
+package audio_test
 
 import (
 	"testing"
 
-	"github.com/pipelined/phono/asset"
+	"github.com/pipelined/phono/audio"
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
 	"github.com/stretchr/testify/assert"
@@ -41,7 +41,7 @@ func TestPipe(t *testing.T) {
 			Limit: 1,
 		}
 		processor := &mock.Processor{}
-		sink := &asset.Asset{}
+		sink := &audio.Asset{}
 		p, err := pipe.New(
 			bufferSize,
 			pipe.WithName("Mock"),
