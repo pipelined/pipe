@@ -2,6 +2,8 @@ package pipe
 
 import (
 	"io"
+
+	"github.com/pipelined/phono/pipe/metric"
 )
 
 // pumpRunner is pump's runner.
@@ -105,7 +107,7 @@ func newPumpRunner(pipeID string, bufferSize int, p Pump) (*pumpRunner, int, int
 }
 
 // run the Pump runner.
-func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, provide chan<- struct{}, consume <-chan message, meter *meter) (<-chan message, <-chan error) {
+func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, provide chan<- struct{}, consume <-chan message, meter *metric.Meter) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
 
@@ -149,7 +151,7 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 				}
 			}
 
-			meter = meter.sample(int64(m.buffer.Size())).message()
+			meter = meter.Sample(int64(m.buffer.Size())).Message()
 			m.feedback.applyTo(componentID) // apply feedback
 
 			// push message further
@@ -183,7 +185,7 @@ func newProcessRunner(pipeID string, sampleRate, numChannels, bufferSize int, p 
 }
 
 // run the Processor runner.
-func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in <-chan message, meter *meter) (<-chan message, <-chan error) {
+func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in <-chan message, meter *metric.Meter) (<-chan message, <-chan error) {
 	errc := make(chan error, 1)
 	r.in = in
 	r.out = make(chan message)
@@ -214,7 +216,7 @@ func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in
 				return
 			}
 
-			meter = meter.sample(int64(m.buffer.Size())).message()
+			meter = meter.Sample(int64(m.buffer.Size())).Message()
 
 			m.feedback.applyTo(componentID) // apply feedback
 
@@ -246,7 +248,7 @@ func newSinkRunner(pipeID string, sampleRate, numChannels, bufferSize int, s Sin
 }
 
 // run the sink runner.
-func (r *sinkRunner) run(pipeID, componentID string, cancel chan struct{}, in <-chan message, meter *meter) <-chan error {
+func (r *sinkRunner) run(pipeID, componentID string, cancel chan struct{}, in <-chan message, meter *metric.Meter) <-chan error {
 	errc := make(chan error, 1)
 	go func() {
 		defer close(errc)
@@ -273,7 +275,7 @@ func (r *sinkRunner) run(pipeID, componentID string, cancel chan struct{}, in <-
 				return
 			}
 
-			meter = meter.sample(int64(m.buffer.Size())).message()
+			meter = meter.Sample(int64(m.buffer.Size())).Message()
 
 			m.feedback.applyTo(componentID) // apply feedback
 		}
