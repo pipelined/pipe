@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/pipelined/phono/pipe/metric"
+
 	"github.com/pipelined/phono/signal"
 	"github.com/rs/xid"
 )
@@ -68,7 +70,7 @@ type Pipe struct {
 	processors []*processRunner
 	sinks      []*sinkRunner
 
-	metric   Metric
+	metric   *metric.Metric
 	params   params            //cahced params
 	feedback params            //cached feedback
 	errc     chan error        // errors channel
@@ -136,7 +138,7 @@ func WithName(n string) Option {
 }
 
 // WithMetric adds meterics for this pipe and all components.
-func WithMetric(m Metric) Option {
+func WithMetric(m *metric.Metric) Option {
 	return func(p *Pipe) error {
 		p.metric = m
 		return nil
@@ -212,14 +214,14 @@ func (p *Pipe) start() {
 	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
 	// start pump
 	componentID := p.components[p.pump.Pump]
-	meter := newMeter(componentID, p.sampleRate, p.metric)
+	meter := p.metric.Meter(componentID, p.sampleRate)
 	out, errc := p.pump.run(p.uid, componentID, p.cancel, p.provide, p.consume, meter)
 	errcList = append(errcList, errc)
 
 	// start chained processesing
 	for _, proc := range p.processors {
 		componentID = p.components[proc.Processor]
-		meter := newMeter(componentID, p.sampleRate, p.metric)
+		meter := p.metric.Meter(componentID, p.sampleRate)
 		out, errc = proc.run(p.uid, componentID, p.cancel, out, meter)
 		errcList = append(errcList, errc)
 	}
@@ -242,7 +244,7 @@ func (p *Pipe) broadcastToSinks(in <-chan message) []<-chan error {
 	//start broadcast
 	for i, s := range p.sinks {
 		componentID := p.components[s.Sink]
-		meter := newMeter(componentID, p.sampleRate, p.metric)
+		meter := p.metric.Meter(componentID, p.sampleRate)
 		errc := s.run(p.uid, componentID, p.cancel, broadcasts[i], meter)
 		errcList = append(errcList, errc)
 	}
