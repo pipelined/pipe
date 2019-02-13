@@ -11,9 +11,9 @@ type Track struct {
 	numChannels int
 	sampleRate  int
 
-	start   *clip
-	end     *clip
-	current *clip
+	start   *link
+	end     *link
+	current *link
 
 	// newIndex is a channel to receive new index
 	newIndex chan int
@@ -21,21 +21,21 @@ type Track struct {
 	nextIndex int
 }
 
-// Clip is a phono.Clip in track.
+// stream is a sequence of Clips in track.
 // It uses double-linked list structure.
-type clip struct {
+type link struct {
 	At int
-	signal.Float64Clip
-	Next *clip
-	Prev *clip
+	Clip
+	Next *link
+	Prev *link
 }
 
-// End returns an end index of Clip.
-func (c *clip) End() int {
-	if c == nil {
+// End returns an end index of link.
+func (l *link) End() int {
+	if l == nil {
 		return -1
 	}
-	return c.At + c.Len
+	return l.At + l.Len
 }
 
 // NewTrack creates a new track in a session.
@@ -54,7 +54,7 @@ func (t *Track) Pump(sourceID string, bufferSize int) (func() ([][]float64, erro
 	t.newIndex = make(chan int)
 	t.nextIndex = 0
 	return func() ([][]float64, error) {
-		if t.nextIndex >= t.clipsEnd() {
+		if t.nextIndex >= t.endIndex() {
 			return nil, io.EOF
 		}
 		b := t.bufferAt(t.nextIndex, bufferSize)
@@ -63,40 +63,41 @@ func (t *Track) Pump(sourceID string, bufferSize int) (func() ([][]float64, erro
 	}, t.sampleRate, t.numChannels, nil
 }
 
-// Reset flushes all clips from track.
+// Reset flushes all links from track.
 func (t *Track) Reset() {
+	t.current = nil
 	t.start = nil
 	t.end = nil
 }
 
 func (t *Track) bufferAt(index, bufferSize int) (result signal.Float64) {
 	if t.current == nil {
-		t.current = t.clipAfter(index)
+		t.current = t.linkAfter(index)
 	}
 	var buf signal.Float64
 	bufferEnd := index + bufferSize
 	for bufferSize > result.Size() {
-		// if current clip starts after frame then append empty buffer
+		// if current link starts after frame then append empty buffer
 		if t.current == nil || t.current.At >= bufferEnd {
 			result = result.Append(signal.EmptyFloat64(t.numChannels, bufferSize-result.Size()))
 		} else {
-			// if clip starts in current frame
+			// if link starts in current frame
 			if t.current.At >= index {
 				// calculate offset buffer size
-				// offset buffer is needed to align a clip start within a buffer
+				// offset buffer is needed to align a link start within a buffer
 				offsetBufSize := t.current.At - index
 				result = result.Append(signal.EmptyFloat64(t.numChannels, offsetBufSize))
 				if bufferEnd >= t.current.End() {
-					buf = t.current.Slice(t.current.Start, t.current.Len)
+					buf = t.current.data.Slice(t.current.Start, t.current.Len)
 				} else {
-					buf = t.current.Slice(t.current.Start, bufferSize-result.Size())
+					buf = t.current.data.Slice(t.current.Start, bufferSize-result.Size())
 				}
 			} else {
 				start := index - t.current.At + t.current.Start
 				if bufferEnd >= t.current.End() {
-					buf = t.current.Slice(start, t.current.End()-index)
+					buf = t.current.data.Slice(start, t.current.End()-index)
 				} else {
-					buf = t.current.Slice(start, bufferSize)
+					buf = t.current.data.Slice(start, bufferSize)
 				}
 			}
 			index += buf.Size()
@@ -109,9 +110,8 @@ func (t *Track) bufferAt(index, bufferSize int) (result signal.Float64) {
 	return result
 }
 
-// clipAfter searches for a first clip after passed index.
-// returns start position of clip and index in clip.
-func (t *Track) clipAfter(index int) *clip {
+// linkAfter searches for a first link after passed index.
+func (t *Track) linkAfter(index int) *link {
 	slice := t.start
 	for slice != nil {
 		if slice.At >= index {
@@ -122,8 +122,8 @@ func (t *Track) clipAfter(index int) *clip {
 	return nil
 }
 
-// clipsEnd returns index of last value of last clip.
-func (t *Track) clipsEnd() int {
+// endIndex returns index of last value of last link.
+func (t *Track) endIndex() int {
 	if t.end == nil {
 		return -1
 	}
@@ -131,51 +131,51 @@ func (t *Track) clipsEnd() int {
 }
 
 // AddClip assigns a frame to a track.
-func (t *Track) AddClip(at int, f signal.Float64Clip) {
+func (t *Track) AddClip(at int, c Clip) {
 	t.current = nil
-	c := &clip{
-		At:          at,
-		Float64Clip: f,
+	l := &link{
+		At:   at,
+		Clip: c,
 	}
 
 	if t.start == nil {
-		t.start = c
-		t.end = c
+		t.start = l
+		t.end = l
 		return
 	}
 
-	var next, prev *clip
-	if next = t.clipAfter(at); next != nil {
+	var next, prev *link
+	if next = t.linkAfter(at); next != nil {
 		prev = next.Prev
-		next.Prev = c
+		next.Prev = l
 	} else {
 		prev = t.end
-		t.end = c
+		t.end = l
 	}
 
 	if prev != nil {
-		prev.Next = c
+		prev.Next = l
 	} else {
-		t.start = c
+		t.start = l
 	}
-	c.Next = next
-	c.Prev = prev
+	l.Next = next
+	l.Prev = prev
 
-	t.resolveOverlaps(c)
+	t.resolveOverlaps(l)
 }
 
 // resolveOverlaps resolves overlaps
-func (t *Track) resolveOverlaps(c *clip) {
-	t.alignNextClip(c)
-	t.alignPrevClip(c)
+func (t *Track) resolveOverlaps(l *link) {
+	t.alignNextLink(l)
+	t.alignPrevLink(l)
 }
 
-func (t *Track) alignNextClip(c *clip) {
-	next := c.Next
+func (t *Track) alignNextLink(l *link) {
+	next := l.Next
 	if next == nil {
 		return
 	}
-	overlap := c.At - next.At + c.Len
+	overlap := l.At - next.At + l.Len
 	if overlap > 0 {
 		if next.Len > overlap {
 			// shorten next
@@ -184,30 +184,30 @@ func (t *Track) alignNextClip(c *clip) {
 			next.At = next.At + overlap
 		} else {
 			// remove next
-			c.Next = next.Next
-			if c.Next != nil {
-				c.Next.Prev = c
+			l.Next = next.Next
+			if l.Next != nil {
+				l.Next.Prev = l
 			} else {
-				t.end = c
+				t.end = l
 			}
-			t.alignNextClip(c)
+			t.alignNextLink(l)
 		}
 	}
 }
 
-func (t *Track) alignPrevClip(c *clip) {
-	prev := c.Prev
+func (t *Track) alignPrevLink(l *link) {
+	prev := l.Prev
 	if prev == nil {
 		return
 	}
-	overlap := prev.At - c.At + prev.Len
+	overlap := prev.At - l.At + prev.Len
 	if overlap > 0 {
 		prev.Len = prev.Len - overlap
-		if overlap > c.Len {
-			at := c.At + c.Len
-			start := overlap + c.Len + c.At - prev.At
-			len := overlap - c.Len
-			t.AddClip(at, prev.Clip(start, len))
+		if overlap > l.Len {
+			at := l.At + l.Len
+			start := overlap + l.Len + l.At - prev.At
+			len := overlap - l.Len
+			t.AddClip(at, prev.Asset.Clip(start, len))
 		}
 	}
 }
