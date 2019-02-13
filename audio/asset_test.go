@@ -1,9 +1,9 @@
-package asset_test
+package audio_test
 
 import (
 	"testing"
 
-	"github.com/pipelined/phono/asset"
+	"github.com/pipelined/phono/audio"
 	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
 	"github.com/stretchr/testify/assert"
@@ -12,21 +12,18 @@ import (
 var (
 	tests = []struct {
 		NumChannels int
-		mock.Limit
-		value    float64
-		messages int
-		samples  int
+		value       float64
+		messages    int
+		samples     int
 	}{
 		{
 			NumChannels: 1,
-			Limit:       10,
 			value:       0.5,
 			messages:    10,
 			samples:     100,
 		},
 		{
 			NumChannels: 2,
-			Limit:       100,
 			value:       0.7,
 			messages:    100,
 			samples:     1000,
@@ -38,24 +35,20 @@ var (
 func TestPipe(t *testing.T) {
 	for _, test := range tests {
 		pump := &mock.Pump{
-			Limit: 1,
+			Limit:       mock.Limit(test.messages),
+			NumChannels: test.NumChannels,
+			Value:       test.value,
 		}
 		processor := &mock.Processor{}
-		sink := &asset.Asset{}
+		asset := &audio.Asset{}
 		p, err := pipe.New(
 			bufferSize,
 			pipe.WithName("Mock"),
 			pipe.WithPump(pump),
 			pipe.WithProcessors(processor),
-			pipe.WithSinks(sink),
+			pipe.WithSinks(asset),
 		)
 		assert.Nil(t, err)
-		p.Push(
-			pump,
-			pump.LimitParam(test.Limit),
-			pump.NumChannelsParam(test.NumChannels),
-			pump.ValueParam(test.value),
-		)
 		err = pipe.Wait(p.Run())
 		assert.Nil(t, err)
 
@@ -67,13 +60,13 @@ func TestPipe(t *testing.T) {
 		assert.Equal(t, test.messages, messageCount)
 		assert.Equal(t, test.samples, samplesCount)
 
-		asset := sink.Asset()
-		assert.Equal(t, test.NumChannels, asset.NumChannels())
-		assert.Equal(t, test.samples, asset.Size())
+		buf := asset.Data()
+		assert.Equal(t, test.NumChannels, buf.NumChannels())
+		assert.Equal(t, test.samples, buf.Size())
 
-		for i := range asset {
-			for j := range asset[i] {
-				assert.Equal(t, test.value, asset[i][j])
+		for i := range buf {
+			for j := range buf[i] {
+				assert.Equal(t, test.value, buf[i][j])
 			}
 		}
 		err = pipe.Wait(p.Run())

@@ -11,15 +11,6 @@ import (
 // Float64 is a non-interleaved float64 signal.
 type Float64 [][]float64
 
-// Float64Clip represents a segment of float64 buffer.
-//
-// Clip is not a copy of a buffer.
-type Float64Clip struct {
-	Float64
-	Start int
-	Len   int
-}
-
 // Int is a non-interleaved int signal.
 type Int [][]int
 
@@ -128,9 +119,6 @@ func EmptyFloat64(numChannels int, bufferSize int) Float64 {
 
 // NumChannels returns number of channels in this sample slice
 func (floats Float64) NumChannels() int {
-	if floats == nil {
-		return 0
-	}
 	return len(floats)
 }
 
@@ -176,24 +164,4 @@ func (floats Float64) Slice(start int, len int) Float64 {
 		result[i] = append(result[i], floats[i][start:end]...)
 	}
 	return result
-}
-
-// Clip creates a new clip from buffer with defined start and length.
-//
-// if start >= buffer size, nil is returned
-// if start + len >= buffer size, len is decreased till the end of slice
-// if start < 0, nil is returned
-func (floats Float64) Clip(start int, len int) Float64Clip {
-	if floats == nil || start >= floats.Size() || start < 0 {
-		return Float64Clip{}
-	}
-	end := start + len
-	if end >= floats.Size() {
-		len = int(floats.Size()) - int(start)
-	}
-	return Float64Clip{
-		Float64: floats,
-		Start:   start,
-		Len:     len,
-	}
 }
