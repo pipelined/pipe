@@ -15,17 +15,17 @@ import (
 )
 
 var (
-	buffer1 = signal.Float64([][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}})
-	buffer2 = signal.Float64([][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}})
+	buffer1 = audio.NewAsset([][]float64{[]float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}})
+	buffer2 = audio.NewAsset([][]float64{[]float64{2, 2, 2, 2, 2, 2, 2, 2, 2, 2}})
 
 	overlapTests = []struct {
-		clips   []signal.Float64Clip
+		clips   []audio.Clip
 		clipsAt []int
 		result  []float64
 		msg     string
 	}{
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
@@ -34,7 +34,7 @@ var (
 			msg:     "Sequence",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
@@ -43,7 +43,7 @@ var (
 			msg:     "Sequence increased bufferSize",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
@@ -52,7 +52,7 @@ var (
 			msg:     "Sequence shifted left",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 1),
 				buffer2.Clip(5, 3),
 			},
@@ -61,7 +61,7 @@ var (
 			msg:     "Sequence with interval",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 3),
 				buffer2.Clip(5, 2),
 			},
@@ -70,7 +70,7 @@ var (
 			msg:     "Overlap previous",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 3),
 				buffer2.Clip(5, 2),
 			},
@@ -79,7 +79,7 @@ var (
 			msg:     "Overlap next",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 5),
 				buffer2.Clip(5, 2),
 			},
@@ -88,7 +88,7 @@ var (
 			msg:     "Overlap single in the middle",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 2),
 				buffer1.Clip(3, 2),
 				buffer2.Clip(5, 2),
@@ -98,7 +98,7 @@ var (
 			msg:     "Overlap two in the middle",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 2),
 				buffer1.Clip(5, 2),
 				buffer2.Clip(3, 2),
@@ -108,7 +108,7 @@ var (
 			msg:     "Overlap two in the middle shifted",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 2),
 				buffer2.Clip(3, 5),
 			},
@@ -117,7 +117,7 @@ var (
 			msg:     "Overlap single completely",
 		},
 		{
-			clips: []signal.Float64Clip{
+			clips: []audio.Clip{
 				buffer1.Clip(3, 2),
 				buffer1.Clip(5, 2),
 				buffer2.Clip(1, 8),
@@ -132,12 +132,12 @@ var (
 func TestTrackWavSlices(t *testing.T) {
 	bufferSize := 512
 	wavPump := wav.NewPump(test.Data.Wav1)
-	assetSink := &audio.Asset{}
+	asset := &audio.Asset{}
 
 	p1, err := pipe.New(
 		bufferSize,
 		pipe.WithPump(wavPump),
-		pipe.WithSinks(assetSink),
+		pipe.WithSinks(asset),
 	)
 	assert.Nil(t, err)
 	err = pipe.Wait(p1.Run())
@@ -147,7 +147,6 @@ func TestTrackWavSlices(t *testing.T) {
 		test.Out.Track,
 		signal.BitDepth16,
 	)
-	asset := assetSink.Asset()
 	track := audio.NewTrack(44100, asset.NumChannels())
 
 	track.AddClip(198450, asset.Clip(0, 44100))
