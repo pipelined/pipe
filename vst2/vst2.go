@@ -6,7 +6,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 
 	"github.com/pipelined/vst2"
 )

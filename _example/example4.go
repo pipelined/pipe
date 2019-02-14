@@ -4,7 +4,7 @@ import (
 	"github.com/pipelined/phono/asset"
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/portaudio"
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 	"github.com/pipelined/phono/test"
 	"github.com/pipelined/phono/track"
 	"github.com/pipelined/phono/wav"

@@ -4,7 +4,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 )
 
 // Param types

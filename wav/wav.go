@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 )
 
 type (
