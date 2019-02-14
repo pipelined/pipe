@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 )
 
 // Mixer summs up multiple channels of messages into a single channel.

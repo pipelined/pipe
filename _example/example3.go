@@ -3,7 +3,7 @@ package example
 import (
 	"github.com/pipelined/phono/mixer"
 	"github.com/pipelined/phono/pipe"
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 	"github.com/pipelined/phono/test"
 	"github.com/pipelined/phono/wav"
 )

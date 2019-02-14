@@ -7,7 +7,7 @@ import (
 
 	"github.com/pipelined/phono/pipe/metric"
 
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 	"github.com/rs/xid"
 )
 

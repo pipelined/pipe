@@ -9,7 +9,7 @@ import (
 
 	"github.com/viert/lame"
 
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 
 	mp3 "github.com/hajimehoshi/go-mp3"
 )

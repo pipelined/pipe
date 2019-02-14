@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 )
 
 // Metric contains component's Meters.

@@ -1,7 +1,7 @@
 package audio
 
 import (
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 )
 
 // Asset is a sink which uses a regular buffer as underlying storage.
