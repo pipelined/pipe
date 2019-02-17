@@ -9,19 +9,19 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/pipelined/mock"
 	"github.com/pipelined/phono/mixer"
-	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
-	"github.com/pipelined/signal"
 	"github.com/pipelined/phono/test"
 	"github.com/pipelined/phono/wav"
+	"github.com/pipelined/signal"
 )
 
 func TestMixer(t *testing.T) {
 	bufferSize := 10
 	numChannels := 1
 	tests := []struct {
-		mock.Limit
+		Limit    int
 		value1   float64
 		value2   float64
 		sum      float64

@@ -17,6 +17,8 @@ github.com/hajimehoshi/go-mp3 v0.1.1/go.mod h1:4i+c5pDNKDrxl1iu9iG90/+fhP37lio6g
 github.com/hajimehoshi/oto v0.1.1/go.mod h1:hUiLWeBQnbDu4pZsAhOnGqMI1ZGibS6e2qhQdfpwz04=
 github.com/mattetti/audio v0.0.0-20180912171649-01576cde1f21 h1:Hc1iKlyxNHp3CV59G2E/qabUkHvEwOIJxDK0CJ7CRjA=
 github.com/mattetti/audio v0.0.0-20180912171649-01576cde1f21/go.mod h1:LlQmBGkOuV/SKzEDXBPKauvN2UqCgzXO2XjecTGj40s=
+github.com/pipelined/mock v0.0.0-20190217150724-87db8bf19cf0 h1:fuXR+EClun6PS6seq7qRYal4yM9pLpG2AU1VrSveQzg=
+github.com/pipelined/mock v0.0.0-20190217150724-87db8bf19cf0/go.mod h1:/1j1qKtUhE/iC8c+oM4QGbGAYOlgVji/Ux+XM+3sqes=
 github.com/pipelined/signal v0.0.0-20190214071912-fe6a394c0dc2 h1:pdktGNYMRJl4IA2AqKFNNhItHXNABRIgaCUqPmeP3SM=
 github.com/pipelined/signal v0.0.0-20190214071912-fe6a394c0dc2/go.mod h1:2hObqg30KY6FBiLwiO5kvSui/3C2XWCks06RD/A1m7I=
 github.com/pipelined/vst2 v0.2.0 h1:L1XOksMnxEOdqk+tST4HNLYkzqcv+/Ut72DfcB0rWow=

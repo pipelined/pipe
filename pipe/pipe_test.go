@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/phono/mock"
+	"github.com/pipelined/mock"
 	"github.com/pipelined/phono/pipe"
 	"go.uber.org/goleak"
 )
@@ -17,8 +17,8 @@ const (
 )
 
 var measureTests = struct {
-	interval time.Duration
-	mock.Limit
+	interval    time.Duration
+	Limit       int
 	BufferSize  int
 	NumChannels int
 }{
