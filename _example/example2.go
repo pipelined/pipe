@@ -2,11 +2,10 @@ package example
 
 import (
 	"github.com/pipelined/phono/pipe"
-	"github.com/pipelined/signal"
 	"github.com/pipelined/phono/test"
-	"github.com/pipelined/phono/vst2"
 	"github.com/pipelined/phono/wav"
-	vst2sdk "github.com/pipelined/vst2"
+	"github.com/pipelined/signal"
+	"github.com/pipelined/vst2"
 )
 
 // Example:
@@ -19,7 +18,7 @@ func two() {
 		test.Data.Wav1,
 	)
 
-	vst2lib, err := vst2sdk.Open(test.Vst)
+	vst2lib, err := vst2.Open(test.Vst)
 	check(err)
 	defer vst2lib.Close()
 
