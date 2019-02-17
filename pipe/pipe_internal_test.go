@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pipelined/phono/mock"
+	"github.com/pipelined/mock"
 	"github.com/stretchr/testify/assert"
 )
 

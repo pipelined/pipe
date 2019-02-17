@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/pipelined/phono/mock"
+	"github.com/pipelined/mock"
 	"github.com/pipelined/signal"
 	"github.com/pipelined/phono/test"
 

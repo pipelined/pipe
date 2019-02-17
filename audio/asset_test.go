@@ -3,8 +3,8 @@ package audio_test
 import (
 	"testing"
 
+	"github.com/pipelined/mock"
 	"github.com/pipelined/phono/audio"
-	"github.com/pipelined/phono/mock"
 	"github.com/pipelined/phono/pipe"
 	"github.com/stretchr/testify/assert"
 )
@@ -35,7 +35,7 @@ var (
 func TestPipe(t *testing.T) {
 	for _, test := range tests {
 		pump := &mock.Pump{
-			Limit:       mock.Limit(test.messages),
+			Limit:       test.messages,
 			NumChannels: test.NumChannels,
 			Value:       test.value,
 		}
