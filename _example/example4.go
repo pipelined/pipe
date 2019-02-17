@@ -1,13 +1,12 @@
 package example
 
 import (
-	"github.com/pipelined/phono/asset"
+	"github.com/pipelined/phono/audio"
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/portaudio"
-	"github.com/pipelined/signal"
 	"github.com/pipelined/phono/test"
-	"github.com/pipelined/phono/track"
 	"github.com/pipelined/phono/wav"
+	"github.com/pipelined/signal"
 )
 
 // Example:
@@ -22,13 +21,13 @@ func four() {
 	wavPump := wav.NewPump(test.Data.Wav1)
 
 	// asset sink
-	assetSink := &asset.Asset{}
+	asset := &audio.Asset{}
 
 	// import pipe
 	importAsset, err := pipe.New(
 		bufferSize,
 		pipe.WithPump(wavPump),
-		pipe.WithSinks(assetSink),
+		pipe.WithSinks(asset),
 	)
 	check(err)
 	defer importAsset.Close()
@@ -36,9 +35,8 @@ func four() {
 	err = pipe.Wait(importAsset.Run())
 	check(err)
 
-	asset := assetSink.Asset()
 	// track pump
-	track := track.New(44100, asset.NumChannels())
+	track := audio.NewTrack(44100, asset.NumChannels())
 
 	// add samples
 	track.AddClip(198450, asset.Clip(0, 44100))

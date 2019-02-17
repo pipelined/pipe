@@ -6,8 +6,8 @@ require (
 	github.com/gordonklaus/portaudio v0.0.0-20180817120803-00e7307ccd93
 	github.com/hajimehoshi/go-mp3 v0.1.1
 	github.com/pipelined/mock v0.0.0-20190217150724-87db8bf19cf0
-	github.com/pipelined/signal v0.0.0-20190214071912-fe6a394c0dc2
-	github.com/pipelined/vst2 v0.2.0
+	github.com/pipelined/signal v0.0.0-20190217150524-6f12bde3dee3
+	github.com/pipelined/vst2 v0.2.1-0.20190217225742-6acaf89c781e
 	github.com/rs/xid v1.2.1
 	github.com/stretchr/testify v1.3.0
 	github.com/viert/lame v0.0.0-20190110105750-70ad2f7ac5f2

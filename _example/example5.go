@@ -3,11 +3,10 @@ package example
 import (
 	"github.com/pipelined/phono/mixer"
 	"github.com/pipelined/phono/pipe"
-	"github.com/pipelined/signal"
 	"github.com/pipelined/phono/test"
-	"github.com/pipelined/phono/vst2"
 	"github.com/pipelined/phono/wav"
-	vst2sdk "github.com/pipelined/vst2"
+	"github.com/pipelined/signal"
+	"github.com/pipelined/vst2"
 )
 
 // Example:
@@ -48,7 +47,7 @@ func five() {
 	defer track2.Close()
 
 	// vst2 processor
-	vst2lib, err := vst2sdk.Open(test.Vst)
+	vst2lib, err := vst2.Open(test.Vst)
 	check(err)
 	defer vst2lib.Close()
 
