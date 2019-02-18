@@ -7,7 +7,6 @@ import (
 type (
 	// Sink represets portaudio sink which allows to play audio using default device.
 	Sink struct {
-		buf    []float32
 		stream *portaudio.Stream
 	}
 )
@@ -20,12 +19,12 @@ func NewSink() *Sink {
 // Sink writes the buffer of data to portaudio stream.
 // It aslo initilizes a portaudio api with default stream.
 func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error) {
-	s.buf = make([]float32, bufferSize*numChannels)
 	err := portaudio.Initialize()
 	if err != nil {
 		return nil, err
 	}
-	s.stream, err = portaudio.OpenDefaultStream(0, numChannels, float64(sampleRate), bufferSize, &s.buf)
+	buf := make([]float32, bufferSize*numChannels)
+	s.stream, err = portaudio.OpenDefaultStream(0, numChannels, float64(sampleRate), bufferSize, &buf)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +35,7 @@ func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (f
 	return func(b [][]float64) error {
 		for i := range b[0] {
 			for j := range b {
-				s.buf[i*numChannels+j] = float32(b[j][i])
+				buf[i*numChannels+j] = float32(b[j][i])
 			}
 		}
 		return s.stream.Write()
@@ -45,6 +44,9 @@ func (s *Sink) Sink(sourceID string, sampleRate, numChannels, bufferSize int) (f
 
 // Flush terminates portaudio structures.
 func (s *Sink) Flush(string) error {
+	if s.stream == nil {
+		return nil
+	}
 	err := s.stream.Stop()
 	if err != nil {
 		return err
