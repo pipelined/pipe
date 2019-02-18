@@ -18,9 +18,9 @@ addons:
 
 before_install:
   - brew update
-  - brew install portaudio lame
+  - brew install lame
 
-script: env CGO_CFLAGS=-I$(pwd)/vst2sdk go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+script: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
