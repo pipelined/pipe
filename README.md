@@ -41,7 +41,7 @@ Please, note that since `phono` is in active development stage, all packages are
 
 [phono/mock](https://godoc.org/github.com/pipelined/mock) package can be used to test custom Pumps, Processors and Sinks. It allows to mock up pipe elements and then assert the data metrics.
 
-[phono/wav](https://godoc.org/github.com/pipelined/phono/wav) package contains Pump and Sink which allows to read/write wav files respectively. Its [test](https://github.com/pipelined/phono/blob/master/wav/wav_test.go) is a good example of [phono/mock](https://godoc.org/github.com/pipelined/mock) package in use.
+[phono/wav](https://godoc.org/github.com/pipelined/wav) package contains Pump and Sink which allows to read/write wav files respectively. Its [test](https://github.com/pipelined/phono/blob/master/wav/wav_test.go) is a good example of [phono/mock](https://godoc.org/github.com/pipelined/mock) package in use.
 
 ## Contributing
 
