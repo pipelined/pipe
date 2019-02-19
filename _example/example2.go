@@ -3,9 +3,9 @@ package example
 import (
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/test"
-	"github.com/pipelined/phono/wav"
 	"github.com/pipelined/signal"
 	"github.com/pipelined/vst2"
+	"github.com/pipelined/wav"
 )
 
 // Example:

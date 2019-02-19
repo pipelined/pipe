@@ -4,7 +4,7 @@ import (
 	"github.com/pipelined/phono/mixer"
 	"github.com/pipelined/phono/pipe"
 	"github.com/pipelined/phono/test"
-	"github.com/pipelined/phono/wav"
+	"github.com/pipelined/wav"
 	"github.com/pipelined/signal"
 	"github.com/pipelined/vst2"
 )
