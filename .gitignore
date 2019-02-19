@@ -13,14 +13,6 @@
 # Golang project vendor packages which should be ignored
 vendor/
 
-# Golang dep tool
-Gopkg.lock
-
 # Output files
-*.wav
-!sample1.wav
-!sample2.wav
-!sample8bit.wav
-
 *.mp3
 !sample.mp3
