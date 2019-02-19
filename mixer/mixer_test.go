@@ -12,9 +12,6 @@ import (
 	"github.com/pipelined/mock"
 	"github.com/pipelined/phono/mixer"
 	"github.com/pipelined/phono/pipe"
-	"github.com/pipelined/phono/test"
-	"github.com/pipelined/phono/wav"
-	"github.com/pipelined/signal"
 )
 
 func TestMixer(t *testing.T) {
@@ -109,54 +106,6 @@ func TestMixer(t *testing.T) {
 		assert.Equal(t, test.messages, messageCount)
 		assert.Equal(t, test.samples, sampleCount)
 	}
-
-	track1.Close()
-	track2.Close()
-	playback.Close()
-}
-
-func TestWavMixer(t *testing.T) {
-	bufferSize := 512
-
-	p1 := wav.NewPump(test.Data.Wav1)
-	p2 := wav.NewPump(test.Data.Wav2)
-
-	s, err := wav.NewSink(test.Out.Mixer, signal.BitDepth16)
-
-	m := mixer.New()
-
-	track1, err := pipe.New(
-		bufferSize,
-		pipe.WithPump(p1),
-		pipe.WithSinks(m),
-	)
-	assert.Nil(t, err)
-	track2, err := pipe.New(
-		bufferSize,
-		pipe.WithPump(p2),
-		pipe.WithSinks(m),
-	)
-	assert.Nil(t, err)
-	playback, err := pipe.New(
-		bufferSize,
-		pipe.WithPump(m),
-		pipe.WithSinks(s),
-	)
-	assert.Nil(t, err)
-
-	track1errc := track1.Run()
-	assert.NotNil(t, track1errc)
-	track2errc := track2.Run()
-	assert.NotNil(t, track2errc)
-	playbackerrc := playback.Run()
-	assert.NotNil(t, playbackerrc)
-
-	err = pipe.Wait(track1errc)
-	assert.Nil(t, err)
-	err = pipe.Wait(track2errc)
-	assert.Nil(t, err)
-	err = pipe.Wait(playbackerrc)
-	assert.Nil(t, err)
 
 	track1.Close()
 	track2.Close()
