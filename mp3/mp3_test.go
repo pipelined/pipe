@@ -5,14 +5,18 @@ import (
 
 	"github.com/pipelined/phono/mp3"
 	"github.com/pipelined/phono/pipe"
-	"github.com/pipelined/phono/test"
 	"github.com/stretchr/testify/assert"
+)
+
+const (
+	in  = "../_testdata/sample.mp3"
+	out = "../_testdata/out/sample.mp3"
 )
 
 func TestMp3(t *testing.T) {
 	bufferSize := 512
-	pump := mp3.NewPump(test.Data.Mp3)
-	sink := mp3.NewSink(test.Out.Mp3, 192, 2)
+	pump := mp3.NewPump(in)
+	sink := mp3.NewSink(out, 192, 2)
 	p, err := pipe.New(
 		bufferSize,
 		pipe.WithPump(pump),
