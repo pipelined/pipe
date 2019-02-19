@@ -4,12 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/pipelined/phono/audio"
 	"github.com/pipelined/mock"
+	"github.com/pipelined/phono/audio"
 	"github.com/pipelined/phono/pipe"
-	"github.com/pipelined/signal"
-	"github.com/pipelined/phono/test"
-	"github.com/pipelined/phono/wav"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -128,39 +125,6 @@ var (
 		},
 	}
 )
-
-func TestTrackWavSlices(t *testing.T) {
-	bufferSize := 512
-	wavPump := wav.NewPump(test.Data.Wav1)
-	asset := &audio.Asset{}
-
-	p1, err := pipe.New(
-		bufferSize,
-		pipe.WithPump(wavPump),
-		pipe.WithSinks(asset),
-	)
-	assert.Nil(t, err)
-	err = pipe.Wait(p1.Run())
-	assert.Nil(t, err)
-
-	wavSink, err := wav.NewSink(
-		test.Out.Track,
-		signal.BitDepth16,
-	)
-	track := audio.NewTrack(44100, asset.NumChannels())
-
-	track.AddClip(198450, asset.Clip(0, 44100))
-	track.AddClip(66150, asset.Clip(44100, 44100))
-	track.AddClip(132300, asset.Clip(0, 44100))
-
-	p2, err := pipe.New(
-		bufferSize,
-		pipe.WithPump(track),
-		pipe.WithSinks(wavSink),
-	)
-	assert.Nil(t, err)
-	_ = pipe.Wait(p2.Run())
-}
 
 func TestSliceOverlaps(t *testing.T) {
 	sink := &mock.Sink{}
