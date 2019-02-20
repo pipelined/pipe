@@ -12,7 +12,3 @@
 
 # Golang project vendor packages which should be ignored
 vendor/
-
-# Output files
-*.mp3
-!sample.mp3

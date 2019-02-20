@@ -11,15 +11,6 @@ env:
     - GO111MODULE=on
     - CODECOV_TOKEN="5b0b1830-b8b6-4dc6-9f5f-0dde9889f14f"
 
-addons:
-  ssh_known_hosts:
-  - github.com
-  - ssh.github.com
-
-before_install:
-  - brew update
-  - brew install lame
-
 script: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
 after_success:
