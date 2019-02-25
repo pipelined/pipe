@@ -5,8 +5,8 @@ github.com/pipelined/mock v0.0.0-20190217150724-87db8bf19cf0 h1:fuXR+EClun6PS6se
 github.com/pipelined/mock v0.0.0-20190217150724-87db8bf19cf0/go.mod h1:/1j1qKtUhE/iC8c+oM4QGbGAYOlgVji/Ux+XM+3sqes=
 github.com/pipelined/signal v0.0.0-20190214071912-fe6a394c0dc2 h1:pdktGNYMRJl4IA2AqKFNNhItHXNABRIgaCUqPmeP3SM=
 github.com/pipelined/signal v0.0.0-20190214071912-fe6a394c0dc2/go.mod h1:2hObqg30KY6FBiLwiO5kvSui/3C2XWCks06RD/A1m7I=
-github.com/pipelined/signal v0.0.0-20190218175838-c71a34013a33 h1:1JMYIg1pNrd3sO4qE8zE4aFvma+ngJF/vhMnw6ifXMU=
-github.com/pipelined/signal v0.0.0-20190218175838-c71a34013a33/go.mod h1:2hObqg30KY6FBiLwiO5kvSui/3C2XWCks06RD/A1m7I=
+github.com/pipelined/signal v0.0.0-20190225175958-4cd224292fb5 h1:NSz7J2PVSef+H9/y4mpHVH5ga8ryppU1zWCwPzM4VbM=
+github.com/pipelined/signal v0.0.0-20190225175958-4cd224292fb5/go.mod h1:2hObqg30KY6FBiLwiO5kvSui/3C2XWCks06RD/A1m7I=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rs/xid v1.2.1 h1:mhH9Nq+C1fY2l1XIpgxIiUOfNpRBYH1kKcr+qfKgjRc=
