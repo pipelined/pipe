@@ -132,6 +132,9 @@ func (t *Track) endIndex() int {
 
 // AddClip assigns a frame to a track.
 func (t *Track) AddClip(at int, c Clip) {
+	if c.Asset == nil {
+		return
+	}
 	t.current = nil
 	l := &link{
 		At:   at,
