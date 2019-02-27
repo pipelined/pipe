@@ -1,4 +1,4 @@
-module github.com/pipelined/phono
+module github.com/pipelined/pipe
 
 require (
 	github.com/pipelined/mock v0.0.0-20190217150724-87db8bf19cf0
