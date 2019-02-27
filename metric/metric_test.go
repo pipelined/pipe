@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/pipelined/mock"
-	"github.com/pipelined/phono/pipe"
-	"github.com/pipelined/phono/pipe/metric"
+	"github.com/pipelined/pipe"
+	"github.com/pipelined/pipe/metric"
 )
 
 func TestMeter(t *testing.T) {
