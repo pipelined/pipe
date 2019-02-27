@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/pipelined/phono/pipe/metric"
+	"github.com/pipelined/pipe/metric"
 
-	"github.com/pipelined/phono/signal"
+	"github.com/pipelined/signal"
 	"github.com/rs/xid"
 )
 
@@ -88,8 +88,7 @@ type Pipe struct {
 	log        Logger
 }
 
-// Option provides a way to set parameters to pipe
-// returns phono.ParamFunc, which can be executed later
+// Option provides a way to set functional parameters to pipe.
 type Option func(p *Pipe) error
 
 // ErrInvalidState is returned if pipe method cannot be executed at this moment.

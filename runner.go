@@ -3,7 +3,7 @@ package pipe
 import (
 	"io"
 
-	"github.com/pipelined/phono/pipe/metric"
+	"github.com/pipelined/pipe/metric"
 )
 
 // pumpRunner is pump's runner.

@@ -6,27 +6,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/phono/mock"
-	"github.com/pipelined/phono/pipe"
+	"github.com/pipelined/mock"
+	"github.com/pipelined/pipe"
 	"go.uber.org/goleak"
 )
 
 const (
 	bufferSize = 512
-	sampleRate = 44100
 )
-
-var measureTests = struct {
-	interval time.Duration
-	mock.Limit
-	BufferSize  int
-	NumChannels int
-}{
-	interval:    10 * time.Millisecond,
-	Limit:       10,
-	BufferSize:  10,
-	NumChannels: 1,
-}
 
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
