@@ -11,28 +11,7 @@ env:
     - GO111MODULE=on
     - CODECOV_TOKEN="5b0b1830-b8b6-4dc6-9f5f-0dde9889f14f"
 
-addons:
-  ssh_known_hosts:
-  - github.com
-  - ssh.github.com
-
-before_install:
-  - >-
-    openssl aes-256-cbc 
-    -K $encrypted_84c1f1c63f6c_key
-    -iv $encrypted_84c1f1c63f6c_iv 
-    -in vstsdk_rsa.enc 
-    -out vstsdk_rsa 
-    -d
-  - chmod 600 vstsdk_rsa
-  - eval $(ssh-agent -s)
-  - ssh-add vstsdk_rsa
-  # dependencies
-  - git clone ssh://git@github.com/dudk/vst2sdk.git
-  - brew update
-  - brew install portaudio lame
-
-script: env CGO_CFLAGS=-I$(pwd)/vst2sdk go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+script: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
 after_success:
   - bash <(curl -s https://codecov.io/bash)
