@@ -1,4 +1,4 @@
-![](phono.png)
+![](pipe.png)
 
 [![GoDoc](https://godoc.org/github.com/pipelined/pipe?status.svg)](https://godoc.org/github.com/pipelined/pipe)
 [![Build Status](https://travis-ci.org/pipelined/pipe.svg?branch=master)](https://travis-ci.org/pipelined/pipe)
