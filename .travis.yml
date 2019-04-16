@@ -9,7 +9,7 @@ install: true
 env:
   global:
     - GO111MODULE=on
-    - CODECOV_TOKEN="5b0b1830-b8b6-4dc6-9f5f-0dde9889f14f"
+    - CODECOV_TOKEN="d9d971f2-368d-46b7-ab06-f605ef2bdb10"
 
 script: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
