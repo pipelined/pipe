@@ -3,42 +3,44 @@ package pipe
 import (
 	"sync"
 	"testing"
-	"time"
 
-	"github.com/pipelined/mock"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestSimpleParams(t *testing.T) {
-	pump := &mock.Pump{}
-	interval := 10 * time.Millisecond
+	expected, value := 10, 0
+	fn := func() {
+		value = 10
+	}
 	p := params(make(map[string][]func()))
 	uid := newUID()
-	p = p.add(uid, pump.IntervalParam(interval))
+	p = p.add(uid, fn)
 	p.applyTo(uid)
 
-	assert.Equal(t, interval, pump.Interval)
+	assert.Equal(t, expected, value)
 }
 
 func TestMergeParams(t *testing.T) {
 	var p, newP params
-	pump := &mock.Pump{}
+	expected, value := 10, 0
+	fn := func() {
+		value += 10
+	}
 
-	interval := 10 * time.Millisecond
 	p = make(map[string][]func())
 	newP = make(map[string][]func())
 	uid := newUID()
-	newP.add(uid, pump.IntervalParam(interval))
+	newP.add(uid, fn)
 	p = p.merge(newP)
 	p.applyTo(uid)
-	assert.Equal(t, interval, pump.Interval)
+	assert.Equal(t, expected, value)
 
-	newInterval := 20 * time.Millisecond
+	expected = 20
 	newP = make(map[string][]func())
-	newP = newP.add(uid, pump.IntervalParam(newInterval))
+	newP = newP.add(uid, fn)
 	p = p.merge(newP)
 	p.applyTo(uid)
-	assert.Equal(t, newInterval, pump.Interval)
+	assert.Equal(t, expected, value)
 }
 
 func TestSingleUse(t *testing.T) {
