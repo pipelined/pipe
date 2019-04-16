@@ -32,6 +32,11 @@ type Sink interface {
 	Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error)
 }
 
+// SinkBuilder validates configuration and builds a new Sink if it's valid.
+type SinkBuilder interface {
+	Build() (Sink, error)
+}
+
 // Logger is a global interface for pipe loggers
 type Logger interface {
 	Debug(...interface{})
@@ -147,8 +152,7 @@ func WithMetric(m *metric.Metric) Option {
 // WithPump sets pump to Pipe.
 func WithPump(pump Pump) Option {
 	return func(p *Pipe) error {
-		uid := newUID()
-		p.components[pump] = uid
+		// newPumpRunner should not be created here.
 		r, sampleRate, numChannels, err := newPumpRunner(p.uid, p.bufferSize, pump)
 		if err != nil {
 			return err
@@ -156,21 +160,27 @@ func WithPump(pump Pump) Option {
 		p.pump = r
 		p.sampleRate = sampleRate
 		p.numChannels = numChannels
+		p.addComponent(pump)
 		return nil
 	}
 }
 
-// WithProcessors sets processors to Pipe
+// WithProcessors sets processors to Pipe.
 func WithProcessors(processors ...Processor) Option {
 	return func(p *Pipe) error {
+		runners := make([]*processRunner, 0, len(processors))
 		for _, proc := range processors {
-			uid := newUID()
-			p.components[proc] = uid
+			// processRunner should not be created here.
 			r, err := newProcessRunner(p.uid, p.sampleRate, p.numChannels, p.bufferSize, proc)
 			if err != nil {
 				return err
 			}
-			p.processors = append(p.processors, r)
+			runners = append(runners, r)
+		}
+		p.processors = append(p.processors, runners...)
+		// add all processors to params map
+		for _, proc := range processors {
+			p.addComponent(proc)
 		}
 		return nil
 	}
@@ -179,17 +189,50 @@ func WithProcessors(processors ...Processor) Option {
 // WithSinks sets sinks to Pipe.
 func WithSinks(sinks ...Sink) Option {
 	return func(p *Pipe) error {
-		for _, sink := range sinks {
-			uid := newUID()
-			p.components[sink] = uid
-			r, err := newSinkRunner(p.uid, p.sampleRate, p.numChannels, p.bufferSize, sink)
+		return p.addSinks(sinks)
+	}
+}
+
+// WithSinkBuilders builds all sinks for passed builders.
+// If any of sinkBuilders is not valid, error is returned and no sinks are added at all.
+func WithSinkBuilders(sinkBuilders ...SinkBuilder) Option {
+	return func(p *Pipe) error {
+		// build all sinks first
+		sinks := make([]Sink, 0, len(sinkBuilders))
+		for _, sb := range sinkBuilders {
+			s, err := sb.Build()
 			if err != nil {
 				return err
 			}
-			p.sinks = append(p.sinks, r)
+			sinks = append(sinks, s)
 		}
-		return nil
+		return p.addSinks(sinks)
 	}
+}
+
+// addComponent adds new uid for components map.
+func (p *Pipe) addComponent(c interface{}) {
+	uid := newUID()
+	p.components[c] = uid
+}
+
+func (p *Pipe) addSinks(sinks []Sink) error {
+	// create all runners
+	runners := make([]*sinkRunner, 0, len(sinks))
+	for _, s := range sinks {
+		// sinkRunner should not be created here.
+		r, err := newSinkRunner(p.uid, p.sampleRate, p.numChannels, p.bufferSize, s)
+		if err != nil {
+			return err
+		}
+		runners = append(runners, r)
+	}
+	p.sinks = append(p.sinks, runners...)
+	// add all sinks to params map
+	for _, s := range sinks {
+		p.addComponent(s)
+	}
+	return nil
 }
 
 // Push new params into pipe.
