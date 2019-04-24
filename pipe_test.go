@@ -1,7 +1,6 @@
 package pipe_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -165,19 +164,4 @@ func newPipe(t *testing.T) *pipe.Pipe {
 	)
 	assert.Nil(t, err)
 	return p
-}
-
-func TestSinkBuilder(t *testing.T) {
-	sb := &mock.SinkBuilder{}
-	p, err := pipe.New(512, pipe.WithSinkBuilders(sb))
-	assert.Nil(t, err)
-	assert.NotNil(t, p)
-	pipe.Wait(p.Close())
-
-	expError := fmt.Errorf("Broken builder")
-	sb = &mock.SinkBuilder{Error: expError}
-	p, err = pipe.New(512, pipe.WithSinkBuilders(sb))
-	assert.NotNil(t, err)
-	assert.Nil(t, p)
-	assert.Equal(t, expError, err)
 }

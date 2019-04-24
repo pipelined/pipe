@@ -32,11 +32,6 @@ type Sink interface {
 	Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error)
 }
 
-// SinkBuilder validates configuration and builds a new Sink if it's valid.
-type SinkBuilder interface {
-	Build() (Sink, error)
-}
-
 // Logger is a global interface for pipe loggers
 type Logger interface {
 	Debug(...interface{})
@@ -189,24 +184,22 @@ func WithProcessors(processors ...Processor) Option {
 // WithSinks sets sinks to Pipe.
 func WithSinks(sinks ...Sink) Option {
 	return func(p *Pipe) error {
-		return p.addSinks(sinks)
-	}
-}
-
-// WithSinkBuilders builds all sinks for passed builders.
-// If any of sinkBuilders is not valid, error is returned and no sinks are added at all.
-func WithSinkBuilders(sinkBuilders ...SinkBuilder) Option {
-	return func(p *Pipe) error {
-		// build all sinks first
-		sinks := make([]Sink, 0, len(sinkBuilders))
-		for _, sb := range sinkBuilders {
-			s, err := sb.Build()
+		// create all runners
+		runners := make([]*sinkRunner, 0, len(sinks))
+		for _, s := range sinks {
+			// sinkRunner should not be created here.
+			r, err := newSinkRunner(p.uid, p.sampleRate, p.numChannels, p.bufferSize, s)
 			if err != nil {
 				return err
 			}
-			sinks = append(sinks, s)
+			runners = append(runners, r)
 		}
-		return p.addSinks(sinks)
+		p.sinks = append(p.sinks, runners...)
+		// add all sinks to params map
+		for _, s := range sinks {
+			p.addComponent(s)
+		}
+		return nil
 	}
 }
 
@@ -214,25 +207,6 @@ func WithSinkBuilders(sinkBuilders ...SinkBuilder) Option {
 func (p *Pipe) addComponent(c interface{}) {
 	uid := newUID()
 	p.components[c] = uid
-}
-
-func (p *Pipe) addSinks(sinks []Sink) error {
-	// create all runners
-	runners := make([]*sinkRunner, 0, len(sinks))
-	for _, s := range sinks {
-		// sinkRunner should not be created here.
-		r, err := newSinkRunner(p.uid, p.sampleRate, p.numChannels, p.bufferSize, s)
-		if err != nil {
-			return err
-		}
-		runners = append(runners, r)
-	}
-	p.sinks = append(p.sinks, runners...)
-	// add all sinks to params map
-	for _, s := range sinks {
-		p.addComponent(s)
-	}
-	return nil
 }
 
 // Push new params into pipe.
