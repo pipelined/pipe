@@ -1,6 +1,7 @@
 package metric_test
 
 import (
+	"math"
 	"fmt"
 	"sync"
 	"testing"
@@ -73,9 +74,10 @@ func TestMeter(t *testing.T) {
 
 func TestPipe(t *testing.T) {
 	bufferSize := 10
+	limit := 55
 	pump := &mock.Pump{
 		SampleRate:  44100,
-		Limit:       5,
+		Limit:       limit,
 		Interval:    10 * time.Microsecond,
 		NumChannels: 1,
 	}
@@ -97,8 +99,10 @@ func TestPipe(t *testing.T) {
 	pumpID := p.ComponentID(pump)
 
 	measure := m.Measure()
-	assert.Equal(t, 1133786*time.Nanosecond, measure[pumpID][metric.DurationCounter])
+	assert.Equal(t, 1247165*time.Nanosecond, measure[pumpID][metric.DurationCounter])
 	pipe.Wait(p.Run())
 	measure = m.Measure()
-	assert.Equal(t, 1133786*time.Nanosecond, measure[pumpID][metric.DurationCounter])
+	assert.Equal(t, 1247165*time.Nanosecond, measure[pumpID][metric.DurationCounter])
+	assert.Equal(t, int64(limit), measure[pumpID][metric.SampleCounter])
+	assert.Equal(t, int64(math.Ceil(float64(limit)/float64(bufferSize))), measure[pumpID][metric.MessageCounter])
 }
