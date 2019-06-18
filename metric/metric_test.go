@@ -1,8 +1,8 @@
 package metric_test
 
 import (
-	"math"
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 	"time"

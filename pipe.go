@@ -18,6 +18,7 @@ import (
 // 		- io.ErrUnexpectedEOF if not a full buffer was read.
 // The latest case means that pump executed as expected, but not enough data was available.
 // This incomplete buffer still will be sent further and pump will be finished gracefully.
+// If no data was read or any other error was met, buffer should be nil.
 type Pump interface {
 	Pump(pipeID string, bufferSize int) (func() ([][]float64, error), int, int, error)
 }
