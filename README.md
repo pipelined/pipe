@@ -20,7 +20,7 @@ Find examples in [example](https://github.com/pipelined/example) repository.
 
 ## Contributing
 
-For a complete guide to contributing to `pipe`, see the [Contribution giude](https://github.com/pipelined/pipe/blob/master/CONTRIBUTING.md)
+For a complete guide to contributing to `pipe`, see the [Contribution guide](https://github.com/pipelined/pipe/blob/master/CONTRIBUTING.md)
 
 ## License
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fpipelined%2Fpipe.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fpipelined%2Fpipe?ref=badge_large)
