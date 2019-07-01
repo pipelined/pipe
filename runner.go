@@ -10,7 +10,6 @@ import (
 type pumpRunner struct {
 	Pump
 	fn  func() ([][]float64, error)
-	out chan message
 	hooks
 }
 
@@ -18,8 +17,6 @@ type pumpRunner struct {
 type processRunner struct {
 	Processor
 	fn  func([][]float64) ([][]float64, error)
-	in  <-chan message
-	out chan message
 	hooks
 }
 
@@ -27,7 +24,6 @@ type processRunner struct {
 type sinkRunner struct {
 	Sink
 	fn func([][]float64) error
-	in <-chan message
 	hooks
 }
 
@@ -110,14 +106,12 @@ func newPumpRunner(pipeID string, bufferSize int, p Pump) (*pumpRunner, int, int
 func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, provide chan<- struct{}, consume <-chan message, meter *metric.Meter) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
-
 	go func() {
 		defer close(out)
 		defer close(errc)
 		call(r.reset, pipeID, errc) // reset hook
 		var err error
 		var m message
-		var done bool // done flag
 		for {
 			// request new message
 			select {
@@ -137,31 +131,27 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 
 			m.applyTo(componentID) // apply params
 			m.buffer, err = r.fn() // pump new buffer
-			if err != nil {
-				switch err {
-				case io.EOF:
-					call(r.flush, pipeID, errc) // flush hook
-					return
-				case io.ErrUnexpectedEOF:
-					call(r.flush, pipeID, errc) // flush hook
-					done = true
-				default:
-					errc <- err
+			// process buffer
+			if m.buffer != nil {
+				meter = meter.Sample(int64(m.buffer.Size())).Message()
+				m.feedback.applyTo(componentID) // apply feedback
+
+				// push message further
+				select {
+				case out <- m:
+				case <-cancel:
+					call(r.interrupt, pipeID, errc) // interrupt hook
 					return
 				}
 			}
-
-			meter = meter.Sample(int64(m.buffer.Size())).Message()
-			m.feedback.applyTo(componentID) // apply feedback
-
-			// push message further
-			select {
-			case out <- m:
-				if done {
-					return
+			// handle error
+			if err != nil {
+				switch err {
+				case io.EOF, io.ErrUnexpectedEOF:
+					call(r.flush, pipeID, errc) // flush hook
+				default:
+					errc <- err
 				}
-			case <-cancel:
-				call(r.interrupt, pipeID, errc) // interrupt hook
 				return
 			}
 		}
@@ -187,10 +177,9 @@ func newProcessRunner(pipeID string, sampleRate, numChannels, bufferSize int, p 
 // run the Processor runner.
 func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in <-chan message, meter *metric.Meter) (<-chan message, <-chan error) {
 	errc := make(chan error, 1)
-	r.in = in
-	r.out = make(chan message)
+	out := make(chan message)
 	go func() {
-		defer close(r.out)
+		defer close(out)
 		defer close(errc)
 		call(r.reset, pipeID, errc) // reset hook
 		var err error
@@ -222,14 +211,14 @@ func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in
 
 			// send message further
 			select {
-			case r.out <- m:
+			case out <- m:
 			case <-cancel:
 				call(r.interrupt, pipeID, errc) // interrupt hook
 				return
 			}
 		}
 	}()
-	return r.out, errc
+	return out, errc
 }
 
 // newSinkRunner creates the closure. it's separated from run to have pre-run

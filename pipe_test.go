@@ -146,7 +146,7 @@ func TestLeaks(t *testing.T) {
 func newPipe(t *testing.T) *pipe.Pipe {
 	pump := &mock.Pump{
 		// SampleRate:  44100,
-		Limit:       5,
+		Limit:       5 * bufferSize,
 		Interval:    10 * time.Microsecond,
 		NumChannels: 1,
 	}
