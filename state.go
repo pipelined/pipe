@@ -6,10 +6,15 @@ import (
 	"sync"
 )
 
+var (
+	// ErrInvalidState is returned if pipe method cannot be executed at this moment.
+	ErrInvalidState = errors.New("invalid state")
+)
+
 // state identifies one of the possible states pipe can be in.
 type state interface {
-	listen(*Pipe, target) (state, target)
-	transition(*Pipe, eventMessage) (state, error)
+	listen(*Flow, target) (state, target)
+	transition(*Flow, eventMessage) (state, error)
 }
 
 // idleState identifies that the pipe is ONLY waiting for user to send an event.
@@ -20,7 +25,7 @@ type idleState interface {
 // activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
 type activeState interface {
 	state
-	sendMessage(*Pipe) state
+	sendMessage(*Flow) state
 }
 
 // states
@@ -41,7 +46,7 @@ var (
 
 // actionFn is an action function which causes a pipe state change
 // chan error is closed when state is changed
-type actionFn func(p *Pipe) chan error
+type actionFn func(f *Flow) chan error
 
 // event identifies the type of event
 type event int
@@ -72,7 +77,7 @@ const (
 
 // Run sends a run event into pipe.
 // Calling this method after pipe is closed causes a panic.
-func (p *Pipe) Run() chan error {
+func (f *Flow) Run() chan error {
 	runEvent := eventMessage{
 		event: run,
 		target: target{
@@ -80,13 +85,13 @@ func (p *Pipe) Run() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	p.events <- runEvent
+	f.events <- runEvent
 	return runEvent.target.errc
 }
 
 // Pause sends a pause event into pipe.
 // Calling this method after pipe is closed causes a panic.
-func (p *Pipe) Pause() chan error {
+func (f *Flow) Pause() chan error {
 	pauseEvent := eventMessage{
 		event: pause,
 		target: target{
@@ -94,13 +99,13 @@ func (p *Pipe) Pause() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	p.events <- pauseEvent
+	f.events <- pauseEvent
 	return pauseEvent.target.errc
 }
 
 // Resume sends a resume event into pipe.
 // Calling this method after pipe is closed causes a panic.
-func (p *Pipe) Resume() chan error {
+func (f *Flow) Resume() chan error {
 	resumeEvent := eventMessage{
 		event: resume,
 		target: target{
@@ -108,12 +113,12 @@ func (p *Pipe) Resume() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	p.events <- resumeEvent
+	f.events <- resumeEvent
 	return resumeEvent.target.errc
 }
 
 // Close must be called to clean up pipe's resources.
-func (p *Pipe) Close() chan error {
+func (f *Flow) Close() chan error {
 	resumeEvent := eventMessage{
 		event: cancel,
 		target: target{
@@ -121,7 +126,7 @@ func (p *Pipe) Close() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	p.events <- resumeEvent
+	f.events <- resumeEvent
 	return resumeEvent.target.errc
 }
 
@@ -136,21 +141,21 @@ func Wait(d chan error) error {
 }
 
 // loop listens until nil state is returned.
-func (p *Pipe) loop() {
+func loop(f *Flow) {
 	var s state = ready
 	t := target{}
 	for s != nil {
-		s, t = s.listen(p, t)
-		p.log.Debug(fmt.Sprintf("%v is %T", p, s))
+		s, t = s.listen(f, t)
+		f.log.Debug(fmt.Sprintf("%v is %T", f, s))
 	}
 	// cancel last pending target
 	t.dismiss()
-	close(p.events)
+	close(f.events)
 }
 
 // idle is used to listen to pipe's channels which are relevant for idle state.
 // s is the new state, t is the target state and d channel to notify target transition.
-func (p *Pipe) idle(s idleState, t target) (state, target) {
+func (f *Flow) idle(s idleState, t target) (state, target) {
 	if s == t.state || s == ready {
 		t = t.dismiss()
 	}
@@ -158,8 +163,8 @@ func (p *Pipe) idle(s idleState, t target) (state, target) {
 		var newState state
 		var err error
 		select {
-		case e := <-p.events:
-			newState, err = s.transition(p, e)
+		case e := <-f.events:
+			newState, err = s.transition(f, e)
 			if err != nil {
 				e.target.handle(err)
 			} else if e.hasTarget() {
@@ -174,24 +179,24 @@ func (p *Pipe) idle(s idleState, t target) (state, target) {
 }
 
 // active is used to listen to pipe's channels which are relevant for active state.
-func (p *Pipe) active(s activeState, t target) (state, target) {
+func (f *Flow) active(s activeState, t target) (state, target) {
 	for {
 		var newState state
 		var err error
 		select {
-		case e := <-p.events:
-			newState, err = s.transition(p, e)
+		case e := <-f.events:
+			newState, err = s.transition(f, e)
 			if err != nil {
 				e.target.handle(err)
 			} else if e.hasTarget() {
 				t.dismiss()
 				t = e.target
 			}
-		case <-p.provide:
-			newState = s.sendMessage(p)
-		case err, ok := <-p.errc:
+		case <-f.provide:
+			newState = s.sendMessage(f)
+		case err, ok := <-f.errc:
 			if ok {
-				interrupt(p.cancel)
+				interrupt(f.cancel)
 				t.handle(err)
 			}
 			return ready, t
@@ -202,17 +207,17 @@ func (p *Pipe) active(s activeState, t target) (state, target) {
 	}
 }
 
-func (s idleReady) listen(p *Pipe, t target) (state, target) {
-	return p.idle(s, t)
+func (s idleReady) listen(f *Flow, t target) (state, target) {
+	return f.idle(s, t)
 }
 
-func (s idleReady) transition(p *Pipe, e eventMessage) (state, error) {
+func (s idleReady) transition(f *Flow, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
 		return nil, nil
 	case push:
-		e.params.applyTo(p.uid)
-		p.params = p.params.merge(e.params)
+		e.params.applyTo(f.uid)
+		f.params = f.params.merge(e.params)
 		return s, nil
 	case measure:
 		for _, id := range e.components {
@@ -220,29 +225,29 @@ func (s idleReady) transition(p *Pipe, e eventMessage) (state, error) {
 		}
 		return s, nil
 	case run:
-		p.start()
+		start(f)
 		return running, nil
 	}
 	return s, ErrInvalidState
 }
 
-func (s activeRunning) listen(p *Pipe, t target) (state, target) {
-	return p.active(s, t)
+func (s activeRunning) listen(f *Flow, t target) (state, target) {
+	return f.active(s, t)
 }
 
-func (s activeRunning) transition(p *Pipe, e eventMessage) (state, error) {
+func (s activeRunning) transition(f *Flow, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
-		interrupt(p.cancel)
-		err := Wait(p.errc)
+		interrupt(f.cancel)
+		err := Wait(f.errc)
 		return nil, err
 	case measure:
-		e.params.applyTo(p.uid)
-		p.feedback = p.feedback.merge(e.params)
+		e.params.applyTo(f.uid)
+		f.feedback = f.feedback.merge(e.params)
 		return s, nil
 	case push:
-		e.params.applyTo(p.uid)
-		p.params = p.params.merge(e.params)
+		e.params.applyTo(f.uid)
+		f.params = f.params.merge(e.params)
 		return s, nil
 	case pause:
 		return pausing, nil
@@ -250,64 +255,64 @@ func (s activeRunning) transition(p *Pipe, e eventMessage) (state, error) {
 	return s, ErrInvalidState
 }
 
-func (s activeRunning) sendMessage(p *Pipe) state {
-	p.consume <- p.newMessage()
+func (s activeRunning) sendMessage(f *Flow) state {
+	f.consume <- newMessage(f)
 	return s
 }
 
-func (s activePausing) listen(p *Pipe, t target) (state, target) {
-	return p.active(s, t)
+func (s activePausing) listen(f *Flow, t target) (state, target) {
+	return f.active(s, t)
 }
 
-func (s activePausing) transition(p *Pipe, e eventMessage) (state, error) {
+func (s activePausing) transition(f *Flow, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
-		interrupt(p.cancel)
-		err := Wait(p.errc)
+		interrupt(f.cancel)
+		err := Wait(f.errc)
 		return nil, err
 	case measure:
-		e.params.applyTo(p.uid)
-		p.feedback = p.feedback.merge(e.params)
+		e.params.applyTo(f.uid)
+		f.feedback = f.feedback.merge(e.params)
 		return s, nil
 	case push:
-		e.params.applyTo(p.uid)
-		p.params = p.params.merge(e.params)
+		e.params.applyTo(f.uid)
+		f.params = f.params.merge(e.params)
 		return s, nil
 	}
 	return s, ErrInvalidState
 }
 
 // send message with pause signal.
-func (s activePausing) sendMessage(p *Pipe) state {
-	m := p.newMessage()
+func (s activePausing) sendMessage(f *Flow) state {
+	m := newMessage(f)
 	if len(m.feedback) == 0 {
 		m.feedback = make(map[string][]func())
 	}
 	var wg sync.WaitGroup
-	wg.Add(len(p.sinks))
-	for _, sink := range p.sinks {
-		uid := p.components[sink.Sink]
+	wg.Add(len(f.sinks))
+	for _, sink := range f.sinks {
+		uid := f.components[sink.Sink]
 		param := receivedBy(&wg, uid)
 		m.feedback = m.feedback.add(uid, param)
 	}
-	p.consume <- m
+	f.consume <- m
 	wg.Wait()
 	return paused
 }
 
-func (s idlePaused) listen(p *Pipe, t target) (state, target) {
-	return p.idle(s, t)
+func (s idlePaused) listen(f *Flow, t target) (state, target) {
+	return f.idle(s, t)
 }
 
-func (s idlePaused) transition(p *Pipe, e eventMessage) (state, error) {
+func (s idlePaused) transition(f *Flow, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
-		interrupt(p.cancel)
-		err := Wait(p.errc)
+		interrupt(f.cancel)
+		err := Wait(f.errc)
 		return nil, err
 	case push:
-		e.params.applyTo(p.uid)
-		p.params = p.params.merge(e.params)
+		e.params.applyTo(f.uid)
+		f.params = f.params.merge(e.params)
 		return s, nil
 	case measure:
 		for _, id := range e.components {
@@ -356,17 +361,3 @@ func receivedBy(wg *sync.WaitGroup, id string) func() {
 		wg.Done()
 	}
 }
-
-// SingleUse is designed to be used in runner-return functions to define a single-use pipe components.
-func singleUse(once *sync.Once) (err error) {
-	err = errSingleUseReused
-	once.Do(func() {
-		err = nil
-	})
-	return
-}
-
-var (
-	// ErrSingleUseReused is returned when object designed for single-use is being reused.
-	errSingleUseReused = errors.New("Error reuse single-use object")
-)

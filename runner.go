@@ -9,14 +9,14 @@ import (
 // pumpRunner is pump's runner.
 type pumpRunner struct {
 	Pump
-	fn  func() ([][]float64, error)
+	fn func() ([][]float64, error)
 	hooks
 }
 
 // processRunner represents processor's runner.
 type processRunner struct {
 	Processor
-	fn  func([][]float64) ([][]float64, error)
+	fn func([][]float64) ([][]float64, error)
 	hooks
 }
 

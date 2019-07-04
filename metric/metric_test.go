@@ -89,7 +89,6 @@ func TestPipe(t *testing.T) {
 	p, _ := pipe.New(
 		bufferSize,
 		pipe.WithMetric(m),
-		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),
