@@ -143,7 +143,7 @@ func TestLeaks(t *testing.T) {
 }
 
 // This is a constructor of test pipe
-func newPipe(t *testing.T) *pipe.Pipe {
+func newPipe(t *testing.T) *pipe.Flow {
 	pump := &mock.Pump{
 		// SampleRate:  44100,
 		Limit:       5 * bufferSize,
@@ -157,7 +157,6 @@ func newPipe(t *testing.T) *pipe.Pipe {
 
 	p, err := pipe.New(
 		bufferSize,
-		pipe.WithName("Pipe"),
 		pipe.WithPump(pump),
 		pipe.WithProcessors(proc1, proc2),
 		pipe.WithSinks(sink1, sink2),

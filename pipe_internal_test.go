@@ -1,7 +1,6 @@
 package pipe
 
 import (
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,12 +40,4 @@ func TestMergeParams(t *testing.T) {
 	p = p.merge(newP)
 	p.applyTo(uid)
 	assert.Equal(t, expected, value)
-}
-
-func TestSingleUse(t *testing.T) {
-	var once sync.Once
-	err := singleUse(&once)
-	assert.Nil(t, err)
-	err = singleUse(&once)
-	assert.Equal(t, errSingleUseReused, err)
 }

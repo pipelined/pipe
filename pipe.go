@@ -1,14 +1,9 @@
 package pipe
 
 import (
-	"errors"
-	"fmt"
-	"sync"
-
-	"github.com/pipelined/pipe/metric"
+	"github.com/rs/xid"
 
 	"github.com/pipelined/signal"
-	"github.com/rs/xid"
 )
 
 // Pump is a source of samples. Pump method returns a new buffer with signal data.
@@ -61,277 +56,9 @@ type params map[string][]func()
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
-	uid         string
-	name        string
-	sampleRate  int
-	numChannels int
-	bufferSize  int
-
-	pump       *pumpRunner
-	processors []*processRunner
-	sinks      []*sinkRunner
-
-	metric   *metric.Metric
-	params   params            //cahced params
-	feedback params            //cached feedback
-	errc     chan error        // errors channel
-	events   chan eventMessage // event channel
-	cancel   chan struct{}     // cancellation channel
-
-	provide chan struct{} // ask for new message request
-	consume chan message  // emission of messages
-
-	// components is a map of components and their ids.
-	// this makes the case when one component is used across multiple pipes to have
-	// different id in different pipes.
-	// this will be a part of runner later.
-	components map[interface{}]string
-	log        Logger
-}
-
-// Option provides a way to set functional parameters to pipe.
-type Option func(p *Pipe) error
-
-// ErrInvalidState is returned if pipe method cannot be executed at this moment.
-var ErrInvalidState = errors.New("invalid state")
-
-// New creates a new pipe and applies provided options.
-// Returned pipe is in Ready state.
-func New(bufferSize int, options ...Option) (*Pipe, error) {
-	p := &Pipe{
-		uid:        newUID(),
-		bufferSize: bufferSize,
-		log:        defaultLogger,
-		processors: make([]*processRunner, 0),
-		sinks:      make([]*sinkRunner, 0),
-		params:     make(map[string][]func()),
-		feedback:   make(map[string][]func()),
-		events:     make(chan eventMessage, 1),
-		provide:    make(chan struct{}),
-		consume:    make(chan message),
-		components: make(map[interface{}]string),
-	}
-	for _, option := range options {
-		err := option(p)
-		if err != nil {
-			return nil, err
-		}
-	}
-	go p.loop()
-	return p, nil
-}
-
-// WithLogger sets logger to Pipe. If this option is not provided, silent logger is used.
-func WithLogger(logger Logger) Option {
-	return func(p *Pipe) error {
-		p.log = logger
-		return nil
-	}
-}
-
-// WithName sets name to Pipe.
-func WithName(n string) Option {
-	return func(p *Pipe) error {
-		p.name = n
-		return nil
-	}
-}
-
-// WithMetric adds meterics for this pipe and all components.
-func WithMetric(m *metric.Metric) Option {
-	return func(p *Pipe) error {
-		p.metric = m
-		return nil
-	}
-}
-
-// WithPump sets pump to Pipe.
-func WithPump(pump Pump) Option {
-	return func(p *Pipe) error {
-		// newPumpRunner should not be created here.
-		r, sampleRate, numChannels, err := newPumpRunner(p.uid, p.bufferSize, pump)
-		if err != nil {
-			return err
-		}
-		p.pump = r
-		p.sampleRate = sampleRate
-		p.numChannels = numChannels
-		p.addComponent(pump)
-		return nil
-	}
-}
-
-// WithProcessors sets processors to Pipe.
-func WithProcessors(processors ...Processor) Option {
-	return func(p *Pipe) error {
-		runners := make([]*processRunner, 0, len(processors))
-		for _, proc := range processors {
-			// processRunner should not be created here.
-			r, err := newProcessRunner(p.uid, p.sampleRate, p.numChannels, p.bufferSize, proc)
-			if err != nil {
-				return err
-			}
-			runners = append(runners, r)
-		}
-		p.processors = append(p.processors, runners...)
-		// add all processors to params map
-		for _, proc := range processors {
-			p.addComponent(proc)
-		}
-		return nil
-	}
-}
-
-// WithSinks sets sinks to Pipe.
-func WithSinks(sinks ...Sink) Option {
-	return func(p *Pipe) error {
-		// create all runners
-		runners := make([]*sinkRunner, 0, len(sinks))
-		for _, s := range sinks {
-			// sinkRunner should not be created here.
-			r, err := newSinkRunner(p.uid, p.sampleRate, p.numChannels, p.bufferSize, s)
-			if err != nil {
-				return err
-			}
-			runners = append(runners, r)
-		}
-		p.sinks = append(p.sinks, runners...)
-		// add all sinks to params map
-		for _, s := range sinks {
-			p.addComponent(s)
-		}
-		return nil
-	}
-}
-
-// addComponent adds new uid for components map.
-func (p *Pipe) addComponent(c interface{}) {
-	uid := newUID()
-	p.components[c] = uid
-}
-
-// Push new params into pipe.
-// Calling this method after pipe is closed causes a panic.
-func (p *Pipe) Push(component interface{}, paramFuncs ...func()) {
-	var componentID string
-	var ok bool
-	if componentID, ok = p.components[component]; !ok && len(paramFuncs) == 0 {
-		return
-	}
-	params := params(make(map[string][]func()))
-	p.events <- eventMessage{
-		event:  push,
-		params: params.add(componentID, paramFuncs...),
-	}
-}
-
-// start starts the execution of pipe.
-func (p *Pipe) start() {
-	p.cancel = make(chan struct{})
-	errcList := make([]<-chan error, 0, 1+len(p.processors)+len(p.sinks))
-	// start pump
-	componentID := p.components[p.pump.Pump]
-	meter := p.metric.Meter(componentID, p.sampleRate)
-	out, errc := p.pump.run(p.uid, componentID, p.cancel, p.provide, p.consume, meter)
-	errcList = append(errcList, errc)
-
-	// start chained processesing
-	for _, proc := range p.processors {
-		componentID = p.components[proc.Processor]
-		meter := p.metric.Meter(componentID, p.sampleRate)
-		out, errc = proc.run(p.uid, componentID, p.cancel, out, meter)
-		errcList = append(errcList, errc)
-	}
-
-	sinkErrcList := p.broadcastToSinks(out)
-	errcList = append(errcList, sinkErrcList...)
-	p.errc = mergeErrors(errcList...)
-}
-
-// broadcastToSinks passes messages to all sinks.
-func (p *Pipe) broadcastToSinks(in <-chan message) []<-chan error {
-	//init errcList for sinks error channels
-	errcList := make([]<-chan error, 0, len(p.sinks))
-	//list of channels for broadcast
-	broadcasts := make([]chan message, len(p.sinks))
-	for i := range broadcasts {
-		broadcasts[i] = make(chan message)
-	}
-
-	//start broadcast
-	for i, s := range p.sinks {
-		componentID := p.components[s.Sink]
-		meter := p.metric.Meter(componentID, p.sampleRate)
-		errc := s.run(p.uid, componentID, p.cancel, broadcasts[i], meter)
-		errcList = append(errcList, errc)
-	}
-
-	go func() {
-		//close broadcasts on return
-		defer func() {
-			for i := range broadcasts {
-				close(broadcasts[i])
-			}
-		}()
-		for msg := range in {
-			for i := range broadcasts {
-				m := message{
-					sourceID: msg.sourceID,
-					buffer:   msg.buffer,
-					params:   msg.params.detach(p.components[p.sinks[i].Sink]),
-					feedback: msg.feedback.detach(p.components[p.sinks[i].Sink]),
-				}
-				select {
-				case broadcasts[i] <- m:
-				case <-p.cancel:
-					return
-				}
-			}
-		}
-	}()
-
-	return errcList
-}
-
-// merge error channels from all components into one.
-func mergeErrors(errcList ...<-chan error) (errc chan error) {
-	var wg sync.WaitGroup
-	errc = make(chan error, len(errcList))
-
-	//function to wait for error channel
-	output := func(ec <-chan error) {
-		for e := range ec {
-			errc <- e
-		}
-		wg.Done()
-	}
-	wg.Add(len(errcList))
-	for _, ec := range errcList {
-		go output(ec)
-	}
-
-	//wait and close out
-	go func() {
-		wg.Wait()
-		close(errc)
-	}()
-
-	return
-}
-
-// newMessage creates a new message with cached params.
-// if new params are pushed into pipe - next message will contain them.
-func (p *Pipe) newMessage() message {
-	m := message{sourceID: p.uid}
-	if len(p.params) > 0 {
-		m.params = p.params
-		p.params = make(map[string][]func())
-	}
-	if len(p.feedback) > 0 {
-		m.feedback = p.feedback
-		p.feedback = make(map[string][]func())
-	}
-	return m
+	Pump
+	Processors []Processor
+	Sinks      []Sink
 }
 
 // Convert the event to a string.
@@ -350,12 +77,9 @@ func (e event) String() string {
 }
 
 // Convert pipe to string. If name is included if has value.
-func (p *Pipe) String() string {
-	if p.name == "" {
-		return p.uid
-	}
-	return fmt.Sprintf("%v %v", p.name, p.uid)
-}
+// func (p *Pipe) String() string {
+// 	return p.name
+// }
 
 // add appends a slice of params.
 func (p params) add(componentID string, paramFuncs ...func()) params {
@@ -404,14 +128,6 @@ func (p params) detach(id string) params {
 		return d
 	}
 	return nil
-}
-
-// ComponentID returns component id.
-func (p *Pipe) ComponentID(component interface{}) string {
-	if p == nil || p.components == nil {
-		return ""
-	}
-	return p.components[component]
 }
 
 type silentLogger struct{}
