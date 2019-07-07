@@ -15,17 +15,17 @@ import (
 // This incomplete buffer still will be sent further and pump will be finished gracefully.
 // If no data was read or any other error was met, buffer should be nil.
 type Pump interface {
-	Pump(pipeID string, bufferSize int) (func() ([][]float64, error), int, int, error)
+	Pump(pipeID string) (func(bufferSize int) ([][]float64, error), int, int, error)
 }
 
 // Processor defines interface for pipe-processors
 type Processor interface {
-	Process(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) ([][]float64, error), error)
+	Process(pipeID string, sampleRate, numChannels int) (func([][]float64) ([][]float64, error), error)
 }
 
 // Sink is an interface for final stage in audio pipeline
 type Sink interface {
-	Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error)
+	Sink(pipeID string, sampleRate, numChannels int) (func([][]float64) error, error)
 }
 
 // Logger is a global interface for pipe loggers

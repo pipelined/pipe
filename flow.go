@@ -52,31 +52,30 @@ type Option func(*Flow) error
 
 // New creates a new flow and applies provided options.
 // Returned flow is in Ready state.
-func New(bufferSize int, p Pipe) (*Flow, error) {
+func New(p Pipe) (*Flow, error) {
 	chains := make(map[string]chain)
-	c, err := bindPipe(bufferSize, p)
+	c, err := bindPipe(p)
 	if err != nil {
 		return nil, err
 	}
 	chains[c.uid] = c
 	f := &Flow{
-		chains:     chains,
-		bufferSize: bufferSize,
-		log:        defaultLogger,
-		params:     make(map[string][]func()),
-		feedback:   make(map[string][]func()),
-		events:     make(chan eventMessage, 1),
-		provide:    make(chan string),
+		chains:   chains,
+		log:      defaultLogger,
+		params:   make(map[string][]func()),
+		feedback: make(map[string][]func()),
+		events:   make(chan eventMessage, 1),
+		provide:  make(chan string),
 	}
 	go loop(f)
 	return f, nil
 }
 
-func bindPipe(bufferSize int, p Pipe) (chain, error) {
+func bindPipe(p Pipe) (chain, error) {
 	components := make(map[interface{}]string)
 	uid := newUID()
 	// newPumpRunner should not be created here.
-	pumpRunner, sampleRate, numChannels, err := bindPump(uid, bufferSize, p.Pump)
+	pumpRunner, sampleRate, numChannels, err := bindPump(uid, p.Pump)
 	if err != nil {
 		return chain{}, err
 	}
@@ -84,7 +83,7 @@ func bindPipe(bufferSize int, p Pipe) (chain, error) {
 
 	processorRunners := make([]*processRunner, 0, len(p.Processors))
 	for _, proc := range p.Processors {
-		r, err := bindProcessor(uid, sampleRate, numChannels, bufferSize, proc)
+		r, err := bindProcessor(uid, sampleRate, numChannels, proc)
 		if err != nil {
 			return chain{}, err
 		}
@@ -95,7 +94,7 @@ func bindPipe(bufferSize int, p Pipe) (chain, error) {
 	sinkRunners := make([]*sinkRunner, 0, len(p.Sinks))
 	for _, s := range p.Sinks {
 		// sinkRunner should not be created here.
-		r, err := bindSink(uid, sampleRate, numChannels, bufferSize, s)
+		r, err := bindSink(uid, sampleRate, numChannels, s)
 		if err != nil {
 			return chain{}, err
 		}
@@ -128,101 +127,13 @@ func WithMetric(m Metric) Option {
 	}
 }
 
-// WithPump sets pump to Pipe.
-// func WithPump(pump Pump) Option {
-// 	return func(f *Flow) error {
-// 		// newPumpRunner should not be created here.
-// 		r, sampleRate, numChannels, err := bindPump(f.uid, f.bufferSize, pump)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		f.pump = r
-// 		f.sampleRate = sampleRate
-// 		f.numChannels = numChannels
-// 		addComponent(f, r)
-// 		return nil
-// 	}
-// }
-
-// WithProcessors sets processors to Pipe.
-// func WithProcessors(processors ...Processor) Option {
-// 	return func(f *Flow) error {
-// 		runners := make([]*processRunner, 0, len(processors))
-// 		for _, proc := range processors {
-// 			// processRunner should not be created here.
-// 			r, err := bindProcessor(f.uid, f.sampleRate, f.numChannels, f.bufferSize, proc)
-// 			if err != nil {
-// 				return err
-// 			}
-// 			runners = append(runners, r)
-// 		}
-// 		f.processors = append(f.processors, runners...)
-// 		// add all processors to params map
-// 		for _, proc := range runners {
-// 			addComponent(f, proc)
-// 		}
-// 		return nil
-// 	}
-// }
-
-// WithSinks sets sinks to Pipe.
-// func WithSinks(sinks ...Sink) Option {
-// 	return func(f *Flow) error {
-// 		// create all runners
-// 		runners := make([]*sinkRunner, 0, len(sinks))
-// 		for _, s := range sinks {
-// 			// sinkRunner should not be created here.
-// 			r, err := bindSink(f.uid, f.sampleRate, f.numChannels, f.bufferSize, s)
-// 			if err != nil {
-// 				return err
-// 			}
-// 			runners = append(runners, r)
-// 		}
-// 		f.sinks = append(f.sinks, runners...)
-// 		// add all sinks to params map
-// 		for _, s := range runners {
-// 			addComponent(f, s)
-// 		}
-// 		return nil
-// 	}
-// }
-
-// ComponentID returns component id.
-// func (f *Flow) ComponentID(component interface{}) string {
-// 	if f == nil || f.components == nil {
-// 		return ""
-// 	}
-// 	return f.components[component]
-// }
-
-// Push new params into pipe.
-// Calling this method after pipe is closed causes a panic.
-// func (f *Flow) Push(component interface{}, paramFuncs ...func()) {
-// 	var componentID string
-// 	var ok bool
-// 	if componentID, ok = f.components[component]; !ok && len(paramFuncs) == 0 {
-// 		return
-// 	}
-// 	params := params(make(map[string][]func()))
-// 	f.events <- eventMessage{
-// 		event:  push,
-// 		params: params.add(componentID, paramFuncs...),
-// 	}
-// }
-
-// addComponent adds new uid for components map.
-// func addComponent(f *Flow, c interface{}) {
-// 	uid := newUID()
-// 	f.components[c] = uid
-// }
-
 // start starts the execution of pipe.
-func start(c chain, cancelc chan struct{}, provide chan<- string) []<-chan error {
+func start(bufferSize int, c chain, cancelc chan struct{}, provide chan<- string) []<-chan error {
 	// error channel for each component
 	errcList := make([]<-chan error, 0, 1+len(c.processors)+len(c.sinks))
 	// start pump
 	componentID := c.components[c.pump]
-	out, errc := c.pump.run(c.uid, componentID, cancelc, provide, c.consume, nil)
+	out, errc := c.pump.run(bufferSize, c.uid, componentID, cancelc, provide, c.consume, nil)
 	errcList = append(errcList, errc)
 
 	// start chained processesing

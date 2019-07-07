@@ -6,7 +6,7 @@ import (
 
 // pumpRunner is pump's runner.
 type pumpRunner struct {
-	fn func() ([][]float64, error)
+	fn func(bufferSize int) ([][]float64, error)
 	hooks
 }
 
@@ -84,8 +84,8 @@ func resetter(i interface{}) hook {
 
 // bindPump creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func bindPump(pipeID string, bufferSize int, p Pump) (*pumpRunner, int, int, error) {
-	fn, sampleRate, numChannels, err := p.Pump(pipeID, bufferSize)
+func bindPump(pipeID string, p Pump) (*pumpRunner, int, int, error) {
+	fn, sampleRate, numChannels, err := p.Pump(pipeID)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -97,7 +97,7 @@ func bindPump(pipeID string, bufferSize int, p Pump) (*pumpRunner, int, int, err
 }
 
 // run the Pump runner.
-func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, provide chan<- string, consume <-chan message, meter ComponentMetric) (<-chan message, <-chan error) {
+func (r *pumpRunner) run(bufferSize int, pipeID, componentID string, cancel <-chan struct{}, provide chan<- string, consume <-chan message, meter ComponentMetric) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
 	go func() {
@@ -123,8 +123,8 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 				return
 			}
 
-			m.applyTo(componentID) // apply params
-			m.buffer, err = r.fn() // pump new buffer
+			m.applyTo(componentID)           // apply params
+			m.buffer, err = r.fn(bufferSize) // pump new buffer
 			// process buffer
 			if m.buffer != nil {
 				if meter != nil {
@@ -157,8 +157,8 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 
 // bindProcessor creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func bindProcessor(pipeID string, sampleRate, numChannels, bufferSize int, p Processor) (*processRunner, error) {
-	fn, err := p.Process(pipeID, sampleRate, numChannels, bufferSize)
+func bindProcessor(pipeID string, sampleRate, numChannels int, p Processor) (*processRunner, error) {
+	fn, err := p.Process(pipeID, sampleRate, numChannels)
 	if err != nil {
 		return nil, err
 	}
@@ -220,8 +220,8 @@ func (r *processRunner) run(pipeID, componentID string, cancel <-chan struct{}, 
 
 // bindSink creates the closure. it's separated from run to have pre-run
 // logic executed in correct order for all components.
-func bindSink(pipeID string, sampleRate, numChannels, bufferSize int, s Sink) (*sinkRunner, error) {
-	fn, err := s.Sink(pipeID, sampleRate, numChannels, bufferSize)
+func bindSink(pipeID string, sampleRate, numChannels int, s Sink) (*sinkRunner, error) {
+	fn, err := s.Sink(pipeID, sampleRate, numChannels)
 	if err != nil {
 		return nil, err
 	}
