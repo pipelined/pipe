@@ -25,7 +25,7 @@ type idleState interface {
 // activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
 type activeState interface {
 	state
-	sendMessage(*Flow) state
+	sendMessage(f *Flow, pipeID string) state
 }
 
 // states
@@ -192,8 +192,8 @@ func (f *Flow) active(s activeState, t target) (state, target) {
 				t.dismiss()
 				t = e.target
 			}
-		case <-f.provide:
-			newState = s.sendMessage(f)
+		case pipeID := <-f.provide:
+			newState = s.sendMessage(f, pipeID)
 		case err, ok := <-f.errc:
 			if ok {
 				interrupt(f.cancel)
@@ -216,7 +216,7 @@ func (s idleReady) transition(f *Flow, e eventMessage) (state, error) {
 	case cancel:
 		return nil, nil
 	case push:
-		e.params.applyTo(f.uid)
+		// e.params.applyTo(f.uid)
 		f.params = f.params.merge(e.params)
 		return s, nil
 	case measure:
@@ -225,7 +225,12 @@ func (s idleReady) transition(f *Flow, e eventMessage) (state, error) {
 		}
 		return s, nil
 	case run:
-		start(f)
+		f.cancel = make(chan struct{})
+		var errcList []<-chan error
+		for _, c := range f.chains {
+			errcList = append(errcList, start(c, f.cancel, f.provide)...)
+		}
+		f.errc = mergeErrors(errcList...)
 		return running, nil
 	}
 	return s, ErrInvalidState
@@ -242,11 +247,11 @@ func (s activeRunning) transition(f *Flow, e eventMessage) (state, error) {
 		err := Wait(f.errc)
 		return nil, err
 	case measure:
-		e.params.applyTo(f.uid)
+		// e.params.applyTo(f.uid)
 		f.feedback = f.feedback.merge(e.params)
 		return s, nil
 	case push:
-		e.params.applyTo(f.uid)
+		// e.params.applyTo(f.uid)
 		f.params = f.params.merge(e.params)
 		return s, nil
 	case pause:
@@ -255,9 +260,25 @@ func (s activeRunning) transition(f *Flow, e eventMessage) (state, error) {
 	return s, ErrInvalidState
 }
 
-func (s activeRunning) sendMessage(f *Flow) state {
-	f.consume <- newMessage(f)
+func (s activeRunning) sendMessage(f *Flow, pipeID string) state {
+	c := f.chains[pipeID]
+	c.consume <- newMessage(f, c)
 	return s
+}
+
+// newMessage creates a new message with cached params.
+// if new params are pushed into pipe - next message will contain them.
+func newMessage(f *Flow, c chain) message {
+	m := message{sourceID: c.uid}
+	if len(f.params) > 0 {
+		m.params = f.params
+		f.params = make(map[string][]func())
+	}
+	if len(f.feedback) > 0 {
+		m.feedback = f.feedback
+		f.feedback = make(map[string][]func())
+	}
+	return m
 }
 
 func (s activePausing) listen(f *Flow, t target) (state, target) {
@@ -271,11 +292,11 @@ func (s activePausing) transition(f *Flow, e eventMessage) (state, error) {
 		err := Wait(f.errc)
 		return nil, err
 	case measure:
-		e.params.applyTo(f.uid)
+		// e.params.applyTo(f.uid)
 		f.feedback = f.feedback.merge(e.params)
 		return s, nil
 	case push:
-		e.params.applyTo(f.uid)
+		// e.params.applyTo(f.uid)
 		f.params = f.params.merge(e.params)
 		return s, nil
 	}
@@ -283,19 +304,20 @@ func (s activePausing) transition(f *Flow, e eventMessage) (state, error) {
 }
 
 // send message with pause signal.
-func (s activePausing) sendMessage(f *Flow) state {
-	m := newMessage(f)
+func (s activePausing) sendMessage(f *Flow, pipeID string) state {
+	c := f.chains[pipeID]
+	m := newMessage(f, c)
 	if len(m.feedback) == 0 {
 		m.feedback = make(map[string][]func())
 	}
 	var wg sync.WaitGroup
-	wg.Add(len(f.sinks))
-	for _, sink := range f.sinks {
-		uid := f.components[sink.Sink]
+	wg.Add(len(c.sinks))
+	for _, sink := range c.sinks {
+		uid := c.components[sink]
 		param := receivedBy(&wg, uid)
 		m.feedback = m.feedback.add(uid, param)
 	}
-	f.consume <- m
+	c.consume <- m
 	wg.Wait()
 	return paused
 }
@@ -311,7 +333,7 @@ func (s idlePaused) transition(f *Flow, e eventMessage) (state, error) {
 		err := Wait(f.errc)
 		return nil, err
 	case push:
-		e.params.applyTo(f.uid)
+		// e.params.applyTo(f.uid)
 		f.params = f.params.merge(e.params)
 		return s, nil
 	case measure:

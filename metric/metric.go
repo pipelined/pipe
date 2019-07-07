@@ -66,12 +66,12 @@ func (m *Metric) Measure() Measure {
 	return r
 }
 
-// Meter creates new meter with component counters.
-func (m *Metric) Meter(componentID string, sampleRate int) *Meter {
+// AddComponent creates new meter with component counters.
+func (m *Metric) AddComponent(componentID string, sampleRate int) *Component {
 	if m == nil {
 		return nil
 	}
-	meter := Meter{
+	meter := Component{
 		sampleRate:  sampleRate,
 		startedAt:   time.Now(),
 		processedAt: time.Now(),
@@ -83,8 +83,8 @@ func (m *Metric) Meter(componentID string, sampleRate int) *Meter {
 	return &meter
 }
 
-// Meter contains all component's counters.
-type Meter struct {
+// Component contains all component's counters.
+type Component struct {
 	counters    map[string]*atomic.Value
 	sampleRate  int
 	startedAt   time.Time     // StartCounter
@@ -96,11 +96,16 @@ type Meter struct {
 	duration    time.Duration // DurationCounter
 }
 
-// Message capture metrics after message is processed.
-func (m *Meter) Message() *Meter {
+// Message capture metrics after samples are processed.
+func (m *Component) Message(s int) *Component {
 	if m == nil {
 		return nil
 	}
+	m.samples = m.samples + int64(s)
+	m.duration = signal.DurationOf(m.sampleRate, m.samples)
+
+	store(m.counters, SampleCounter, m.samples)
+	store(m.counters, DurationCounter, m.duration)
 	m.messages++
 	m.latency = time.Since(m.processedAt)
 	m.processedAt = time.Now()
@@ -109,20 +114,6 @@ func (m *Meter) Message() *Meter {
 	store(m.counters, MessageCounter, m.messages)
 	store(m.counters, LatencyCounter, m.latency)
 	store(m.counters, ElapsedCounter, m.elapsed)
-
-	return m
-}
-
-// Sample capture metrics after samples are processed.
-func (m *Meter) Sample(s int64) *Meter {
-	if m == nil {
-		return nil
-	}
-	m.samples = m.samples + s
-	m.duration = signal.DurationOf(m.sampleRate, m.samples)
-
-	store(m.counters, SampleCounter, m.samples)
-	store(m.counters, DurationCounter, m.duration)
 
 	return m
 }

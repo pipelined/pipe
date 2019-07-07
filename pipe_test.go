@@ -155,12 +155,16 @@ func newPipe(t *testing.T) *pipe.Flow {
 	sink1 := &mock.Sink{}
 	sink2 := &mock.Sink{}
 
-	p, err := pipe.New(
+	p := pipe.Pipe{
+		Pump:       pump,
+		Processors: []pipe.Processor{proc1, proc2},
+		Sinks:      []pipe.Sink{sink1, sink2},
+	}
+
+	f, err := pipe.New(
 		bufferSize,
-		pipe.WithPump(pump),
-		pipe.WithProcessors(proc1, proc2),
-		pipe.WithSinks(sink1, sink2),
+		p,
 	)
 	assert.Nil(t, err)
-	return p
+	return f
 }
