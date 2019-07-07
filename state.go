@@ -57,6 +57,7 @@ type eventMessage struct {
 	params     params   // new params.
 	components []string // ids of components which need to be called.
 	target
+	bufferSize int
 }
 
 // target identifies which state is expected from pipe.
@@ -77,9 +78,10 @@ const (
 
 // Run sends a run event into pipe.
 // Calling this method after pipe is closed causes a panic.
-func (f *Flow) Run() chan error {
+func (f *Flow) Run(bufferSize int) chan error {
 	runEvent := eventMessage{
-		event: run,
+		event:      run,
+		bufferSize: bufferSize,
 		target: target{
 			state: ready,
 			errc:  make(chan error, 1),
@@ -228,7 +230,7 @@ func (s idleReady) transition(f *Flow, e eventMessage) (state, error) {
 		f.cancel = make(chan struct{})
 		var errcList []<-chan error
 		for _, c := range f.chains {
-			errcList = append(errcList, start(c, f.cancel, f.provide)...)
+			errcList = append(errcList, start(e.bufferSize, c, f.cancel, f.provide)...)
 		}
 		f.errc = mergeErrors(errcList...)
 		return running, nil

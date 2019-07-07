@@ -23,31 +23,31 @@ func TestMain(m *testing.M) {
 func TestRun(t *testing.T) {
 	// run while ready
 	p := newPipe(t)
-	runc := p.Run()
+	runc := p.Run(bufferSize)
 	assert.NotNil(t, runc)
 	err := pipe.Wait(runc)
 	assert.Nil(t, err)
 
 	// run while running
-	runc = p.Run()
-	err = pipe.Wait(p.Run())
+	runc = p.Run(bufferSize)
+	err = pipe.Wait(p.Run(bufferSize))
 	assert.Equal(t, pipe.ErrInvalidState, err)
 	err = pipe.Wait(runc)
 	assert.Nil(t, err)
 
 	// run while pausing
-	runc = p.Run()
+	runc = p.Run(bufferSize)
 	pausec := p.Pause()
 	// pause should cancel run channel
 	err = pipe.Wait(runc)
 	assert.Nil(t, err)
 	// pausing
-	err = pipe.Wait(p.Run())
+	err = pipe.Wait(p.Run(bufferSize))
 	assert.Equal(t, pipe.ErrInvalidState, err)
 	_ = pipe.Wait(pausec)
 
 	// run while paused
-	err = pipe.Wait(p.Run())
+	err = pipe.Wait(p.Run(bufferSize))
 	assert.Equal(t, pipe.ErrInvalidState, err)
 
 	_ = pipe.Wait(p.Resume())
@@ -64,14 +64,14 @@ func TestPause(t *testing.T) {
 	assert.Equal(t, pipe.ErrInvalidState, err)
 
 	// pause while running
-	_ = p.Run()
+	_ = p.Run(bufferSize)
 	errc = p.Pause()
 	assert.NotNil(t, errc)
 	err = pipe.Wait(errc)
 	assert.Nil(t, err)
 
 	// pause while pausing
-	_ = p.Run()
+	_ = p.Run(bufferSize)
 	pausec := p.Pause()
 	assert.NotNil(t, pausec)
 	err = pipe.Wait(p.Pause())
@@ -95,14 +95,14 @@ func TestResume(t *testing.T) {
 	assert.Equal(t, pipe.ErrInvalidState, err)
 
 	// resume while running
-	runc := p.Run()
+	runc := p.Run(bufferSize)
 	errc = p.Resume()
 	err = pipe.Wait(errc)
 	assert.Equal(t, pipe.ErrInvalidState, err)
 	err = pipe.Wait(runc)
 
 	// resume while paused
-	_ = p.Run()
+	_ = p.Run(bufferSize)
 	pausec := p.Pause()
 	_ = pipe.Wait(pausec)
 	err = pipe.Wait(p.Resume())
@@ -120,14 +120,14 @@ func TestLeaks(t *testing.T) {
 
 	// close while running
 	p = newPipe(t)
-	_ = p.Run()
+	_ = p.Run(bufferSize)
 	err = pipe.Wait(p.Close())
 	assert.Nil(t, err)
 	goleak.VerifyNoLeaks(t)
 
 	// close while pausing
 	p = newPipe(t)
-	_ = p.Run()
+	_ = p.Run(bufferSize)
 	_ = p.Pause()
 	err = pipe.Wait(p.Close())
 	assert.Nil(t, err)
@@ -135,7 +135,7 @@ func TestLeaks(t *testing.T) {
 
 	// close while paused
 	p = newPipe(t)
-	_ = p.Run()
+	_ = p.Run(bufferSize)
 	_ = pipe.Wait(p.Pause())
 	err = pipe.Wait(p.Close())
 	assert.Nil(t, err)
@@ -162,7 +162,6 @@ func newPipe(t *testing.T) *pipe.Flow {
 	}
 
 	f, err := pipe.New(
-		bufferSize,
 		p,
 	)
 	assert.Nil(t, err)
