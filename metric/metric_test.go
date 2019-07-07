@@ -75,6 +75,7 @@ func TestMeter(t *testing.T) {
 func TestPipe(t *testing.T) {
 	bufferSize := 10
 	limit := 55
+
 	pump := &mock.Pump{
 		SampleRate:  44100,
 		Limit:       limit,
@@ -96,6 +97,7 @@ func TestPipe(t *testing.T) {
 	pipe.Wait(p.Run())
 
 	pumpID := p.ComponentID(pump)
+	assert.NotEqual(t, "", pumpID)
 
 	measure := m.Measure()
 	assert.Equal(t, 1247165*time.Nanosecond, measure[pumpID][metric.DurationCounter])
