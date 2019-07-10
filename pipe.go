@@ -1,9 +1,9 @@
 package pipe
 
 import (
-	"github.com/rs/xid"
-
+	"github.com/pipelined/pipe/internal/state"
 	"github.com/pipelined/signal"
+	"github.com/rs/xid"
 )
 
 // Pump is a source of samples. Pump method returns a new buffer with signal data.
@@ -39,17 +39,6 @@ func newUID() string {
 	return xid.New().String()
 }
 
-// Message is a main structure for pipe transport
-type message struct {
-	buffer   signal.Float64 // Buffer of message
-	params                  // params for pipe
-	sourceID string         // ID of pipe which spawned this message.
-	feedback params         //feedback are params applied after processing happened
-}
-
-// params represent a set of parameters mapped to ID of their receivers.
-type params map[string][]func()
-
 // Pipe is a pipeline with fully defined sound processing sequence
 // it has:
 //	 1 		pump
@@ -61,19 +50,12 @@ type Pipe struct {
 	Sinks      []Sink
 }
 
-// Convert the event to a string.
-func (e event) String() string {
-	switch e {
-	case run:
-		return "run"
-	case pause:
-		return "pause"
-	case resume:
-		return "resume"
-	case push:
-		return "params"
-	}
-	return "unknown"
+// message is a main structure for pipe transport
+type message struct {
+	sourceID string         // ID of pipe which spawned this message.
+	buffer   signal.Float64 // Buffer of message
+	params   state.Params   // params for pipe
+	// Feedback     state.Params   //feedback are params applied after processing happened
 }
 
 // Convert pipe to string. If name is included if has value.
@@ -81,51 +63,12 @@ func (e event) String() string {
 // 	return p.name
 // }
 
-// add appends a slice of params.
-func (p params) add(componentID string, paramFuncs ...func()) params {
-	var private []func()
-	if _, ok := p[componentID]; !ok {
-		private = make([]func(), 0, len(paramFuncs))
-	}
-	private = append(private, paramFuncs...)
-
-	p[componentID] = private
-	return p
-}
-
-// applyTo consumes params defined for consumer in this param set.
-func (p params) applyTo(id string) {
-	if p == nil {
-		return
-	}
-	if params, ok := p[id]; ok {
-		for _, param := range params {
-			param()
+// Wait for state transition or first error to occur.
+func Wait(d chan error) error {
+	for err := range d {
+		if err != nil {
+			return err
 		}
-		delete(p, id)
-	}
-}
-
-// merge two param sets into one.
-func (p params) merge(source params) params {
-	for newKey, newValues := range source {
-		if _, ok := p[newKey]; ok {
-			p[newKey] = append(p[newKey], newValues...)
-		} else {
-			p[newKey] = newValues
-		}
-	}
-	return p
-}
-
-func (p params) detach(id string) params {
-	if p == nil {
-		return nil
-	}
-	if v, ok := p[id]; ok {
-		d := params(make(map[string][]func()))
-		d[id] = v
-		return d
 	}
 	return nil
 }

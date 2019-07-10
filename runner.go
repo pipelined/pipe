@@ -123,14 +123,14 @@ func (r *pumpRunner) run(bufferSize int, pipeID, componentID string, cancel <-ch
 				return
 			}
 
-			m.applyTo(componentID)           // apply params
+			m.params.ApplyTo(componentID)    // apply params
 			m.buffer, err = r.fn(bufferSize) // pump new buffer
 			// process buffer
 			if m.buffer != nil {
 				if meter != nil {
 					meter = meter.Message(m.buffer.Size())
 				}
-				m.feedback.applyTo(componentID) // apply feedback
+				// m.feedback.applyTo(componentID) // apply feedback
 
 				// push message further
 				select {
@@ -193,7 +193,7 @@ func (r *processRunner) run(pipeID, componentID string, cancel <-chan struct{}, 
 				return
 			}
 
-			m.applyTo(componentID)         // apply params
+			m.params.ApplyTo(componentID)  // apply params
 			m.buffer, err = r.fn(m.buffer) // process new buffer
 			if err != nil {
 				errc <- err
@@ -204,7 +204,7 @@ func (r *processRunner) run(pipeID, componentID string, cancel <-chan struct{}, 
 				meter = meter.Message(m.buffer.Size())
 			}
 
-			m.feedback.applyTo(componentID) // apply feedback
+			// m.feedback.applyTo(componentID) // apply feedback
 
 			// send message further
 			select {
@@ -253,7 +253,7 @@ func (r *sinkRunner) run(pipeID, componentID string, cancel <-chan struct{}, in 
 				return
 			}
 
-			m.params.applyTo(componentID) // apply params
+			m.params.ApplyTo(componentID) // apply params
 			err := r.fn(m.buffer)         // sink a buffer
 			if err != nil {
 				errc <- err
@@ -264,7 +264,7 @@ func (r *sinkRunner) run(pipeID, componentID string, cancel <-chan struct{}, in 
 				meter = meter.Message(m.buffer.Size())
 			}
 
-			m.feedback.applyTo(componentID) // apply feedback
+			// m.feedback.applyTo(componentID) // apply feedback
 		}
 	}()
 
