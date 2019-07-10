@@ -1,7 +1,7 @@
 package pipe
 
 import (
-	"sync"
+	"github.com/pipelined/pipe/internal/state"
 )
 
 type Metric interface {
@@ -18,16 +18,19 @@ type Flow struct {
 	// numChannels int
 	bufferSize int
 
-	chains map[string]chain // keep chain of the whole pipe
-	pipes  []Pipe
+	chains          map[string]chain  // map chain id to chain
+	componentChains map[string]string // map component id to chain id
+	pipes           []Pipe
+	metric          Metric
 
-	metric   Metric
-	params   params            //cahced params
-	feedback params            //cached feedback
-	errc     chan error        // errors channel
-	events   chan eventMessage // event channel
-	cancel   chan struct{}     // cancellation channel
-	provide  chan string       // ask for new message request for the chain
+	*state.Handle
+
+	// params   params            //cahced params
+	// feedback params            //cached feedback
+	// errc     chan error        // errors channel
+	// events   chan eventMessage // event channel
+	// cancel   chan struct{}     // cancellation channel
+	// provide  chan string       // ask for new message request for the chain
 
 	// components is a map of components and their ids.
 	// this makes the case when one component is used across multiple pipes to have
@@ -45,6 +48,8 @@ type chain struct {
 	sinks      []*sinkRunner
 	components map[interface{}]string
 	consume    chan message // emission of messages
+	params     state.Params
+	// feedback   state.Params
 }
 
 // Option provides a way to set functional parameters to flow.
@@ -52,22 +57,35 @@ type Option func(*Flow) error
 
 // New creates a new flow and applies provided options.
 // Returned flow is in Ready state.
-func New(p Pipe) (*Flow, error) {
+func New(pipes ...Pipe) (*Flow, error) {
 	chains := make(map[string]chain)
-	c, err := bindPipe(p)
-	if err != nil {
-		return nil, err
+	componentChains := make(map[string]string)
+	for _, p := range pipes {
+		// bind all pipes
+		c, err := bindPipe(p)
+		if err != nil {
+			return nil, err
+		}
+		chains[c.uid] = c
+		for _, componentID := range c.components {
+			componentChains[componentID] = c.uid
+		}
 	}
-	chains[c.uid] = c
+
 	f := &Flow{
-		chains:   chains,
-		log:      defaultLogger,
-		params:   make(map[string][]func()),
-		feedback: make(map[string][]func()),
-		events:   make(chan eventMessage, 1),
-		provide:  make(chan string),
+		chains: chains,
+		log:    defaultLogger,
 	}
-	go loop(f)
+	h := state.Handle{
+		Eventc:         make(chan state.EventMessage, 1),
+		NewMessagec:    make(chan string),
+		StartFunc:      start(f),
+		NewMessageFunc: newMessage(f),
+		PushParamsFunc: pushParams(f),
+	}
+
+	f.Handle = &h
+	go state.Loop(f.Handle)
 	return f, nil
 }
 
@@ -108,6 +126,8 @@ func bindPipe(p Pipe) (chain, error) {
 		sinks:      sinkRunners,
 		consume:    make(chan message),
 		components: components,
+		params:     make(map[string][]func()),
+		// feedback:   make(map[string][]func()),
 	}, nil
 }
 
@@ -128,25 +148,29 @@ func WithMetric(m Metric) Option {
 }
 
 // start starts the execution of pipe.
-func start(bufferSize int, c chain, cancelc chan struct{}, provide chan<- string) []<-chan error {
-	// error channel for each component
-	errcList := make([]<-chan error, 0, 1+len(c.processors)+len(c.sinks))
-	// start pump
-	componentID := c.components[c.pump]
-	out, errc := c.pump.run(bufferSize, c.uid, componentID, cancelc, provide, c.consume, nil)
-	errcList = append(errcList, errc)
+func start(f *Flow) state.StartFunc {
+	return func(bufferSize int, cancelc chan struct{}, provide chan<- string) []<-chan error {
+		// error channel for each component
+		errcList := make([]<-chan error, 0)
+		for _, c := range f.chains {
+			// start pump
+			componentID := c.components[c.pump]
+			out, errc := c.pump.run(bufferSize, c.uid, componentID, cancelc, provide, c.consume, nil)
+			errcList = append(errcList, errc)
 
-	// start chained processesing
-	for _, proc := range c.processors {
-		componentID = c.components[proc]
-		// meter := f.metric.Meter(componentID, f.sampleRate)
-		out, errc = proc.run(c.uid, componentID, cancelc, out, nil)
-		errcList = append(errcList, errc)
+			// start chained processesing
+			for _, proc := range c.processors {
+				componentID = c.components[proc]
+				// meter := f.metric.Meter(componentID, f.sampleRate)
+				out, errc = proc.run(c.uid, componentID, cancelc, out, nil)
+				errcList = append(errcList, errc)
+			}
+
+			sinkErrcList := broadcastToSinks(c, cancelc, out)
+			errcList = append(errcList, sinkErrcList...)
+		}
+		return errcList
 	}
-
-	sinkErrcList := broadcastToSinks(c, cancelc, out)
-	errcList = append(errcList, sinkErrcList...)
-	return errcList
 }
 
 // broadcastToSinks passes messages to all sinks.
@@ -179,8 +203,8 @@ func broadcastToSinks(c chain, cancelc chan struct{}, in <-chan message) []<-cha
 				m := message{
 					sourceID: msg.sourceID,
 					buffer:   msg.buffer,
-					params:   msg.params.detach(c.components[c.sinks[i]]),
-					feedback: msg.feedback.detach(c.components[c.sinks[i]]),
+					params:   msg.params.Detach(c.components[c.sinks[i]]),
+					// Feedback: msg.Feedback.Detach(c.components[c.sinks[i]]),
 				}
 				select {
 				case broadcasts[i] <- m:
@@ -194,28 +218,33 @@ func broadcastToSinks(c chain, cancelc chan struct{}, in <-chan message) []<-cha
 	return errcList
 }
 
-// merge error channels from all components into one.
-func mergeErrors(errcList ...<-chan error) (errc chan error) {
-	var wg sync.WaitGroup
-	errc = make(chan error, len(errcList))
-
-	//function to wait for error channel
-	output := func(ec <-chan error) {
-		for e := range ec {
-			errc <- e
+// newMessage creates a new message with cached Params.
+// if new Params are pushed into pipe - next message will contain them.
+func newMessage(f *Flow) state.NewMessageFunc {
+	return func(pipeID string) {
+		c := f.chains[pipeID]
+		m := message{sourceID: c.uid}
+		if len(c.params) > 0 {
+			m.params = c.params
+			c.params = make(map[string][]func())
 		}
-		wg.Done()
+		// if len(c.feedback) > 0 {
+		// 	m.Feedback = c.feedback
+		// 	c.feedback = make(map[string][]func())
+		// }
+		c.consume <- m
 	}
-	wg.Add(len(errcList))
-	for _, ec := range errcList {
-		go output(ec)
+}
+
+func pushParams(f *Flow) state.PushParamsFunc {
+	return func(componentID string, params state.Params) {
+		if componentID == "" {
+			panic("Push not implemented")
+		}
+
+		chainID := f.componentChains[componentID]
+		chain := f.chains[chainID]
+		chain.params = chain.params.Merge(params)
+		f.chains[chainID] = chain
 	}
-
-	//wait and close out
-	go func() {
-		wg.Wait()
-		close(errc)
-	}()
-
-	return
 }

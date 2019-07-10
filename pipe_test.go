@@ -8,6 +8,7 @@ import (
 
 	"github.com/pipelined/mock"
 	"github.com/pipelined/pipe"
+	"github.com/pipelined/pipe/internal/state"
 	"go.uber.org/goleak"
 )
 
@@ -17,6 +18,16 @@ const (
 
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
+}
+
+func TestSimple(t *testing.T) {
+	p := newPipe(t)
+	runc := p.Run(bufferSize)
+	assert.NotNil(t, runc)
+	err := pipe.Wait(runc)
+	assert.Nil(t, err)
+
+	pipe.Wait(p.Close())
 }
 
 // Test Run method for all states.
@@ -31,7 +42,7 @@ func TestRun(t *testing.T) {
 	// run while running
 	runc = p.Run(bufferSize)
 	err = pipe.Wait(p.Run(bufferSize))
-	assert.Equal(t, pipe.ErrInvalidState, err)
+	assert.Equal(t, state.ErrInvalidState, err)
 	err = pipe.Wait(runc)
 	assert.Nil(t, err)
 
@@ -43,14 +54,14 @@ func TestRun(t *testing.T) {
 	assert.Nil(t, err)
 	// pausing
 	err = pipe.Wait(p.Run(bufferSize))
-	assert.Equal(t, pipe.ErrInvalidState, err)
+	assert.Equal(t, state.ErrInvalidState, err)
 	_ = pipe.Wait(pausec)
 
 	// run while paused
 	err = pipe.Wait(p.Run(bufferSize))
-	assert.Equal(t, pipe.ErrInvalidState, err)
+	assert.Equal(t, state.ErrInvalidState, err)
 
-	_ = pipe.Wait(p.Resume())
+	// _ = pipe.Wait(p.Resume())
 	_ = pipe.Wait(p.Close())
 }
 
@@ -61,7 +72,7 @@ func TestPause(t *testing.T) {
 	errc := p.Pause()
 	assert.NotNil(t, errc)
 	err := pipe.Wait(errc)
-	assert.Equal(t, pipe.ErrInvalidState, err)
+	assert.Equal(t, state.ErrInvalidState, err)
 
 	// pause while running
 	_ = p.Run(bufferSize)
@@ -75,12 +86,12 @@ func TestPause(t *testing.T) {
 	pausec := p.Pause()
 	assert.NotNil(t, pausec)
 	err = pipe.Wait(p.Pause())
-	assert.Equal(t, pipe.ErrInvalidState, err)
+	assert.Equal(t, state.ErrInvalidState, err)
 	err = pipe.Wait(pausec)
 
 	// pause while paused
 	err = pipe.Wait(p.Pause())
-	assert.Equal(t, pipe.ErrInvalidState, err)
+	assert.Equal(t, state.ErrInvalidState, err)
 	_ = pipe.Wait(p.Resume())
 	_ = pipe.Wait(p.Close())
 }
@@ -92,13 +103,13 @@ func TestResume(t *testing.T) {
 	errc := p.Resume()
 	assert.NotNil(t, errc)
 	err := pipe.Wait(errc)
-	assert.Equal(t, pipe.ErrInvalidState, err)
+	assert.Equal(t, state.ErrInvalidState, err)
 
 	// resume while running
 	runc := p.Run(bufferSize)
 	errc = p.Resume()
 	err = pipe.Wait(errc)
-	assert.Equal(t, pipe.ErrInvalidState, err)
+	assert.Equal(t, state.ErrInvalidState, err)
 	err = pipe.Wait(runc)
 
 	// resume while paused

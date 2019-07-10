@@ -1,9 +1,11 @@
-package pipe
+package state_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/pipelined/pipe/internal/state"
 )
 
 func TestSimpleParams(t *testing.T) {
@@ -11,7 +13,7 @@ func TestSimpleParams(t *testing.T) {
 	fn := func() {
 		value = 10
 	}
-	p := params(make(map[string][]func()))
+	p := state.Params(make(map[string][]func()))
 	uid := newUID()
 	p = p.add(uid, fn)
 	p.applyTo(uid)
