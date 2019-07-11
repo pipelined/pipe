@@ -14,15 +14,15 @@ func TestSimpleParams(t *testing.T) {
 		value = 10
 	}
 	p := state.Params(make(map[string][]func()))
-	uid := newUID()
-	p = p.add(uid, fn)
-	p.applyTo(uid)
+	uid := "testID"
+	p = p.Add(uid, fn)
+	p.ApplyTo(uid)
 
 	assert.Equal(t, expected, value)
 }
 
 func TestMergeParams(t *testing.T) {
-	var p, newP params
+	var p, newP state.Params
 	expected, value := 10, 0
 	fn := func() {
 		value += 10
@@ -30,16 +30,16 @@ func TestMergeParams(t *testing.T) {
 
 	p = make(map[string][]func())
 	newP = make(map[string][]func())
-	uid := newUID()
-	newP.add(uid, fn)
-	p = p.merge(newP)
-	p.applyTo(uid)
+	uid := "newUID"
+	newP.Add(uid, fn)
+	p = p.Merge(newP)
+	p.ApplyTo(uid)
 	assert.Equal(t, expected, value)
 
 	expected = 20
 	newP = make(map[string][]func())
-	newP = newP.add(uid, fn)
-	p = p.merge(newP)
-	p.applyTo(uid)
+	newP = newP.Add(uid, fn)
+	p = p.Merge(newP)
+	p.ApplyTo(uid)
 	assert.Equal(t, expected, value)
 }

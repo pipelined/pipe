@@ -4,40 +4,25 @@ import (
 	"github.com/pipelined/pipe/internal/state"
 )
 
+// Metric measures performance of component.
 type Metric interface {
 	AddComponent(componentID string, sampleRate int) ComponentMetric
 }
 
+// ComponentMetric captures metrics after each message being processed by component.
 type ComponentMetric interface {
 	Message(size int) ComponentMetric
 }
 
-// Flow controls the execution of pipes.
-type Flow struct {
-	// sampleRate  int
-	// numChannels int
-	bufferSize int
-
-	chains          map[string]chain  // map chain id to chain
-	componentChains map[string]string // map component id to chain id
-	pipes           []Pipe
-	metric          Metric
-
+// Net controls the execution of pipes.
+type Net struct {
 	*state.Handle
-
-	// params   params            //cahced params
-	// feedback params            //cached feedback
-	// errc     chan error        // errors channel
-	// events   chan eventMessage // event channel
-	// cancel   chan struct{}     // cancellation channel
-	// provide  chan string       // ask for new message request for the chain
-
-	// components is a map of components and their ids.
-	// this makes the case when one component is used across multiple pipes to have
-	// different id in different pipes.
-	// this will be a part of runner later.
-
-	log Logger
+	bufferSize    int
+	chains        map[string]chain  // map chain id to chain
+	componentNets map[string]string // map component id to chain id
+	pipes         []Pipe
+	metric        Metric
+	log           Logger
 }
 
 // chain is a runtime chain of the pipeline.
@@ -49,17 +34,16 @@ type chain struct {
 	components map[interface{}]string
 	consume    chan message // emission of messages
 	params     state.Params
-	// feedback   state.Params
 }
 
-// Option provides a way to set functional parameters to flow.
-type Option func(*Flow) error
+// Option provides a way to set functional parameters to the Net.
+type Option func(*Net) error
 
-// New creates a new flow and applies provided options.
-// Returned flow is in Ready state.
-func New(pipes ...Pipe) (*Flow, error) {
+// Network creates a new net.
+// Returned net is in Ready state.
+func Network(pipes ...Pipe) (*Net, error) {
 	chains := make(map[string]chain)
-	componentChains := make(map[string]string)
+	componentNets := make(map[string]string)
 	for _, p := range pipes {
 		// bind all pipes
 		c, err := bindPipe(p)
@@ -68,23 +52,15 @@ func New(pipes ...Pipe) (*Flow, error) {
 		}
 		chains[c.uid] = c
 		for _, componentID := range c.components {
-			componentChains[componentID] = c.uid
+			componentNets[componentID] = c.uid
 		}
 	}
 
-	f := &Flow{
+	f := &Net{
 		chains: chains,
 		log:    defaultLogger,
 	}
-	h := state.Handle{
-		Eventc:         make(chan state.EventMessage, 1),
-		NewMessagec:    make(chan string),
-		StartFunc:      start(f),
-		NewMessageFunc: newMessage(f),
-		PushParamsFunc: pushParams(f),
-	}
-
-	f.Handle = &h
+	f.Handle = state.NewHandle(start(f), newMessage(f), pushParams(f))
 	go state.Loop(f.Handle)
 	return f, nil
 }
@@ -133,7 +109,7 @@ func bindPipe(p Pipe) (chain, error) {
 
 // WithLogger sets logger to Pipe. If this option is not provided, silent logger is used.
 func WithLogger(logger Logger) Option {
-	return func(f *Flow) error {
+	return func(f *Net) error {
 		f.log = logger
 		return nil
 	}
@@ -141,14 +117,14 @@ func WithLogger(logger Logger) Option {
 
 // WithMetric adds meterics for this pipe and all components.
 func WithMetric(m Metric) Option {
-	return func(f *Flow) error {
+	return func(f *Net) error {
 		f.metric = m
 		return nil
 	}
 }
 
 // start starts the execution of pipe.
-func start(f *Flow) state.StartFunc {
+func start(f *Net) state.StartFunc {
 	return func(bufferSize int, cancelc chan struct{}, provide chan<- string) []<-chan error {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
@@ -220,7 +196,7 @@ func broadcastToSinks(c chain, cancelc chan struct{}, in <-chan message) []<-cha
 
 // newMessage creates a new message with cached Params.
 // if new Params are pushed into pipe - next message will contain them.
-func newMessage(f *Flow) state.NewMessageFunc {
+func newMessage(f *Net) state.NewMessageFunc {
 	return func(pipeID string) {
 		c := f.chains[pipeID]
 		m := message{sourceID: c.uid}
@@ -228,21 +204,13 @@ func newMessage(f *Flow) state.NewMessageFunc {
 			m.params = c.params
 			c.params = make(map[string][]func())
 		}
-		// if len(c.feedback) > 0 {
-		// 	m.Feedback = c.feedback
-		// 	c.feedback = make(map[string][]func())
-		// }
 		c.consume <- m
 	}
 }
 
-func pushParams(f *Flow) state.PushParamsFunc {
+func pushParams(f *Net) state.PushParamsFunc {
 	return func(componentID string, params state.Params) {
-		if componentID == "" {
-			panic("Push not implemented")
-		}
-
-		chainID := f.componentChains[componentID]
+		chainID := f.componentNets[componentID]
 		chain := f.chains[chainID]
 		chain.params = chain.params.Merge(params)
 		f.chains[chainID] = chain

@@ -45,6 +45,8 @@ func TestMeter(t *testing.T) {
 		},
 	}
 
+	m := metric.Metric{}
+
 	// function to test meter.
 	testFn := func(c *metric.Meter, wg *sync.WaitGroup, messages int, samples int64) {
 		for i := 0; i < messages; i++ {

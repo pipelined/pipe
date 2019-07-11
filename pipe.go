@@ -55,13 +55,7 @@ type message struct {
 	sourceID string         // ID of pipe which spawned this message.
 	buffer   signal.Float64 // Buffer of message
 	params   state.Params   // params for pipe
-	// Feedback     state.Params   //feedback are params applied after processing happened
 }
-
-// Convert pipe to string. If name is included if has value.
-// func (p *Pipe) String() string {
-// 	return p.name
-// }
 
 // Wait for state transition or first error to occur.
 func Wait(d chan error) error {
