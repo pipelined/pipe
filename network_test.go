@@ -154,7 +154,7 @@ func TestLeaks(t *testing.T) {
 }
 
 // This is a constructor of test pipe
-func newPipe(t *testing.T) *pipe.Flow {
+func newPipe(t *testing.T) *pipe.Net {
 	pump := &mock.Pump{
 		// SampleRate:  44100,
 		Limit:       5 * bufferSize,
@@ -172,7 +172,7 @@ func newPipe(t *testing.T) *pipe.Flow {
 		Sinks:      []pipe.Sink{sink1, sink2},
 	}
 
-	f, err := pipe.New(
+	f, err := pipe.Network(
 		p,
 	)
 	assert.Nil(t, err)

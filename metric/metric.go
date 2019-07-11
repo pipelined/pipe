@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pipelined/pipe"
 	"github.com/pipelined/signal"
 )
 
@@ -67,7 +68,7 @@ func (m *Metric) Measure() Measure {
 }
 
 // AddComponent creates new meter with component counters.
-func (m *Metric) AddComponent(componentID string, sampleRate int) *Component {
+func (m *Metric) AddComponent(componentID string, sampleRate int) pipe.ComponentMetric {
 	if m == nil {
 		return nil
 	}
@@ -97,7 +98,7 @@ type Component struct {
 }
 
 // Message capture metrics after samples are processed.
-func (m *Component) Message(s int) *Component {
+func (m *Component) Message(s int) pipe.ComponentMetric {
 	if m == nil {
 		return nil
 	}

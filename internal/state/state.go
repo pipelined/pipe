@@ -10,20 +10,24 @@ var (
 	ErrInvalidState = errors.New("invalid state")
 )
 
+// Handle manages the lifecycle of the pipe.
 type Handle struct {
-	Eventc      chan EventMessage // event channel
-	Errc        chan error        // errors channel
-	NewMessagec chan string       // ask for new message request for the chain
-	Cancel      chan struct{}     // cancellation channel
-	StartFunc
-	NewMessageFunc
-	PushParamsFunc
+	eventc       chan EventMessage // event channel
+	errc         chan error        // errors channel
+	givec        chan string       // ask for new message request for the chain
+	cancelc      chan struct{}     // cancellation channel
+	startFn      StartFunc
+	newMessageFn NewMessageFunc
+	pushParamsFn PushParamsFunc
 }
 
+// StartFunc is the closure to trigger the start of a pipe.
 type StartFunc func(bufferSize int, cancelc chan struct{}, provide chan<- string) []<-chan error
 
+// NewMessageFunc is the closure to send a message into a pipe.
 type NewMessageFunc func(pipeID string)
 
+// PushParamsFunc is the closure to push new params into pipe.
 type PushParamsFunc func(componentID string, params Params)
 
 // state identifies one of the possible states pipe can be in.
@@ -47,8 +51,7 @@ type activeState interface {
 type (
 	idleReady     struct{}
 	activeRunning struct{}
-	// activePausing struct{}
-	idlePaused struct{}
+	idlePaused    struct{}
 )
 
 // states variables
@@ -56,7 +59,6 @@ var (
 	ready   idleReady     // Ready means that pipe can be started.
 	running activeRunning // Running means that pipe is executing at the moment.
 	paused  idlePaused    // Paused means that pipe is paused and can be resumed.
-	// pausing activePausing // Pausing means that pause event was sent, but still not reached all sinks.
 )
 
 // actionFn is an action function which causes a pipe state change
@@ -90,8 +92,20 @@ const (
 	cancel
 )
 
-// Run sends a run event into pipe.
-// Calling this method after pipe is closed causes a panic.
+// NewHandle returns new initalized handle that can be used to manage lifecycle.
+func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParamsFunc) *Handle {
+	h := Handle{
+		eventc:       make(chan EventMessage, 1),
+		givec:        make(chan string),
+		startFn:      start,
+		newMessageFn: newMessage,
+		pushParamsFn: pushParams,
+	}
+	return &h
+}
+
+// Run sends a run event into handle.
+// Calling this method after handle is closed causes a panic.
 func (h *Handle) Run(bufferSize int) chan error {
 	runEvent := EventMessage{
 		event:      run,
@@ -101,12 +115,12 @@ func (h *Handle) Run(bufferSize int) chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	h.Eventc <- runEvent
+	h.eventc <- runEvent
 	return runEvent.target.errc
 }
 
-// Pause sends a pause event into pipe.
-// Calling this method after pipe is closed causes a panic.
+// Pause sends a pause event into handle.
+// Calling this method after handle is closed causes a panic.
 func (h *Handle) Pause() chan error {
 	pauseEvent := EventMessage{
 		event: pause,
@@ -115,12 +129,12 @@ func (h *Handle) Pause() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	h.Eventc <- pauseEvent
+	h.eventc <- pauseEvent
 	return pauseEvent.target.errc
 }
 
-// Resume sends a resume event into pipe.
-// Calling this method after pipe is closed causes a panic.
+// Resume sends a resume event into handle.
+// Calling this method after handle is closed causes a panic.
 func (h *Handle) Resume() chan error {
 	resumeEvent := EventMessage{
 		event: resume,
@@ -129,11 +143,11 @@ func (h *Handle) Resume() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	h.Eventc <- resumeEvent
+	h.eventc <- resumeEvent
 	return resumeEvent.target.errc
 }
 
-// Close must be called to clean up pipe's resources.
+// Close must be called to clean up handle's resources.
 func (h *Handle) Close() chan error {
 	resumeEvent := EventMessage{
 		event: cancel,
@@ -142,7 +156,7 @@ func (h *Handle) Close() chan error {
 			errc:  make(chan error, 1),
 		},
 	}
-	h.Eventc <- resumeEvent
+	h.eventc <- resumeEvent
 	return resumeEvent.target.errc
 }
 
@@ -155,10 +169,10 @@ func Loop(h *Handle) {
 	}
 	// cancel last pending target
 	t.dismiss()
-	close(h.Eventc)
+	close(h.eventc)
 }
 
-// idle is used to listen to pipe's channels which are relevant for idle state.
+// idle is used to listen to handle's channels which are relevant for idle state.
 // s is the new state, t is the target state and d channel to notify target transition.
 func (h *Handle) idle(s idleState, t target) (state, target) {
 	if s == t.state || s == ready {
@@ -168,7 +182,7 @@ func (h *Handle) idle(s idleState, t target) (state, target) {
 		var newState state
 		var err error
 		select {
-		case e := <-h.Eventc:
+		case e := <-h.eventc:
 			newState, err = s.transition(h, e)
 			if err != nil {
 				e.target.handle(err)
@@ -183,13 +197,13 @@ func (h *Handle) idle(s idleState, t target) (state, target) {
 	}
 }
 
-// active is used to listen to pipe's channels which are relevant for active state.
+// active is used to listen to handle's channels which are relevant for active state.
 func (h *Handle) active(s activeState, t target) (state, target) {
 	for {
 		var newState state
 		var err error
 		select {
-		case e := <-h.Eventc:
+		case e := <-h.eventc:
 			newState, err = s.transition(h, e)
 			if err != nil {
 				e.target.handle(err)
@@ -197,11 +211,11 @@ func (h *Handle) active(s activeState, t target) (state, target) {
 				t.dismiss()
 				t = e.target
 			}
-		case pipeID := <-h.NewMessagec:
+		case pipeID := <-h.givec:
 			newState = s.sendMessage(h, pipeID)
-		case err, ok := <-h.Errc:
+		case err, ok := <-h.errc:
 			if ok {
-				close(h.Cancel)
+				close(h.cancelc)
 				t.handle(err)
 			}
 			return ready, t
@@ -221,13 +235,13 @@ func (s idleReady) transition(h *Handle, e EventMessage) (state, error) {
 	case cancel:
 		return nil, nil
 	case push:
-		h.PushParamsFunc("", e.Params)
+		h.pushParamsFn("", e.Params)
 		return s, nil
 	case run:
-		h.Cancel = make(chan struct{})
-		h.Errc = make(chan error)
-		errcList := h.StartFunc(e.bufferSize, h.Cancel, h.NewMessagec)
-		mergeErrors(h.Errc, errcList...)
+		h.cancelc = make(chan struct{})
+		h.errc = make(chan error)
+		errcList := h.startFn(e.bufferSize, h.cancelc, h.givec)
+		mergeErrors(h.errc, errcList...)
 		return running, nil
 	}
 	return s, ErrInvalidState
@@ -240,12 +254,11 @@ func (s activeRunning) listen(h *Handle, t target) (state, target) {
 func (s activeRunning) transition(h *Handle, e EventMessage) (state, error) {
 	switch e.event {
 	case cancel:
-		close(h.Cancel)
-		err := wait(h.Errc)
+		close(h.cancelc)
+		err := wait(h.errc)
 		return nil, err
 	case push:
-		// e.Params.applyTo(f.uid)
-		h.PushParamsFunc("", e.Params)
+		h.pushParamsFn("", e.Params)
 		return s, nil
 	case pause:
 		return paused, nil
@@ -254,31 +267,9 @@ func (s activeRunning) transition(h *Handle, e EventMessage) (state, error) {
 }
 
 func (s activeRunning) sendMessage(h *Handle, pipeID string) state {
-	h.NewMessageFunc(pipeID)
+	h.newMessageFn(pipeID)
 	return s
 }
-
-// func (s activePausing) listen(h *Handle, t target) (state, target) {
-// 	return h.idle(s, t)
-// }
-
-// func (s activePausing) transition(h *Handle, e EventMessage) (state, error) {
-// 	switch e.event {
-// 	case cancel:
-// 		close(h.Cancel)
-// 		err := wait(h.Errc)
-// 		return nil, err
-// 	case push:
-// 		h.PushParamsFunc("", e.Params)
-// 		return s, nil
-// 	}
-// 	return s, ErrInvalidState
-// }
-
-// // send message with pause signal.
-// func (s activePausing) sendMessage(h *Handle, pipeID string) state {
-// 	return paused
-// }
 
 func (s idlePaused) listen(h *Handle, t target) (state, target) {
 	return h.idle(s, t)
@@ -287,12 +278,11 @@ func (s idlePaused) listen(h *Handle, t target) (state, target) {
 func (s idlePaused) transition(h *Handle, e EventMessage) (state, error) {
 	switch e.event {
 	case cancel:
-		close(h.Cancel)
-		err := wait(h.Errc)
+		close(h.cancelc)
+		err := wait(h.errc)
 		return nil, err
 	case push:
-		// e.Params.applyTo(f.uid)
-		h.PushParamsFunc("", e.Params)
+		h.pushParamsFn("", e.Params)
 		return s, nil
 	case resume:
 		return running, nil

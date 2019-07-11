@@ -3,7 +3,7 @@ package state
 // Params represent a set of parameters mapped to ID of their receivers.
 type Params map[string][]func()
 
-// add appends a slice of Params.
+// Add appends a slice of Params.
 func (p Params) Add(componentID string, paramFuncs ...func()) Params {
 	var private []func()
 	if _, ok := p[componentID]; !ok {
@@ -15,7 +15,7 @@ func (p Params) Add(componentID string, paramFuncs ...func()) Params {
 	return p
 }
 
-// applyTo consumes Params defined for consumer in this param set.
+// ApplyTo consumes Params defined for consumer in this param set.
 func (p Params) ApplyTo(id string) {
 	if p == nil {
 		return
@@ -28,7 +28,7 @@ func (p Params) ApplyTo(id string) {
 	}
 }
 
-// merge two param sets into one.
+// Merge two param sets into one.
 func (p Params) Merge(source Params) Params {
 	for newKey, newValues := range source {
 		if _, ok := p[newKey]; ok {
@@ -40,6 +40,7 @@ func (p Params) Merge(source Params) Params {
 	return p
 }
 
+// Detach params for provided component id.
 func (p Params) Detach(id string) Params {
 	if p == nil {
 		return nil
