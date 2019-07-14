@@ -37,6 +37,14 @@ func TestMeter(t *testing.T) {
 			expectedSamples:    "4000",
 			expectedComponents: "4",
 		},
+		{
+			component:          "test",
+			routines:           2,
+			buffers:            10,
+			bufferSize:         100,
+			expectedSamples:    "2000",
+			expectedComponents: "2",
+		},
 	}
 	// function to test meter.
 	testFn := func(fn func(int64), wg *sync.WaitGroup, buffers int, bufferSize int64) {
@@ -58,4 +66,7 @@ func TestMeter(t *testing.T) {
 		assert.Equal(t, c.expectedSamples, values[metric.SampleCounter])
 		assert.Equal(t, c.expectedComponents, values[metric.ComponentCounter])
 	}
+
+	total := metric.GetAll()
+	assert.Equal(t, 2, len(total))
 }
