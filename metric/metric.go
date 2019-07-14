@@ -13,11 +13,69 @@ import (
 
 const ComponentsLabel = "pipe.components"
 
+const (
+	// MessageCounter measures number of messages.
+	MessageCounter = "Messages"
+	// SampleCounter measures number of samples.
+	SampleCounter = "Samples"
+	// LatencyCounter measures latency between processing calls.
+	LatencyCounter = "Latency"
+	// DurationCounter counts what's the duration of signal.
+	DurationCounter = "Duration"
+	// ComponentCounter counts number of calls.
+	ComponentCounter = "Components"
+)
+
 var (
 	components = metrics{
 		m: make(map[string]metric),
 	}
+
+	counters = []string{
+		MessageCounter,
+		SampleCounter,
+		LatencyCounter,
+		DurationCounter,
+		ComponentCounter,
+	}
 )
+
+// Get metrics values for provided component type.
+func Get(component interface{}) map[string]string {
+	componentType := getType(component)
+	m := make(map[string]string)
+	for _, counter := range counters {
+		v := expvar.Get(key(componentType, counter))
+		if v != nil {
+			m[counter] = v.String()
+		}
+	}
+	return m
+}
+
+// Meter creates new meter closure to capture component counters.
+func Meter(component interface{}, sampleRate int) func(int64) {
+	t := getType(component)
+	metric := components.get(t)
+	metric.components.Add(1)
+	calledAt := time.Now()
+	var (
+		bufferSize     int64
+		bufferDuration time.Duration
+	)
+	return func(s int64) {
+		metric.latency.set(time.Since(calledAt))
+		metric.messages.Add(1)
+		metric.samples.Add(s)
+		// recalculate buffer duration only when buffer size has changed
+		if bufferSize != s {
+			bufferSize = s
+			bufferDuration = signal.DurationOf(sampleRate, s)
+		}
+		metric.duration.add(bufferDuration)
+		calledAt = time.Now()
+	}
+}
 
 type metrics struct {
 	sync.Mutex
@@ -38,49 +96,30 @@ func (m *metrics) get(componentType string) metric {
 }
 
 type metric struct {
-	key      string
-	messages *expvar.Int
-	samples  *expvar.Int
-	latency  *duration
-	duration *duration
+	key        string
+	components *expvar.Int
+	messages   *expvar.Int
+	samples    *expvar.Int
+	latency    *duration
+	duration   *duration
 }
 
 func newMetric(componentType string) metric {
 	m := metric{
-		key:      componentType,
-		messages: expvar.NewInt(Key(componentType, MessageCounter)),
-		samples:  expvar.NewInt(Key(componentType, SampleCounter)),
-		latency:  &duration{},
-		duration: &duration{},
+		key:        componentType,
+		components: expvar.NewInt(key(componentType, ComponentCounter)),
+		messages:   expvar.NewInt(key(componentType, MessageCounter)),
+		samples:    expvar.NewInt(key(componentType, SampleCounter)),
+		latency:    &duration{},
+		duration:   &duration{},
 	}
-	expvar.Publish(Key(componentType, LatencyCounter), m.latency)
-	expvar.Publish(Key(componentType, DurationCounter), m.duration)
+	expvar.Publish(key(componentType, LatencyCounter), m.latency)
+	expvar.Publish(key(componentType, DurationCounter), m.duration)
 	return m
 }
 
-func Key(componentType, counter string) string {
+func key(componentType, counter string) string {
 	return fmt.Sprintf("%s.%s.%s", ComponentsLabel, componentType, counter)
-}
-
-// Meter creates new meter with component counters.
-func Meter(component interface{}, sampleRate int) func(int64) {
-	// get component type
-	t := getType(component)
-	// get metric
-	metric := components.get(t)
-	// reset time
-	calledAt := time.Now()
-	return func(s int64) {
-		// increase message counter
-		metric.messages.Add(1)
-		// increase sample counter
-		metric.samples.Add(s)
-		// increase duration counter
-		metric.duration.add(signal.DurationOf(sampleRate, s))
-		// increase latency counter
-		metric.latency.set(time.Since(calledAt))
-		calledAt = time.Now()
-	}
 }
 
 func getType(component interface{}) string {
@@ -91,18 +130,7 @@ func getType(component interface{}) string {
 	return rv.Type().String()
 }
 
-const (
-	// MessageCounter measures number of messages.
-	MessageCounter = "Messages"
-	// SampleCounter measures number of samples.
-	SampleCounter = "Samples"
-	// LatencyCounter measures latency between processing calls.
-	LatencyCounter = "Latency"
-	// DurationCounter counts what's the duration of signal.
-	DurationCounter = "Duration"
-)
-
-// Duration allows to format time.Duration metric values.
+// duration allows to format time.Duration metric values.
 type duration struct {
 	d int64
 }
