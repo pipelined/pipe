@@ -11,7 +11,7 @@ import (
 	"github.com/pipelined/signal"
 )
 
-const ComponentsLabel = "pipe.components"
+const componentsLabel = "pipe.components"
 
 const (
 	// MessageCounter measures number of messages.
@@ -42,7 +42,21 @@ var (
 
 // Get metrics values for provided component type.
 func Get(component interface{}) map[string]string {
-	componentType := getType(component)
+	return getCounters(getType(component))
+}
+
+// GetAll returns counters for all measured components.
+func GetAll() map[string]map[string]string {
+	m := make(map[string]map[string]string)
+	components.Lock()
+	defer components.Unlock()
+	for component := range components.m {
+		m[component] = getCounters(component)
+	}
+	return m
+}
+
+func getCounters(componentType string) map[string]string {
 	m := make(map[string]string)
 	for _, counter := range counters {
 		v := expvar.Get(key(componentType, counter))
@@ -119,7 +133,7 @@ func newMetric(componentType string) metric {
 }
 
 func key(componentType, counter string) string {
-	return fmt.Sprintf("%s.%s.%s", ComponentsLabel, componentType, counter)
+	return fmt.Sprintf("%s.%s.%s", componentsLabel, componentType, counter)
 }
 
 func getType(component interface{}) string {
