@@ -30,12 +30,6 @@ type Sink interface {
 	Sink(pipeID string, sampleRate, numChannels int) (func([][]float64) error, error)
 }
 
-// Logger is a global interface for pipe loggers
-type Logger interface {
-	Debug(...interface{})
-	Info(...interface{})
-}
-
 // newUID returns new unique id value.
 func newUID() string {
 	return xid.New().String()
@@ -78,11 +72,3 @@ func Wait(d chan error) error {
 	}
 	return nil
 }
-
-type silentLogger struct{}
-
-func (silentLogger) Debug(args ...interface{}) {}
-
-func (silentLogger) Info(args ...interface{}) {}
-
-var defaultLogger silentLogger

@@ -5,23 +5,12 @@ import (
 	"github.com/pipelined/pipe/metric"
 )
 
-// Metric measures performance of component.
-// type Metric interface {
-// 	AddComponent(componentID string, sampleRate int) ComponentMetric
-// }
-
-// // ComponentMetric captures metrics after each message being processed by component.
-// type ComponentMetric interface {
-// 	Message(size int) ComponentMetric
-// }
-
 // Net controls the execution of pipes.
 type Net struct {
 	*state.Handle
 	pipes            map[*Pipe]string  // map pipe to chain id
 	chains           map[string]chain  // map chain id to chain
 	chainByComponent map[string]string // map component id to chain id
-	log              Logger
 }
 
 // chain is a runtime chain of the pipeline.
@@ -35,9 +24,6 @@ type chain struct {
 	takec      chan message // emission of messages
 	params     state.Params
 }
-
-// Option provides a way to set functional parameters to the Net.
-type Option func(*Net) error
 
 // Network creates a new net.
 // Returned net is in Ready state.
@@ -64,7 +50,6 @@ func Network(ps ...*Pipe) (*Net, error) {
 		pipes:            pipes,
 		chains:           chains,
 		chainByComponent: chainByComponent,
-		log:              defaultLogger,
 	}
 	n.Handle = state.NewHandle(start(n), newMessage(n), pushParams(n))
 	go state.Loop(n.Handle)
@@ -111,14 +96,6 @@ func bindPipe(p *Pipe) (chain, error) {
 		components: components,
 		params:     make(map[string][]func()),
 	}, nil
-}
-
-// WithLogger sets logger to Pipe. If this option is not provided, silent logger is used.
-func WithLogger(logger Logger) Option {
-	return func(n *Net) error {
-		n.log = logger
-		return nil
-	}
 }
 
 // ComponentID finds id of the component within network.
