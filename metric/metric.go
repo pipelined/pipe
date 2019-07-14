@@ -1,122 +1,94 @@
 package metric
 
 import (
+	"expvar"
+	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/pipelined/pipe"
 	"github.com/pipelined/signal"
 )
 
-// Metric contains component's Meters.
-type Metric struct {
-	m      sync.Mutex
-	meters map[string]map[string]*atomic.Value
+const ComponentsLabel = "pipe.components"
+
+var (
+	components = metrics{
+		m: make(map[string]metric),
+	}
+)
+
+type metrics struct {
+	sync.Mutex
+	m map[string]metric
 }
 
-// counters read-only immutable map of atomic Counters.
-// type counters map[string]*atomic.Value
-
-// Measure is a snapshot of full metric with all counters.
-type Measure map[string]map[string]interface{}
-
-// addCounters to the metric. Metric used to generate measures for all counters.
-//
-// If id matches with existing counters, those will be replaced with the new one.
-// If no match found, new counters is added and returned.
-func (m *Metric) addCounters(id string, counters ...string) map[string]*atomic.Value {
-	m.m.Lock()
-	defer m.m.Unlock()
-
-	// remove current meter.
-	if m.meters == nil {
-		m.meters = make(map[string]map[string]*atomic.Value)
-	} else {
-		delete(m.meters, id)
+func (m *metrics) get(componentType string) metric {
+	m.Lock()
+	defer m.Unlock()
+	if metric, ok := m.m[componentType]; ok {
+		// return existing metric if available
+		return metric
 	}
-
-	// create new meter with provided counters
-	meter := make(map[string]*atomic.Value)
-
-	for _, counter := range counters {
-		meter[counter] = &atomic.Value{}
-	}
-
-	m.meters[id] = meter
-	return meter
+	// create new metric
+	metric := newMetric(componentType)
+	m.m[componentType] = metric
+	return metric
 }
 
-// Measure returns Metric's measures.
-func (m *Metric) Measure() Measure {
-	if m == nil {
-		return nil
-	}
-	r := make(map[string]map[string]interface{})
-	m.m.Lock()
-	defer m.m.Unlock()
-
-	for meterName, meter := range m.meters {
-		meterValues := make(map[string]interface{})
-		for counterName, counter := range meter {
-			meterValues[counterName] = counter.Load()
-		}
-		r[meterName] = meterValues
-	}
-
-	return r
+type metric struct {
+	key      string
+	messages *expvar.Int
+	samples  *expvar.Int
+	latency  *duration
+	duration *duration
 }
 
-// AddComponent creates new meter with component counters.
-func (m *Metric) AddComponent(componentID string, sampleRate int) pipe.ComponentMetric {
-	if m == nil {
-		return nil
+func newMetric(componentType string) metric {
+	m := metric{
+		key:      componentType,
+		messages: expvar.NewInt(Key(componentType, MessageCounter)),
+		samples:  expvar.NewInt(Key(componentType, SampleCounter)),
+		latency:  &duration{},
+		duration: &duration{},
 	}
-	meter := Component{
-		sampleRate:  sampleRate,
-		startedAt:   time.Now(),
-		processedAt: time.Now(),
-	}
-
-	meter.counters = m.addCounters(componentID, componentCounters...)
-	store(meter.counters, StartCounter, meter.startedAt)
-
-	return &meter
-}
-
-// Component contains all component's counters.
-type Component struct {
-	counters    map[string]*atomic.Value
-	sampleRate  int
-	startedAt   time.Time     // StartCounter
-	messages    int64         // MessageCounter
-	samples     int64         // SampleCounter
-	latency     time.Duration // LatencyCounter
-	processedAt time.Time
-	elapsed     time.Duration // ElapsedCounter
-	duration    time.Duration // DurationCounter
-}
-
-// Message capture metrics after samples are processed.
-func (m *Component) Message(s int) pipe.ComponentMetric {
-	if m == nil {
-		return nil
-	}
-	m.samples = m.samples + int64(s)
-	m.duration = signal.DurationOf(m.sampleRate, m.samples)
-
-	store(m.counters, SampleCounter, m.samples)
-	store(m.counters, DurationCounter, m.duration)
-	m.messages++
-	m.latency = time.Since(m.processedAt)
-	m.processedAt = time.Now()
-	m.elapsed = time.Since(m.startedAt)
-
-	store(m.counters, MessageCounter, m.messages)
-	store(m.counters, LatencyCounter, m.latency)
-	store(m.counters, ElapsedCounter, m.elapsed)
-
+	expvar.Publish(Key(componentType, LatencyCounter), m.latency)
+	expvar.Publish(Key(componentType, DurationCounter), m.duration)
 	return m
+}
+
+func Key(componentType, counter string) string {
+	return fmt.Sprintf("%s.%s.%s", ComponentsLabel, componentType, counter)
+}
+
+// Meter creates new meter with component counters.
+func Meter(component interface{}, sampleRate int) func(int64) {
+	// get component type
+	t := getType(component)
+	// get metric
+	metric := components.get(t)
+	// reset time
+	calledAt := time.Now()
+	return func(s int64) {
+		// increase message counter
+		metric.messages.Add(1)
+		// increase sample counter
+		metric.samples.Add(s)
+		// increase duration counter
+		metric.duration.add(signal.DurationOf(sampleRate, s))
+		// increase latency counter
+		metric.latency.set(time.Since(calledAt))
+		calledAt = time.Now()
+	}
+}
+
+func getType(component interface{}) string {
+	rv := reflect.ValueOf(component)
+	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	return rv.Type().String()
 }
 
 const (
@@ -124,22 +96,25 @@ const (
 	MessageCounter = "Messages"
 	// SampleCounter measures number of samples.
 	SampleCounter = "Samples"
-	// StartCounter fixes when runner started.
-	StartCounter = "Start"
 	// LatencyCounter measures latency between processing calls.
 	LatencyCounter = "Latency"
-	// ElapsedCounter fixes when runner ended.
-	ElapsedCounter = "Elapsed"
 	// DurationCounter counts what's the duration of signal.
 	DurationCounter = "Duration"
 )
 
-// counters is a structure for metrics initialization.
-var componentCounters = []string{MessageCounter, SampleCounter, StartCounter, LatencyCounter, DurationCounter, ElapsedCounter}
+// Duration allows to format time.Duration metric values.
+type duration struct {
+	d int64
+}
 
-// Store new counter value.
-func store(m map[string]*atomic.Value, c string, v interface{}) {
-	if counter, ok := m[c]; ok {
-		counter.Store(v)
-	}
+func (v *duration) String() string {
+	return fmt.Sprintf("%v", time.Duration(atomic.LoadInt64(&v.d)))
+}
+
+func (v *duration) add(delta time.Duration) {
+	atomic.AddInt64(&v.d, int64(delta))
+}
+
+func (v *duration) set(value time.Duration) {
+	atomic.StoreInt64(&v.d, int64(value))
 }

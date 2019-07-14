@@ -97,7 +97,7 @@ func bindPump(pipeID string, p Pump) (*pumpRunner, int, int, error) {
 }
 
 // run the Pump runner.
-func (r *pumpRunner) run(bufferSize int, pipeID, componentID string, cancel <-chan struct{}, provide chan<- string, consume <-chan message, meter ComponentMetric) (<-chan message, <-chan error) {
+func (r *pumpRunner) run(bufferSize int, pipeID, componentID string, cancel <-chan struct{}, provide chan<- string, consume <-chan message, meter func(int64)) (<-chan message, <-chan error) {
 	out := make(chan message)
 	errc := make(chan error, 1)
 	go func() {
@@ -127,10 +127,7 @@ func (r *pumpRunner) run(bufferSize int, pipeID, componentID string, cancel <-ch
 			m.buffer, err = r.fn(bufferSize) // pump new buffer
 			// process buffer
 			if m.buffer != nil {
-				if meter != nil {
-					meter = meter.Message(m.buffer.Size())
-				}
-				// m.feedback.applyTo(componentID) // apply feedback
+				meter(int64(m.buffer.Size())) // capture metrics
 
 				// push message further
 				select {
@@ -170,7 +167,7 @@ func bindProcessor(pipeID string, sampleRate, numChannels int, p Processor) (*pr
 }
 
 // run the Processor runner.
-func (r *processRunner) run(pipeID, componentID string, cancel <-chan struct{}, in <-chan message, meter ComponentMetric) (<-chan message, <-chan error) {
+func (r *processRunner) run(pipeID, componentID string, cancel <-chan struct{}, in <-chan message, meter func(int64)) (<-chan message, <-chan error) {
 	errc := make(chan error, 1)
 	out := make(chan message)
 	go func() {
@@ -200,11 +197,7 @@ func (r *processRunner) run(pipeID, componentID string, cancel <-chan struct{}, 
 				return
 			}
 
-			if meter != nil {
-				meter = meter.Message(m.buffer.Size())
-			}
-
-			// m.feedback.applyTo(componentID) // apply feedback
+			meter(int64(m.buffer.Size())) // capture metrics
 
 			// send message further
 			select {
@@ -233,7 +226,7 @@ func bindSink(pipeID string, sampleRate, numChannels int, s Sink) (*sinkRunner, 
 }
 
 // run the sink runner.
-func (r *sinkRunner) run(pipeID, componentID string, cancel <-chan struct{}, in <-chan message, meter ComponentMetric) <-chan error {
+func (r *sinkRunner) run(pipeID, componentID string, cancel <-chan struct{}, in <-chan message, meter func(int64)) <-chan error {
 	errc := make(chan error, 1)
 	go func() {
 		defer close(errc)
@@ -260,11 +253,7 @@ func (r *sinkRunner) run(pipeID, componentID string, cancel <-chan struct{}, in 
 				return
 			}
 
-			if meter != nil {
-				meter = meter.Message(m.buffer.Size())
-			}
-
-			// m.feedback.applyTo(componentID) // apply feedback
+			meter(int64(m.buffer.Size())) // capture metrics
 		}
 	}()
 
