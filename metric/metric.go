@@ -67,27 +67,36 @@ func getCounters(componentType string) map[string]string {
 	return m
 }
 
+// ResetFunc returns new Measure closure. This closure is needed to postpone metrics
+// capture until component is actually running.
+type ResetFunc func() MeasureFunc
+
+// MeasureFunc captures metrics when buffer is processed.
+type MeasureFunc func(bufferSize int64)
+
 // Meter creates new meter closure to capture component counters.
-func Meter(component interface{}, sampleRate int) func(int64) {
+func Meter(component interface{}, sampleRate int) ResetFunc {
 	t := getType(component)
 	metric := components.get(t)
 	metric.components.Add(1)
-	calledAt := time.Now()
-	var (
-		bufferSize     int64
-		bufferDuration time.Duration
-	)
-	return func(s int64) {
-		metric.latency.set(time.Since(calledAt))
-		metric.messages.Add(1)
-		metric.samples.Add(s)
-		// recalculate buffer duration only when buffer size has changed
-		if bufferSize != s {
-			bufferSize = s
-			bufferDuration = signal.DurationOf(sampleRate, s)
+	return func() MeasureFunc {
+		calledAt := time.Now()
+		var (
+			bufferSize     int64
+			bufferDuration time.Duration
+		)
+		return func(s int64) {
+			metric.latency.set(time.Since(calledAt))
+			metric.messages.Add(1)
+			metric.samples.Add(s)
+			// recalculate buffer duration only when buffer size has changed
+			if bufferSize != s {
+				bufferSize = s
+				bufferDuration = signal.DurationOf(sampleRate, s)
+			}
+			metric.duration.add(bufferDuration)
+			calledAt = time.Now()
 		}
-		metric.duration.add(bufferDuration)
-		calledAt = time.Now()
 	}
 }
 
