@@ -2,7 +2,6 @@ package pipe
 
 import (
 	"github.com/pipelined/pipe/internal/state"
-	"github.com/pipelined/pipe/metric"
 )
 
 // Net controls the execution of pipes.
@@ -116,14 +115,14 @@ func start(n *Net) state.StartFunc {
 		for _, c := range n.chains {
 			// start pump
 			componentID := c.components[c.pump]
-			out, errc := c.pump.run(bufferSize, c.uid, componentID, cancelc, provide, c.takec, metric.Meter(c.pump, c.sampleRate))
+			out, errc := c.pump.run(bufferSize, c.uid, componentID, cancelc, provide, c.takec)
 			errcList = append(errcList, errc)
 
 			// start chained processesing
 			for _, proc := range c.processors {
 				componentID = c.components[proc]
 				// meter := n.metric.Meter(componentID, n.sampleRate)
-				out, errc = proc.run(c.uid, componentID, cancelc, out, metric.Meter(proc, c.sampleRate))
+				out, errc = proc.run(c.uid, componentID, cancelc, out)
 				errcList = append(errcList, errc)
 			}
 
@@ -148,7 +147,7 @@ func broadcastToSinks(sampleRate int, c chain, cancelc chan struct{}, in <-chan 
 	for i, s := range c.sinks {
 		componentID := c.components[s]
 		// meter := n.metric.Meter(componentID, n.sampleRate)
-		errc := s.run(c.uid, componentID, cancelc, broadcasts[i], metric.Meter(s, sampleRate))
+		errc := s.run(c.uid, componentID, cancelc, broadcasts[i])
 		errcList = append(errcList, errc)
 	}
 
@@ -165,7 +164,6 @@ func broadcastToSinks(sampleRate int, c chain, cancelc chan struct{}, in <-chan 
 					sourceID: msg.sourceID,
 					buffer:   msg.buffer,
 					params:   msg.params.Detach(c.components[c.sinks[i]]),
-					// Feedback: msg.Feedback.Detach(c.components[c.sinks[i]]),
 				}
 				select {
 				case broadcasts[i] <- m:

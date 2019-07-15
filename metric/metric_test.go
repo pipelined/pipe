@@ -47,9 +47,10 @@ func TestMeter(t *testing.T) {
 		},
 	}
 	// function to test meter.
-	testFn := func(fn func(int64), wg *sync.WaitGroup, buffers int, bufferSize int64) {
+	testFn := func(fn metric.ResetFunc, wg *sync.WaitGroup, buffers int, bufferSize int64) {
+		m := fn()
 		for i := 0; i < buffers; i++ {
-			fn(bufferSize)
+			m(bufferSize)
 		}
 		wg.Done()
 	}
