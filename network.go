@@ -63,27 +63,27 @@ func bindPipe(p *Pipe) (chain, error) {
 	if err != nil {
 		return chain{}, err
 	}
-	components[pumpRunner] = newUID()
+	components[p.Pump] = newUID()
 
 	processorRunners := make([]*processRunner, 0, len(p.Processors))
-	for _, proc := range p.Processors {
-		r, err := bindProcessor(uid, sampleRate, numChannels, proc)
+	for _, processor := range p.Processors {
+		r, err := bindProcessor(uid, sampleRate, numChannels, processor)
 		if err != nil {
 			return chain{}, err
 		}
 		processorRunners = append(processorRunners, r)
-		components[r] = newUID()
+		components[processor] = newUID()
 	}
 	// create all runners
 	sinkRunners := make([]*sinkRunner, 0, len(p.Sinks))
-	for _, s := range p.Sinks {
+	for _, sink := range p.Sinks {
 		// sinkRunner should not be created here.
-		r, err := bindSink(uid, sampleRate, numChannels, s)
+		r, err := bindSink(uid, sampleRate, numChannels, sink)
 		if err != nil {
 			return chain{}, err
 		}
 		sinkRunners = append(sinkRunners, r)
-		components[r] = newUID()
+		components[sink] = newUID()
 	}
 	return chain{
 		uid:        uid,
