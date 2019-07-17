@@ -1,11 +1,7 @@
 package pipe
 
 import (
-	"github.com/pipelined/pipe/internal/state"
-
 	"github.com/rs/xid"
-
-	"github.com/pipelined/signal"
 )
 
 // Pump is a source of samples. Pump method returns a new buffer with signal data.
@@ -44,13 +40,6 @@ type Pipe struct {
 	Pump
 	Processors []Processor
 	Sinks      []Sink
-}
-
-// message is a main structure for pipe transport
-type message struct {
-	sourceID string         // ID of pipe which spawned this message.
-	buffer   signal.Float64 // Buffer of message
-	params   state.Params   // params for pipe
 }
 
 // Processors is a helper function to use in pipe constructors.
