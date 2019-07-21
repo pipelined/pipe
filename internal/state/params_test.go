@@ -141,3 +141,72 @@ func TestAppendParams(t *testing.T) {
 		}
 	}
 }
+
+func TestDetachParams(t *testing.T) {
+	var tests = []struct {
+		mocks []*paramMock
+	}{
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 0,
+					expected:   0,
+				},
+			},
+		},
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 1,
+					expected:   10,
+				},
+			},
+		},
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 2,
+					expected:   20,
+				},
+				&paramMock{
+					uid:        "2",
+					operations: 3,
+					expected:   30,
+				},
+			},
+		},
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 4,
+					expected:   40,
+				},
+				&paramMock{
+					uid:        "2",
+					operations: 0,
+					expected:   0,
+				},
+			},
+		},
+	}
+
+	for _, c := range tests {
+		var params state.Params
+		for _, m := range c.mocks {
+			for j := 0; j < m.operations; j++ {
+				params = params.Add(m.uid, m.param())
+			}
+		}
+		for _, m := range c.mocks {
+			d := params.Detach(m.uid)
+			params.ApplyTo(m.uid)
+			assert.Equal(t, 0, m.value)
+			d.ApplyTo(m.uid)
+			assert.Equal(t, m.expected, m.value)
+		}
+	}
+}
