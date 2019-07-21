@@ -51,8 +51,8 @@ func (p Params) Detach(id string) Params {
 		return nil
 	}
 	if v, ok := p[id]; ok {
-		d := Params(make(map[string][]func()))
-		d[id] = v
+		d := map[string][]func(){id: v}
+		delete(p, id)
 		return d
 	}
 	return nil
