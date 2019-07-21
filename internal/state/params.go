@@ -4,14 +4,16 @@ package state
 type Params map[string][]func()
 
 // Add appends a slice of Params.
-func (p Params) Add(componentID string, paramFuncs ...func()) Params {
-	var private []func()
-	if _, ok := p[componentID]; !ok {
-		private = make([]func(), 0, len(paramFuncs))
+func (p Params) Add(id string, fns ...func()) Params {
+	if p == nil {
+		return map[string][]func(){id: fns}
 	}
-	private = append(private, paramFuncs...)
 
-	p[componentID] = private
+	if _, ok := p[id]; !ok {
+		p[id] = make([]func(), 0, len(fns))
+	}
+	p[id] = append(p[id], fns...)
+
 	return p
 }
 
@@ -20,9 +22,9 @@ func (p Params) ApplyTo(id string) {
 	if p == nil {
 		return
 	}
-	if Params, ok := p[id]; ok {
-		for _, param := range Params {
-			param()
+	if fns, ok := p[id]; ok {
+		for _, fn := range fns {
+			fn()
 		}
 		delete(p, id)
 	}
@@ -30,11 +32,14 @@ func (p Params) ApplyTo(id string) {
 
 // Merge two param sets into one.
 func (p Params) Merge(source Params) Params {
-	for newKey, newValues := range source {
-		if _, ok := p[newKey]; ok {
-			p[newKey] = append(p[newKey], newValues...)
+	if p == nil {
+		p = make(map[string][]func())
+	}
+	for id, fns := range source {
+		if _, ok := p[id]; ok {
+			p[id] = append(p[id], fns...)
 		} else {
-			p[newKey] = newValues
+			p[id] = fns
 		}
 	}
 	return p
