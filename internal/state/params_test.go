@@ -8,38 +8,136 @@ import (
 	"github.com/pipelined/pipe/internal/state"
 )
 
-func TestSimpleParams(t *testing.T) {
-	expected, value := 10, 0
-	fn := func() {
-		value = 10
-	}
-	p := state.Params(make(map[string][]func()))
-	uid := "testID"
-	p = p.Add(uid, fn)
-	p.ApplyTo(uid)
+// paramMock used to set up test cases for params
+type paramMock struct {
+	uid        string
+	value      int
+	operations int
+	expected   int
+}
 
-	assert.Equal(t, expected, value)
+func (m *paramMock) params() state.Params {
+	var p state.Params
+	return p.Add(m.uid, m.param())
+}
+
+// params closure to mutate value
+func (m *paramMock) param() func() {
+	return func() {
+		m.value += 10
+	}
+}
+
+func TestAddParams(t *testing.T) {
+	var tests = []struct {
+		mocks []*paramMock
+	}{
+		{},
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 0,
+					expected:   0,
+				},
+			},
+		},
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 1,
+					expected:   10,
+				},
+			},
+		},
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 2,
+					expected:   20,
+				},
+			},
+		},
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 3,
+					expected:   30,
+				},
+				&paramMock{
+					uid:        "2",
+					operations: 4,
+					expected:   40,
+				},
+			},
+		},
+	}
+
+	for _, c := range tests {
+		var params state.Params
+		for _, m := range c.mocks {
+			for j := 0; j < m.operations; j++ {
+				params = params.Add(m.uid, m.param())
+			}
+		}
+		for _, m := range c.mocks {
+			params.ApplyTo(m.uid)
+			assert.Equal(t, m.expected, m.value)
+		}
+	}
 }
 
 func TestMergeParams(t *testing.T) {
-	var p, newP state.Params
-	expected, value := 10, 0
-	fn := func() {
-		value += 10
+	var tests = []struct {
+		mocks []*paramMock
+	}{
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 0,
+					expected:   0,
+				},
+			},
+		},
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 1,
+					expected:   10,
+				},
+			},
+		},
+		{
+			mocks: []*paramMock{
+				&paramMock{
+					uid:        "1",
+					operations: 2,
+					expected:   20,
+				},
+				&paramMock{
+					uid:        "2",
+					operations: 3,
+					expected:   30,
+				},
+			},
+		},
 	}
 
-	p = make(map[string][]func())
-	newP = make(map[string][]func())
-	uid := "newUID"
-	newP.Add(uid, fn)
-	p = p.Merge(newP)
-	p.ApplyTo(uid)
-	assert.Equal(t, expected, value)
-
-	expected = 20
-	newP = make(map[string][]func())
-	newP = newP.Add(uid, fn)
-	p = p.Merge(newP)
-	p.ApplyTo(uid)
-	assert.Equal(t, expected, value)
+	for _, c := range tests {
+		var params state.Params
+		for _, m := range c.mocks {
+			for j := 0; j < m.operations; j++ {
+				params = params.Merge(m.params())
+			}
+		}
+		for _, m := range c.mocks {
+			params.ApplyTo(m.uid)
+			assert.Equal(t, m.expected, m.value)
+		}
+	}
 }
