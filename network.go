@@ -211,7 +211,7 @@ func pushParams(n *Net) state.PushParamsFunc {
 	return func(componentID string, params state.Params) {
 		chainID := n.chainByComponent[componentID]
 		chain := n.chains[chainID]
-		chain.params = chain.params.Merge(params)
+		chain.params = chain.params.Append(params)
 		n.chains[chainID] = chain
 	}
 }

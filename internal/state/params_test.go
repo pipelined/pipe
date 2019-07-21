@@ -90,7 +90,7 @@ func TestAddParams(t *testing.T) {
 	}
 }
 
-func TestMergeParams(t *testing.T) {
+func TestAppendParams(t *testing.T) {
 	var tests = []struct {
 		mocks []*paramMock
 	}{
@@ -132,7 +132,7 @@ func TestMergeParams(t *testing.T) {
 		var params state.Params
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				params = params.Merge(m.params())
+				params = params.Append(m.params())
 			}
 		}
 		for _, m := range c.mocks {

@@ -30,8 +30,8 @@ func (p Params) ApplyTo(id string) {
 	}
 }
 
-// Merge two param sets into one.
-func (p Params) Merge(source Params) Params {
+// Append param set to another set.
+func (p Params) Append(source Params) Params {
 	if p == nil {
 		p = make(map[string][]func())
 	}
