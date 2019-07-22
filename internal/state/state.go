@@ -20,7 +20,7 @@ type Handle struct {
 	givec chan string
 	// errc used to fan-in errors from components.
 	// created in run event, closed when all components are done.
-	errc chan error
+	merger
 	// cancel the net execution.
 	// created in run event, closed on cancel event or when error is recieved.
 	cancelc      chan struct{}
@@ -29,8 +29,46 @@ type Handle struct {
 	pushParamsFn PushParamsFunc
 }
 
+// merger fans-in error channels.
+type merger struct {
+	wg   *sync.WaitGroup
+	errc chan error
+}
+
+// merge error channels from all components into one.
+func mergeErrors(errcList []<-chan error) merger {
+	m := merger{
+		wg:   &sync.WaitGroup{},
+		errc: make(chan error, 1),
+	}
+
+	//function to wait for error channel
+	m.wg.Add(len(errcList))
+	for _, ec := range errcList {
+		go m.done(ec)
+	}
+
+	//wait and close out
+	go func() {
+		m.wg.Wait()
+		close(m.errc)
+	}()
+	return m
+}
+
+func (m merger) done(ec <-chan error) {
+	// block until error is received or channel is closed
+	if err, ok := <-ec; ok {
+		select {
+		case m.errc <- err:
+		default:
+		}
+	}
+	m.wg.Done()
+}
+
 // StartFunc is the closure to trigger the start of a pipe.
-type StartFunc func(bufferSize int, cancelc chan struct{}, provide chan<- string) []<-chan error
+type StartFunc func(bufferSize int, cancelc chan struct{}, givec chan<- string) []<-chan error
 
 // NewMessageFunc is the closure to send a message into a pipe.
 type NewMessageFunc func(pipeID string)
@@ -259,9 +297,7 @@ func (s idleReady) transition(h *Handle, e eventMessage) (state, error) {
 		return s, nil
 	case run:
 		h.cancelc = make(chan struct{})
-		h.errc = make(chan error)
-		errcList := h.startFn(e.bufferSize, h.cancelc, h.givec)
-		mergeErrors(h.errc, errcList...)
+		h.merger = mergeErrors(h.startFn(e.bufferSize, h.cancelc, h.givec))
 		return running, nil
 	}
 	return s, ErrInvalidState
@@ -341,30 +377,7 @@ func receivedBy(wg *sync.WaitGroup, id string) func() {
 	}
 }
 
-// merge error channels from all components into one.
-func mergeErrors(errc chan<- error, errcList ...<-chan error) {
-	var wg sync.WaitGroup
-
-	//function to wait for error channel
-	output := func(ec <-chan error) {
-		for e := range ec {
-			errc <- e
-		}
-		wg.Done()
-	}
-	wg.Add(len(errcList))
-	for _, ec := range errcList {
-		go output(ec)
-	}
-
-	//wait and close out
-	go func() {
-		wg.Wait()
-		close(errc)
-	}()
-}
-
-func wait(d chan error) error {
+func wait(d <-chan error) error {
 	for err := range d {
 		if err != nil {
 			return err
