@@ -53,7 +53,7 @@ func Network(ps ...*Pipe) (*Net, error) {
 		chainByComponent: chainByComponent,
 	}
 	n.Handle = state.NewHandle(start(n), newMessage(n), pushParams(n))
-	go state.Loop(n.Handle)
+	go state.Loop(n.Handle, state.Ready)
 	return n, nil
 }
 
@@ -125,13 +125,13 @@ func (n *Net) ComponentID(component interface{}) (id string, ok bool) {
 
 // start starts the execution of pipe.
 func start(n *Net) state.StartFunc {
-	return func(bufferSize int, cancelc chan struct{}, provide chan<- string) []<-chan error {
+	return func(bufferSize int, cancelc chan struct{}, givec chan<- string) []<-chan error {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
 		for _, c := range n.chains {
 			// start pump
 			componentID := c.components[c.pump]
-			out, errc := c.pump.Run(bufferSize, c.uid, componentID, cancelc, provide, c.takec)
+			out, errc := c.pump.Run(bufferSize, c.uid, componentID, cancelc, givec, c.takec)
 			errcList = append(errcList, errc)
 
 			// start chained processesing
