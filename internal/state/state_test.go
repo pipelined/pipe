@@ -38,7 +38,7 @@ func (m pushParamsFuncMock) fn() state.PushParamsFunc {
 func TestReadyHandle(t *testing.T) {
 	var err error
 	h := newHandle()
-
+	go state.Loop(h, state.Ready)
 	err = pipe.Wait(h.Close())
 	assert.Nil(t, err)
 }
@@ -54,7 +54,5 @@ func newHandle() *state.Handle {
 		newMessageMock.fn(),
 		pushParamsMock.fn(),
 	)
-
-	go state.Loop(h)
 	return h
 }

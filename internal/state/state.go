@@ -35,38 +35,6 @@ type merger struct {
 	errc chan error
 }
 
-// merge error channels from all components into one.
-func mergeErrors(errcList []<-chan error) merger {
-	m := merger{
-		wg:   &sync.WaitGroup{},
-		errc: make(chan error, 1),
-	}
-
-	//function to wait for error channel
-	m.wg.Add(len(errcList))
-	for _, ec := range errcList {
-		go m.done(ec)
-	}
-
-	//wait and close out
-	go func() {
-		m.wg.Wait()
-		close(m.errc)
-	}()
-	return m
-}
-
-func (m merger) done(ec <-chan error) {
-	// block until error is received or channel is closed
-	if err, ok := <-ec; ok {
-		select {
-		case m.errc <- err:
-		default:
-		}
-	}
-	m.wg.Done()
-}
-
 // StartFunc is the closure to trigger the start of a pipe.
 type StartFunc func(bufferSize int, cancelc chan struct{}, givec chan<- string) []<-chan error
 
@@ -95,21 +63,17 @@ type activeState interface {
 
 // states
 type (
-	idleReady     struct{}
-	activeRunning struct{}
-	idlePaused    struct{}
+	ready   struct{}
+	running struct{}
+	paused  struct{}
 )
 
 // states variables
 var (
-	ready   idleReady     // Ready means that pipe can be started.
-	running activeRunning // Running means that pipe is executing at the moment.
-	paused  idlePaused    // Paused means that pipe is paused and can be resumed.
+	Ready   ready   // Ready means that pipe can be started.
+	Running running // Running means that pipe is executing at the moment.
+	Paused  paused  // Paused means that pipe is paused and can be resumed.
 )
-
-// actionFn is an action function which causes a pipe state change
-// chan error is closed when state is changed
-type actionFn func(h *Handle) chan error
 
 // event identifies the type of event
 type event int
@@ -157,7 +121,7 @@ func (h *Handle) Run(bufferSize int) chan error {
 		event:      run,
 		bufferSize: bufferSize,
 		target: target{
-			state: ready,
+			state: Ready,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -171,7 +135,7 @@ func (h *Handle) Pause() chan error {
 	pauseEvent := eventMessage{
 		event: pause,
 		target: target{
-			state: paused,
+			state: Paused,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -185,7 +149,7 @@ func (h *Handle) Resume() chan error {
 	resumeEvent := eventMessage{
 		event: resume,
 		target: target{
-			state: ready,
+			state: Ready,
 			errc:  make(chan error, 1),
 		},
 	}
@@ -195,15 +159,15 @@ func (h *Handle) Resume() chan error {
 
 // Close must be called to clean up handle's resources.
 func (h *Handle) Close() chan error {
-	resumeEvent := eventMessage{
+	cancelEvent := eventMessage{
 		event: cancel,
 		target: target{
 			state: nil,
 			errc:  make(chan error, 1),
 		},
 	}
-	h.eventc <- resumeEvent
-	return resumeEvent.target.errc
+	h.eventc <- cancelEvent
+	return cancelEvent.target.errc
 }
 
 // Push new params into pipe.
@@ -219,8 +183,7 @@ func (h *Handle) Push(component interface{}, paramFuncs ...func()) {
 }
 
 // Loop listens until nil state is returned.
-func Loop(h *Handle) {
-	var s state = ready
+func Loop(h *Handle, s state) {
 	t := target{}
 	for s != nil {
 		s, t = s.listen(h, t)
@@ -233,7 +196,7 @@ func Loop(h *Handle) {
 // idle is used to listen to handle's channels which are relevant for idle state.
 // s is the new state, t is the target state and d channel to notify target transition.
 func (h *Handle) idle(s idleState, t target) (state, target) {
-	if s == t.state || s == ready {
+	if s == t.state || s == Ready {
 		t = t.dismiss()
 	}
 	for {
@@ -276,7 +239,7 @@ func (h *Handle) active(s activeState, t target) (state, target) {
 				close(h.cancelc)
 				t.handle(err)
 			}
-			return ready, t
+			return Ready, t
 		}
 		if s != newState {
 			return newState, t
@@ -284,11 +247,11 @@ func (h *Handle) active(s activeState, t target) (state, target) {
 	}
 }
 
-func (s idleReady) listen(h *Handle, t target) (state, target) {
+func (s ready) listen(h *Handle, t target) (state, target) {
 	return h.idle(s, t)
 }
 
-func (s idleReady) transition(h *Handle, e eventMessage) (state, error) {
+func (s ready) transition(h *Handle, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
 		return nil, nil
@@ -298,16 +261,16 @@ func (s idleReady) transition(h *Handle, e eventMessage) (state, error) {
 	case run:
 		h.cancelc = make(chan struct{})
 		h.merger = mergeErrors(h.startFn(e.bufferSize, h.cancelc, h.givec))
-		return running, nil
+		return Running, nil
 	}
 	return s, ErrInvalidState
 }
 
-func (s activeRunning) listen(h *Handle, t target) (state, target) {
+func (s running) listen(h *Handle, t target) (state, target) {
 	return h.active(s, t)
 }
 
-func (s activeRunning) transition(h *Handle, e eventMessage) (state, error) {
+func (s running) transition(h *Handle, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
 		close(h.cancelc)
@@ -317,21 +280,21 @@ func (s activeRunning) transition(h *Handle, e eventMessage) (state, error) {
 		h.pushParamsFn("", e.Params)
 		return s, nil
 	case pause:
-		return paused, nil
+		return Paused, nil
 	}
 	return s, ErrInvalidState
 }
 
-func (s activeRunning) sendMessage(h *Handle, pipeID string) state {
+func (s running) sendMessage(h *Handle, pipeID string) state {
 	h.newMessageFn(pipeID)
 	return s
 }
 
-func (s idlePaused) listen(h *Handle, t target) (state, target) {
+func (s paused) listen(h *Handle, t target) (state, target) {
 	return h.idle(s, t)
 }
 
-func (s idlePaused) transition(h *Handle, e eventMessage) (state, error) {
+func (s paused) transition(h *Handle, e eventMessage) (state, error) {
 	switch e.event {
 	case cancel:
 		close(h.cancelc)
@@ -341,7 +304,7 @@ func (s idlePaused) transition(h *Handle, e eventMessage) (state, error) {
 		h.pushParamsFn("", e.Params)
 		return s, nil
 	case resume:
-		return running, nil
+		return Running, nil
 	}
 	return s, ErrInvalidState
 }
@@ -399,4 +362,36 @@ func (e event) String() string {
 		return "params"
 	}
 	return "unknown"
+}
+
+// merge error channels from all components into one.
+func mergeErrors(errcList []<-chan error) merger {
+	m := merger{
+		wg:   &sync.WaitGroup{},
+		errc: make(chan error, 1),
+	}
+
+	//function to wait for error channel
+	m.wg.Add(len(errcList))
+	for _, ec := range errcList {
+		go m.done(ec)
+	}
+
+	//wait and close out
+	go func() {
+		m.wg.Wait()
+		close(m.errc)
+	}()
+	return m
+}
+
+func (m merger) done(ec <-chan error) {
+	// block until error is received or channel is closed
+	if err, ok := <-ec; ok {
+		select {
+		case m.errc <- err:
+		default:
+		}
+	}
+	m.wg.Done()
 }
