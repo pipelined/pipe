@@ -9,6 +9,8 @@ import (
 	"github.com/pipelined/pipe/internal/state"
 )
 
+const bufferSize = 1024
+
 type startFuncMock struct{}
 
 func (m startFuncMock) fn() state.StartFunc {
@@ -24,35 +26,102 @@ func (m startFuncMock) fn() state.StartFunc {
 
 type newMessageFuncMock struct{}
 
-func (m newMessageFuncMock) fn() state.NewMessageFunc {
+func (m *newMessageFuncMock) fn() state.NewMessageFunc {
 	return func(pipeID string) {}
 }
 
-type pushParamsFuncMock struct{}
+type pushParamsFuncMock struct {
+	state.Params
+}
 
-func (m pushParamsFuncMock) fn() state.PushParamsFunc {
-	return func(componentID string, params state.Params) {}
+func (m *pushParamsFuncMock) fn() state.PushParamsFunc {
+	return func(id string, params state.Params) {
+		m.Params = m.Params.Append(params)
+	}
 }
 
 // Test Handle in the ready state.
-func TestReadyHandle(t *testing.T) {
-	var err error
-	h := newHandle()
-	go state.Loop(h, state.Ready)
-	err = pipe.Wait(h.Close())
-	assert.Nil(t, err)
-}
-
-func newHandle() *state.Handle {
+func TestInvalidState(t *testing.T) {
 	var (
+		err            error
+		ok             bool
 		startMock      startFuncMock
 		newMessageMock newMessageFuncMock
-		pushParamsMock pushParamsFuncMock
 	)
+	pushParamsMock := &pushParamsFuncMock{}
+	readyParam := &paramMock{uid: "readyParam"}
+	runningParam := &paramMock{uid: "runningParam"}
+	pausedParam := &paramMock{uid: "pausedParam"}
+
 	h := state.NewHandle(
 		startMock.fn(),
 		newMessageMock.fn(),
 		pushParamsMock.fn(),
 	)
-	return h
+	go state.Loop(h, state.Ready)
+
+	runc := testReady(t, h, readyParam)
+	testRunning(t, h, runc, runningParam)
+	testPaused(t, h, pausedParam)
+
+	_, ok = pushParamsMock.Params[readyParam.uid]
+	assert.True(t, ok)
+	_, ok = pushParamsMock.Params[runningParam.uid]
+	assert.True(t, ok)
+	_, ok = pushParamsMock.Params[pausedParam.uid]
+	assert.True(t, ok)
+
+	err = pipe.Wait(h.Close())
+	assert.Nil(t, err)
+}
+
+func testReady(t *testing.T, h *state.Handle, m *paramMock) <-chan error {
+	var err error
+	// push params
+	h.Push(m.uid, m.param())
+
+	// test invalid actions
+	err = pipe.Wait(h.Pause())
+	assert.Equal(t, state.ErrInvalidState, err)
+	err = pipe.Wait(h.Resume())
+	assert.Equal(t, state.ErrInvalidState, err)
+
+	// transition to the next state
+	runc := h.Run(bufferSize)
+	assert.NotNil(t, runc)
+	return runc
+}
+
+func testRunning(t *testing.T, h *state.Handle, runc <-chan error, m *paramMock) {
+	var err error
+	// push params
+	h.Push(m.uid, m.param())
+
+	err = pipe.Wait(h.Resume())
+	assert.Equal(t, state.ErrInvalidState, err)
+
+	err = pipe.Wait(h.Run(bufferSize))
+	assert.Equal(t, state.ErrInvalidState, err)
+
+	// transition to the next state
+	pausec := h.Pause()
+	assert.NotNil(t, pausec)
+	// this target has to be cancelled now
+	assert.Nil(t, pipe.Wait(runc))
+}
+
+func testPaused(t *testing.T, h *state.Handle, m *paramMock) {
+	var err error
+	// push params
+	h.Push(m.uid, m.param())
+
+	err = pipe.Wait(h.Pause())
+	assert.Equal(t, state.ErrInvalidState, err)
+
+	err = pipe.Wait(h.Run(bufferSize))
+	assert.Equal(t, state.ErrInvalidState, err)
+
+	// transition to the next state
+	resumec := h.Resume()
+	assert.NotNil(t, resumec)
 }
