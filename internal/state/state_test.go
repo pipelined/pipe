@@ -43,8 +43,8 @@ func (m *pushParamsFuncMock) fn() state.PushParamsFunc {
 // Test Handle in the ready state.
 func TestInvalidState(t *testing.T) {
 	var (
-		err            error
-		errc           chan error
+		err error
+		// errc           chan error
 		ok             bool
 		startMock      startFuncMock
 		newMessageMock newMessageFuncMock
@@ -61,13 +61,16 @@ func TestInvalidState(t *testing.T) {
 	)
 	go state.Loop(h, state.Ready)
 
-	_ = testReady(t, h, readyParam)
+	runc := testReady(t, h, readyParam)
 	// testRunning(t, h, runc, runningParam)
 	// testPaused(t, h, pausedParam)
 
-	errc = make(chan error)
+	errc := make(chan error)
 	h.Eventc <- state.Close{Feedback: errc}
 	err = pipe.Wait(errc)
+	assert.Nil(t, err)
+
+	err = pipe.Wait(runc)
 	assert.Nil(t, err)
 
 	_, ok = pushParamsMock.Params[readyParam.uid]

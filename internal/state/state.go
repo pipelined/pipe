@@ -80,46 +80,60 @@ var (
 
 // Event triggers the state change.
 // Use imperative verbs for implementations.
+//
+// Target identifies which idle state is expected after event is sent.
+// Errc is used to provide feedback to the caller.
 type Event interface {
 	Target() State
 	Errc() chan error
 }
 
+// Feedback is a wrapper for error channels. It's used to give feedback
+// about state change or error occured during that change.
 type Feedback chan error
 
+// Errc exposes error channel and used to satisfy Event interface.
 func (f Feedback) Errc() chan error {
 	return f
 }
 
+// Run event is sent to start the run.
 type Run struct {
 	BufferSize int
 	Feedback
 }
 
+// Target state of the Run event is Ready.
 func (Run) Target() State {
 	return Ready
 }
 
+// Pause event is sent to pause the run.
 type Pause struct {
 	Feedback
 }
 
+// Target state of the Pause event is Paused.
 func (Pause) Target() State {
 	return Paused
 }
 
+// Resume event is sent to resume the run.
 type Resume struct {
 	Feedback
 }
 
+// Target state of the Resume event is Ready.
 func (Resume) Target() State {
 	return Ready
 }
 
+// Close event is sent to close the Handle.
 type Close struct {
 	Feedback
 }
 
+// Target state of the Close event is nil.
 func (Close) Target() State {
 	return nil
 }
