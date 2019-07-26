@@ -53,7 +53,7 @@ func Sinks(sinks ...Sink) []Sink {
 }
 
 // Wait for state transition or first error to occur.
-func Wait(d chan error) error {
+func Wait(d <-chan error) error {
 	for err := range d {
 		if err != nil {
 			return err

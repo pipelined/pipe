@@ -12,9 +12,12 @@ var (
 
 // Handle manages the lifecycle of the pipe.
 type Handle struct {
-	// event channel used to handle new events for state machine.
-	// created in custructor, never closed.
-	eventc chan event
+	// Event channel used to handle new events for state machine.
+	// created in constructor, closed when Handle is closed.
+	Eventc chan Event
+	// Params channel used to recieve new parameters.
+	// created in constructor, closed when Handle is closed.
+	Paramc chan Params
 	// ask for new message request for the chain.
 	// created in custructor, never closed.
 	givec chan string
@@ -42,12 +45,12 @@ type StartFunc func(bufferSize int, cancelc chan struct{}, givec chan<- string) 
 type NewMessageFunc func(pipeID string)
 
 // PushParamsFunc is the closure to push new params into pipe.
-type PushParamsFunc func(componentID string, params Params)
+type PushParamsFunc func(params Params)
 
 // State identifies one of the possible states pipe can be in.
 type State interface {
-	listen(*Handle, target) (State, target)
-	transition(*Handle, event) (State, error)
+	listen(*Handle, State, Feedback) (State, State, Feedback)
+	transition(*Handle, Event) (State, error)
 }
 
 // idleState identifies that the pipe is ONLY waiting for user to send an event.
@@ -75,37 +78,57 @@ var (
 	Paused  paused  // Paused means that pipe is paused and can be resumed.
 )
 
-// eventType identifies the type of event
-type eventType int
-
-// event is passed into pipe's event channel when user does some action.
-type event struct {
-	eventType          // event type.
-	Params             // new Params.
-	componentID string // ids of components which need to be called.
-	target
-	bufferSize int
+// Event triggers the state change.
+// Use imperative verbs for implementations.
+type Event interface {
+	Target() State
+	Errc() chan error
 }
 
-// target identifies which state is expected from pipe.
-type target struct {
-	state idleState  // end state for this event.
-	errc  chan error // channel to send errors. it's closed when target state is reached.
+type Feedback chan error
+
+func (f Feedback) Errc() chan error {
+	return f
 }
 
-// types of events.
-const (
-	run eventType = iota
-	pause
-	resume
-	push
-	cancel
-)
+type Run struct {
+	BufferSize int
+	Feedback
+}
+
+func (Run) Target() State {
+	return Ready
+}
+
+type Pause struct {
+	Feedback
+}
+
+func (Pause) Target() State {
+	return Paused
+}
+
+type Resume struct {
+	Feedback
+}
+
+func (Resume) Target() State {
+	return Ready
+}
+
+type Close struct {
+	Feedback
+}
+
+func (Close) Target() State {
+	return nil
+}
 
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
 func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParamsFunc) *Handle {
 	h := Handle{
-		eventc:       make(chan event, 1),
+		Eventc:       make(chan Event, 1),
+		Paramc:       make(chan Params, 1),
 		givec:        make(chan string),
 		startFn:      start,
 		newMessageFn: newMessage,
@@ -114,134 +137,77 @@ func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParams
 	return &h
 }
 
-// Run sends a run event into handle.
-// Calling this method after handle is closed causes a panic.
-func (h *Handle) Run(bufferSize int) chan error {
-	run := event{
-		eventType:  run,
-		bufferSize: bufferSize,
-		target: target{
-			state: Ready,
-			errc:  make(chan error, 1),
-		},
-	}
-	h.eventc <- run
-	return run.target.errc
-}
-
-// Pause sends a pause event into handle.
-// Calling this method after handle is closed causes a panic.
-func (h *Handle) Pause() chan error {
-	pause := event{
-		eventType: pause,
-		target: target{
-			state: Paused,
-			errc:  make(chan error, 1),
-		},
-	}
-	h.eventc <- pause
-	return pause.target.errc
-}
-
-// Resume sends a resume event into handle.
-// Calling this method after handle is closed causes a panic.
-func (h *Handle) Resume() chan error {
-	resume := event{
-		eventType: resume,
-		target: target{
-			state: Ready,
-			errc:  make(chan error, 1),
-		},
-	}
-	h.eventc <- resume
-	return resume.target.errc
-}
-
-// Close must be called to clean up handle's resources.
-func (h *Handle) Close() chan error {
-	cancel := event{
-		eventType: cancel,
-		target: target{
-			state: nil,
-			errc:  make(chan error, 1),
-		},
-	}
-	h.eventc <- cancel
-	return cancel.target.errc
-}
-
-// Push new params into pipe.
-// Calling this method after pipe is closed causes a panic.
-func (h *Handle) Push(id string, paramFuncs ...func()) {
-	params := Params(make(map[string][]func()))
-	h.eventc <- event{
-		componentID: id,
-		eventType:   push,
-		Params:      params.Add(id, paramFuncs...),
-	}
-}
-
 // Loop listens until nil state is returned.
 func Loop(h *Handle, s State) {
-	t := target{}
+	var (
+		t State
+		f Feedback
+	)
 	for s != nil {
-		s, t = s.listen(h, t)
+		s, t, f = s.listen(h, t, f)
 	}
-	// cancel last pending target
-	t.dismiss()
-	close(h.eventc)
+	// close control channels
+	close(h.Eventc)
+	close(h.Paramc)
+	close(f)
 }
 
 // idle is used to listen to handle's channels which are relevant for idle state.
 // s is the new state, t is the target state and d channel to notify target transition.
-func (h *Handle) idle(s idleState, t target) (State, target) {
-	if s == t.state || s == Ready {
-		t = t.dismiss()
+func (h *Handle) idle(s idleState, t State, f Feedback) (State, State, Feedback) {
+	if s == t {
+		f = f.dismiss()
 	}
+	var err error
+	newState := State(s)
 	for {
-		var newState State
-		var err error
 		select {
-		case e := <-h.eventc:
+		case e := <-h.Eventc:
 			newState, err = s.transition(h, e)
 			if err != nil {
-				e.target.handle(err)
-			} else if e.hasTarget() {
-				t.dismiss()
-				t = e.target
+				handle(e.Errc(), err)
+			} else {
+				f.dismiss()
+				f = e.Errc()
+				t = e.Target()
 			}
+		case params := <-h.Paramc:
+			h.pushParamsFn(params)
 		}
 		if s != newState {
-			return newState, t
+			return newState, t, f
 		}
 	}
 }
 
 // active is used to listen to handle's channels which are relevant for active state.
-func (h *Handle) active(s activeState, t target) (State, target) {
+func (h *Handle) active(s activeState, t State, f Feedback) (State, State, Feedback) {
+	var err error
+	newState := State(s)
 	for {
-		var newState State
-		var err error
 		select {
-		case e := <-h.eventc:
+		case e := <-h.Eventc:
 			newState, err = s.transition(h, e)
 			if err != nil {
-				e.target.handle(err)
-			} else if e.hasTarget() {
-				t.dismiss()
-				t = e.target
+				handle(e.Errc(), err)
+			} else {
+				f.dismiss()
+				f = e.Errc()
+				t = e.Target()
 			}
+		case params := <-h.Paramc:
+			h.pushParamsFn(params)
 		case pipeID := <-h.givec:
 			newState = s.sendMessage(h, pipeID)
 		case err, ok := <-h.errc:
 			if ok {
 				close(h.cancelc)
-				t.handle(err)
+				handle(f, err)
 			}
-			return Ready, t
+			return Ready, t, f
 		}
 		if s != newState {
-			return newState, t
+			return newState, t, f
 		}
 	}
 }
@@ -254,37 +220,31 @@ func (h *Handle) cancel() error {
 	return nil
 }
 
-func (s ready) listen(h *Handle, t target) (State, target) {
-	return h.idle(s, t)
+func (s ready) listen(h *Handle, t State, f Feedback) (State, State, Feedback) {
+	return h.idle(s, t, f)
 }
 
-func (s ready) transition(h *Handle, e event) (State, error) {
-	switch e.eventType {
-	case cancel:
+func (s ready) transition(h *Handle, e Event) (State, error) {
+	switch ev := e.(type) {
+	case Close:
 		return nil, h.cancel()
-	case push:
-		h.pushParamsFn(e.componentID, e.Params)
-		return s, nil
-	case run:
+	case Run:
 		h.cancelc = make(chan struct{})
-		h.merger = mergeErrors(h.startFn(e.bufferSize, h.cancelc, h.givec))
+		h.merger = mergeErrors(h.startFn(ev.BufferSize, h.cancelc, h.givec))
 		return Running, nil
 	}
 	return s, ErrInvalidState
 }
 
-func (s running) listen(h *Handle, t target) (State, target) {
-	return h.active(s, t)
+func (s running) listen(h *Handle, t State, f Feedback) (State, State, Feedback) {
+	return h.active(s, t, f)
 }
 
-func (s running) transition(h *Handle, e event) (State, error) {
-	switch e.eventType {
-	case cancel:
+func (s running) transition(h *Handle, e Event) (State, error) {
+	switch e.(type) {
+	case Close:
 		return nil, h.cancel()
-	case push:
-		h.pushParamsFn(e.componentID, e.Params)
-		return s, nil
-	case pause:
+	case Pause:
 		return Paused, nil
 	}
 	return s, ErrInvalidState
@@ -295,41 +255,31 @@ func (s running) sendMessage(h *Handle, pipeID string) State {
 	return s
 }
 
-func (s paused) listen(h *Handle, t target) (State, target) {
-	return h.idle(s, t)
+func (s paused) listen(h *Handle, t State, f Feedback) (State, State, Feedback) {
+	return h.idle(s, t, f)
 }
 
-func (s paused) transition(h *Handle, e event) (State, error) {
-	switch e.eventType {
-	case cancel:
+func (s paused) transition(h *Handle, e Event) (State, error) {
+	switch e.(type) {
+	case Close:
 		return nil, h.cancel()
-	case push:
-		h.pushParamsFn(e.componentID, e.Params)
-		return s, nil
-	case resume:
+	case Resume:
 		return Running, nil
 	}
 	return s, ErrInvalidState
 }
 
-// hasTarget checks if event contaions target.
-func (e event) hasTarget() bool {
-	return e.target.errc != nil
-}
-
 // reach closes error channel and cancel waiting of target.
-func (t target) dismiss() target {
-	if t.errc != nil {
-		t.state = nil
-		close(t.errc)
-		t.errc = nil
+func (f Feedback) dismiss() Feedback {
+	if f != nil {
+		close(f)
 	}
-	return t
+	return nil
 }
 
 // handleError pushes error into target. panic happens if no target defined.
-func (t target) handle(err error) {
-	t.errc <- err
+func handle(errc chan error, err error) {
+	errc <- err
 }
 
 // receivedBy returns channel which is closed when param received by identified entity
@@ -346,21 +296,6 @@ func wait(d <-chan error) error {
 		}
 	}
 	return nil
-}
-
-// Convert the event to a string.
-func (e eventType) String() string {
-	switch e {
-	case run:
-		return "run"
-	case pause:
-		return "pause"
-	case resume:
-		return "resume"
-	case push:
-		return "params"
-	}
-	return "unknown"
 }
 
 // merge error channels from all components into one.

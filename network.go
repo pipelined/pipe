@@ -8,7 +8,7 @@ import (
 
 // Net controls the execution of pipes.
 type Net struct {
-	*state.Handle
+	h                *state.Handle
 	pipes            map[*Pipe]string  // map pipe to chain id
 	chains           map[string]chain  // map chain id to chain
 	chainByComponent map[string]string // map component id to chain id
@@ -52,8 +52,8 @@ func Network(ps ...*Pipe) (*Net, error) {
 		chains:           chains,
 		chainByComponent: chainByComponent,
 	}
-	n.Handle = state.NewHandle(start(n), newMessage(n), pushParams(n))
-	go state.Loop(n.Handle, state.Ready)
+	n.h = state.NewHandle(start(n), newMessage(n), pushParams(n))
+	go state.Loop(n.h, state.Ready)
 	return n, nil
 }
 
@@ -208,10 +208,57 @@ func newMessage(n *Net) state.NewMessageFunc {
 }
 
 func pushParams(n *Net) state.PushParamsFunc {
-	return func(componentID string, params state.Params) {
-		chainID := n.chainByComponent[componentID]
-		chain := n.chains[chainID]
-		chain.params = chain.params.Append(params)
-		n.chains[chainID] = chain
+	return func(params state.Params) {
+		for id, p := range params {
+			chainID := n.chainByComponent[id]
+			chain := n.chains[chainID]
+			chain.params = chain.params.Append(map[string][]func(){id: p})
+		}
 	}
+}
+
+// Run sends a run event into handle.
+// Calling this method after handle is closed causes a panic.
+func (n *Net) Run(bufferSize int) chan error {
+	errc := make(chan error, 1)
+	n.h.Eventc <- state.Run{
+		BufferSize: bufferSize,
+		Feedback:   errc,
+	}
+	return errc
+}
+
+// Pause sends a pause event into handle.
+// Calling this method after handle is closed causes a panic.
+func (n *Net) Pause() chan error {
+	errc := make(chan error, 1)
+	n.h.Eventc <- state.Pause{
+		Feedback: errc,
+	}
+	return errc
+}
+
+// Resume sends a resume event into handle.
+// Calling this method after handle is closed causes a panic.
+func (n *Net) Resume() chan error {
+	errc := make(chan error, 1)
+	n.h.Eventc <- state.Resume{
+		Feedback: errc,
+	}
+	return errc
+}
+
+// Close must be called to clean up handle's resources.
+func (n *Net) Close() chan error {
+	errc := make(chan error, 1)
+	n.h.Eventc <- state.Close{
+		Feedback: errc,
+	}
+	return errc
+}
+
+// Push new params into pipe.
+// Calling this method after pipe is closed causes a panic.
+func (n *Net) Push(id string, paramFuncs ...func()) {
+	n.h.Paramc <- map[string][]func(){id: paramFuncs}
 }
