@@ -1,6 +1,7 @@
 package state_test
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,10 +12,14 @@ import (
 
 const bufferSize = 1024
 
-type startFuncMock struct{}
+type startFuncMock struct {
+	sync.Mutex
+	givec chan<- string
+}
 
-func (m startFuncMock) fn() state.StartFunc {
+func (m *startFuncMock) fn() state.StartFunc {
 	return func(bufferSize int, cancelc chan struct{}, givec chan<- string) []<-chan error {
+		m.givec = givec
 		errc := make(chan error)
 		go func() {
 			<-cancelc
@@ -24,10 +29,18 @@ func (m startFuncMock) fn() state.StartFunc {
 	}
 }
 
-type newMessageFuncMock struct{}
+func (m *startFuncMock) send() {
+	m.givec <- "test"
+}
+
+type newMessageFuncMock struct {
+	sent int
+}
 
 func (m *newMessageFuncMock) fn() state.NewMessageFunc {
-	return func(pipeID string) {}
+	return func(pipeID string) {
+		m.sent++
+	}
 }
 
 type pushParamsFuncMock struct {
@@ -40,104 +53,94 @@ func (m *pushParamsFuncMock) fn() state.PushParamsFunc {
 	}
 }
 
-// Test Handle in the ready state.
-func TestInvalidState(t *testing.T) {
-	var (
-		err error
-		// errc           chan error
-		ok             bool
-		startMock      startFuncMock
-		newMessageMock newMessageFuncMock
-	)
-	pushParamsMock := &pushParamsFuncMock{}
-	readyParam := &paramMock{uid: "readyParam"}
-	// runningParam := &paramMock{uid: "runningParam"}
-	// pausedParam := &paramMock{uid: "pausedParam"}
+func TestStates(t *testing.T) {
+	cases := []struct {
+		preparation []state.Event
+		events      []state.Event
+		messages    int
+	}{
+		{
+			// Ready state
+			events: []state.Event{
+				state.Resume{Feedback: make(chan error)},
+				state.Pause{Feedback: make(chan error)},
+			},
+		},
+		{
+			// Running state
+			preparation: []state.Event{
+				state.Run{Feedback: make(chan error)},
+			},
+			messages: 1,
+			events: []state.Event{
+				state.Resume{Feedback: make(chan error)},
+				state.Run{Feedback: make(chan error)},
+			},
+		},
+		{
+			// Paused state
+			preparation: []state.Event{
+				state.Run{Feedback: make(chan error)},
+				state.Pause{Feedback: make(chan error)},
+			},
+			events: []state.Event{
+				state.Pause{Feedback: make(chan error)},
+				state.Run{Feedback: make(chan error)},
+			},
+		},
+		{
+			// Running state after pause
+			preparation: []state.Event{
+				state.Run{Feedback: make(chan error)},
+				state.Pause{Feedback: make(chan error)},
+				state.Resume{Feedback: make(chan error)},
+			},
+			events: []state.Event{
+				state.Resume{Feedback: make(chan error)},
+				state.Run{Feedback: make(chan error)},
+			},
+		},
+	}
 
-	h := state.NewHandle(
-		startMock.fn(),
-		newMessageMock.fn(),
-		pushParamsMock.fn(),
-	)
-	go state.Loop(h, state.Ready)
+	for _, c := range cases {
+		startMock := &startFuncMock{}
+		newMessageMock := &newMessageFuncMock{}
+		pushParamsMock := &pushParamsFuncMock{}
+		p := &paramMock{uid: "params"}
+		h := state.NewHandle(
+			startMock.fn(),
+			newMessageMock.fn(),
+			pushParamsMock.fn(),
+		)
+		go state.Loop(h, state.Ready)
 
-	runc := testReady(t, h, readyParam)
-	// testRunning(t, h, runc, runningParam)
-	// testPaused(t, h, pausedParam)
+		// reach tested state
+		for _, e := range c.preparation {
+			h.Eventc <- e
+		}
 
-	errc := make(chan error)
-	h.Eventc <- state.Close{Feedback: errc}
-	err = pipe.Wait(errc)
-	assert.Nil(t, err)
+		// push params
+		h.Paramc <- p.params()
 
-	err = pipe.Wait(runc)
-	assert.Nil(t, err)
+		// TODO: fix mock
+		// for i := 0; i < c.messages; i++ {
+		// 	fmt.Println("Send msg")
+		// 	startMock.send()
+		// }
+		// assert.Equal(t, c.messages, newMessageMock.sent)
 
-	_, ok = pushParamsMock.Params[readyParam.uid]
-	assert.True(t, ok)
-	// _, ok = pushParamsMock.Params[runningParam.uid]
-	// assert.True(t, ok)
-	// _, ok = pushParamsMock.Params[pausedParam.uid]
-	// assert.True(t, ok)
+		// test events
+		for _, e := range c.events {
+			h.Eventc <- e
+			err := pipe.Wait(e.Errc())
+			assert.Equal(t, state.ErrInvalidState, err)
+		}
+		errc := make(chan error)
+		h.Eventc <- state.Close{Feedback: errc}
+		err := pipe.Wait(errc)
+		assert.Nil(t, err)
+
+		_, ok := pushParamsMock.Params[p.uid]
+		assert.True(t, ok)
+	}
 }
-
-func testReady(t *testing.T, h *state.Handle, m *paramMock) <-chan error {
-	var (
-		err  error
-		errc chan error
-	)
-	// push params
-	h.Paramc <- m.params()
-
-	t.Logf("Test pause")
-	// test invalid actions
-	errc = make(chan error)
-	h.Eventc <- state.Pause{Feedback: errc}
-	err = pipe.Wait(errc)
-	assert.Equal(t, state.ErrInvalidState, err)
-
-	t.Logf("Test resume")
-	errc = make(chan error)
-	h.Eventc <- state.Resume{Feedback: errc}
-	err = pipe.Wait(errc)
-	assert.Equal(t, state.ErrInvalidState, err)
-
-	// transition to the next state
-	runc := make(chan error)
-	h.Eventc <- state.Run{BufferSize: bufferSize, Feedback: runc}
-	return runc
-}
-
-// func testRunning(t *testing.T, h *state.Handle, runc <-chan error, m *paramMock) {
-// 	var err error
-// 	// push params
-// 	h.Push(m.uid, m.param())
-
-// 	err = pipe.Wait(h.Resume())
-// 	assert.Equal(t, state.ErrInvalidState, err)
-
-// 	err = pipe.Wait(h.Run(bufferSize))
-// 	assert.Equal(t, state.ErrInvalidState, err)
-
-// 	// transition to the next state
-// 	pausec := h.Pause()
-// 	assert.NotNil(t, pausec)
-// 	// this target has to be cancelled now
-// 	assert.Nil(t, pipe.Wait(runc))
-// }
-
-// func testPaused(t *testing.T, h *state.Handle, m *paramMock) {
-// 	var err error
-// 	// push params
-// 	h.Push(m.uid, m.param())
-
-// 	err = pipe.Wait(h.Pause())
-// 	assert.Equal(t, state.ErrInvalidState, err)
-
-// 	err = pipe.Wait(h.Run(bufferSize))
-// 	assert.Equal(t, state.ErrInvalidState, err)
-
-// 	// transition to the next state
-// 	resumec := h.Resume()
-// 	assert.NotNil(t, resumec)
-// }

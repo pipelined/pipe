@@ -61,7 +61,7 @@ type idleState interface {
 // activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
 type activeState interface {
 	State
-	sendMessage(h *Handle, pipeID string) State
+	sendMessage(h *Handle, pipeID string)
 }
 
 // states
@@ -212,7 +212,7 @@ func (h *Handle) active(s activeState, t State, f Feedback) (State, State, Feedb
 		case params := <-h.Paramc:
 			h.pushParamsFn(params)
 		case pipeID := <-h.givec:
-			newState = s.sendMessage(h, pipeID)
+			s.sendMessage(h, pipeID)
 		case err, ok := <-h.errc:
 			if ok {
 				close(h.cancelc)
@@ -227,11 +227,8 @@ func (h *Handle) active(s activeState, t State, f Feedback) (State, State, Feedb
 }
 
 func (h *Handle) cancel() error {
-	if h.cancelc != nil {
-		close(h.cancelc)
-		return wait(h.errc)
-	}
-	return nil
+	close(h.cancelc)
+	return wait(h.errc)
 }
 
 func (s ready) listen(h *Handle, t State, f Feedback) (State, State, Feedback) {
@@ -241,7 +238,7 @@ func (s ready) listen(h *Handle, t State, f Feedback) (State, State, Feedback) {
 func (s ready) transition(h *Handle, e Event) (State, error) {
 	switch ev := e.(type) {
 	case Close:
-		return nil, h.cancel()
+		return nil, nil
 	case Run:
 		h.cancelc = make(chan struct{})
 		h.merger = mergeErrors(h.startFn(ev.BufferSize, h.cancelc, h.givec))
@@ -264,9 +261,8 @@ func (s running) transition(h *Handle, e Event) (State, error) {
 	return s, ErrInvalidState
 }
 
-func (s running) sendMessage(h *Handle, pipeID string) State {
+func (s running) sendMessage(h *Handle, pipeID string) {
 	h.newMessageFn(pipeID)
-	return s
 }
 
 func (s paused) listen(h *Handle, t State, f Feedback) (State, State, Feedback) {
@@ -294,13 +290,6 @@ func (f Feedback) dismiss() Feedback {
 // handleError pushes error into target. panic happens if no target defined.
 func handle(errc chan error, err error) {
 	errc <- err
-}
-
-// receivedBy returns channel which is closed when param received by identified entity
-func receivedBy(wg *sync.WaitGroup, id string) func() {
-	return func() {
-		wg.Done()
-	}
 }
 
 func wait(d <-chan error) error {
