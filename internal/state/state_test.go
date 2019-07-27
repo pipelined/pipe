@@ -1,7 +1,7 @@
 package state_test
 
 import (
-	"sync"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,25 +12,38 @@ import (
 
 const bufferSize = 1024
 
+var testError = errors.New("Test error")
+
 type startFuncMock struct {
-	sync.Mutex
-	givec chan<- string
+	sendc chan string
 }
 
-func (m *startFuncMock) fn() state.StartFunc {
+// TODO: refactor mock for simplicity
+func (m *startFuncMock) fn(send chan string, badCancel bool) state.StartFunc {
+	m.sendc = send
 	return func(bufferSize int, cancelc chan struct{}, givec chan<- string) []<-chan error {
-		m.givec = givec
 		errc := make(chan error)
 		go func() {
-			<-cancelc
-			close(errc)
+			for {
+				select {
+				case <-cancelc:
+					if !badCancel {
+						close(errc)
+					} else {
+						errc <- testError
+					}
+					return
+				case s, ok := <-m.sendc:
+					if ok {
+						givec <- s
+					} else {
+						errc <- testError
+					}
+				}
+			}
 		}()
 		return []<-chan error{errc}
 	}
-}
-
-func (m *startFuncMock) send() {
-	m.givec <- "test"
 }
 
 type newMessageFuncMock struct {
@@ -55,9 +68,11 @@ func (m *pushParamsFuncMock) fn() state.PushParamsFunc {
 
 func TestStates(t *testing.T) {
 	cases := []struct {
-		preparation []state.Event
-		events      []state.Event
-		messages    int
+		preparation       []state.Event
+		events            []state.Event
+		messages          int
+		throwError        bool
+		throwErrorOnClose bool
 	}{
 		{
 			// Ready state
@@ -71,7 +86,29 @@ func TestStates(t *testing.T) {
 			preparation: []state.Event{
 				state.Run{Feedback: make(chan error)},
 			},
-			messages: 1,
+			messages: 10,
+			events: []state.Event{
+				state.Resume{Feedback: make(chan error)},
+				state.Run{Feedback: make(chan error)},
+			},
+		},
+		{
+			// Running state
+			preparation: []state.Event{
+				state.Run{Feedback: make(chan error)},
+			},
+			throwError: true,
+			events: []state.Event{
+				state.Resume{Feedback: make(chan error)},
+				state.Run{Feedback: make(chan error)},
+			},
+		},
+		{
+			// Running state
+			preparation: []state.Event{
+				state.Run{Feedback: make(chan error)},
+			},
+			throwErrorOnClose: true,
 			events: []state.Event{
 				state.Resume{Feedback: make(chan error)},
 				state.Run{Feedback: make(chan error)},
@@ -103,12 +140,14 @@ func TestStates(t *testing.T) {
 	}
 
 	for _, c := range cases {
+		var feedback chan error
 		startMock := &startFuncMock{}
 		newMessageMock := &newMessageFuncMock{}
 		pushParamsMock := &pushParamsFuncMock{}
 		p := &paramMock{uid: "params"}
+		send := make(chan string)
 		h := state.NewHandle(
-			startMock.fn(),
+			startMock.fn(send, c.throwErrorOnClose),
 			newMessageMock.fn(),
 			pushParamsMock.fn(),
 		)
@@ -116,18 +155,24 @@ func TestStates(t *testing.T) {
 
 		// reach tested state
 		for _, e := range c.preparation {
+			feedback = e.Errc()
 			h.Eventc <- e
 		}
 
 		// push params
 		h.Paramc <- p.params()
 
-		// TODO: fix mock
-		// for i := 0; i < c.messages; i++ {
-		// 	fmt.Println("Send msg")
-		// 	startMock.send()
-		// }
-		// assert.Equal(t, c.messages, newMessageMock.sent)
+		// send messages/error
+		if c.throwError {
+			close(send)
+			err := pipe.Wait(feedback)
+			assert.Equal(t, testError, err)
+			continue
+		} else {
+			for i := 0; i < c.messages; i++ {
+				send <- "test"
+			}
+		}
 
 		// test events
 		for _, e := range c.events {
@@ -138,9 +183,15 @@ func TestStates(t *testing.T) {
 		errc := make(chan error)
 		h.Eventc <- state.Close{Feedback: errc}
 		err := pipe.Wait(errc)
-		assert.Nil(t, err)
+		if c.throwErrorOnClose {
+			assert.Equal(t, testError, err)
+		} else {
+			assert.Nil(t, err)
+		}
 
 		_, ok := pushParamsMock.Params[p.uid]
 		assert.True(t, ok)
+
+		assert.Equal(t, c.messages, newMessageMock.sent)
 	}
 }
