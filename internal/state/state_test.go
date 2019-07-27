@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/goleak"
 
 	"github.com/pipelined/pipe"
 	"github.com/pipelined/pipe/internal/state"
@@ -37,6 +38,7 @@ func (m *startFuncMock) fn(send chan string, badCancel bool) state.StartFunc {
 					if ok {
 						givec <- s
 					} else {
+						m.sendc = nil
 						errc <- testError
 					}
 				}
@@ -167,6 +169,12 @@ func TestStates(t *testing.T) {
 			close(send)
 			err := pipe.Wait(feedback)
 			assert.Equal(t, testError, err)
+			// close
+			errc := make(chan error)
+			h.Eventc <- state.Close{Feedback: errc}
+			err = pipe.Wait(errc)
+			assert.Nil(t, err)
+			// TODO: what if throwErrorOnExit here?
 			continue
 		} else {
 			for i := 0; i < c.messages; i++ {
@@ -180,6 +188,7 @@ func TestStates(t *testing.T) {
 			err := pipe.Wait(e.Errc())
 			assert.Equal(t, state.ErrInvalidState, err)
 		}
+		// close
 		errc := make(chan error)
 		h.Eventc <- state.Close{Feedback: errc}
 		err := pipe.Wait(errc)
@@ -194,4 +203,5 @@ func TestStates(t *testing.T) {
 
 		assert.Equal(t, c.messages, newMessageMock.sent)
 	}
+	goleak.VerifyNoLeaks(t)
 }
