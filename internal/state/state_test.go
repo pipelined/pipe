@@ -15,32 +15,33 @@ const bufferSize = 1024
 
 var testError = errors.New("Test error")
 
-type startFuncMock struct {
-	sendc chan string
-}
+type startFuncMock struct{}
 
-// TODO: refactor mock for simplicity
-func (m *startFuncMock) fn(send chan string, badCancel bool) state.StartFunc {
-	m.sendc = send
+// send channel is closed ONLY when any messages were sent
+func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) state.StartFunc {
 	return func(bufferSize int, cancelc chan struct{}, givec chan<- string) []<-chan error {
 		errc := make(chan error)
 		go func() {
+			defer close(errc)
+			// send messages
 			for {
 				select {
-				case <-cancelc:
-					if !badCancel {
-						close(errc)
+				case _, ok := <-send:
+					if !ok {
+						return
+					}
+					// send error if provided
+					if errorOnSend != nil {
+						errc <- errorOnSend
 					} else {
-						errc <- testError
+						givec <- "test"
+					}
+				case <-cancelc: // block until cancelled
+					// send error on close if provided
+					if errorOnClose != nil {
+						errc <- errorOnClose
 					}
 					return
-				case s, ok := <-m.sendc:
-					if ok {
-						givec <- s
-					} else {
-						m.sendc = nil
-						errc <- testError
-					}
 				}
 			}
 		}()
@@ -70,11 +71,11 @@ func (m *pushParamsFuncMock) fn() state.PushParamsFunc {
 
 func TestStates(t *testing.T) {
 	cases := []struct {
-		preparation       []state.Event
-		events            []state.Event
-		messages          int
-		throwError        bool
-		throwErrorOnClose bool
+		messages     int
+		errorOnSend  error
+		errorOnClose error
+		preparation  []state.Event
+		events       []state.Event
 	}{
 		{
 			// Ready state
@@ -85,10 +86,10 @@ func TestStates(t *testing.T) {
 		},
 		{
 			// Running state
-			preparation: []state.Event{
-				state.Run{Feedback: make(chan error)},
-			},
 			messages: 10,
+			preparation: []state.Event{
+				state.Run{Feedback: make(chan error)},
+			},
 			events: []state.Event{
 				state.Resume{Feedback: make(chan error)},
 				state.Run{Feedback: make(chan error)},
@@ -96,21 +97,17 @@ func TestStates(t *testing.T) {
 		},
 		{
 			// Running state
+			errorOnSend: testError,
 			preparation: []state.Event{
-				state.Run{Feedback: make(chan error)},
-			},
-			throwError: true,
-			events: []state.Event{
-				state.Resume{Feedback: make(chan error)},
 				state.Run{Feedback: make(chan error)},
 			},
 		},
 		{
 			// Running state
+			errorOnClose: testError,
 			preparation: []state.Event{
 				state.Run{Feedback: make(chan error)},
 			},
-			throwErrorOnClose: true,
 			events: []state.Event{
 				state.Resume{Feedback: make(chan error)},
 				state.Run{Feedback: make(chan error)},
@@ -142,20 +139,27 @@ func TestStates(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		var feedback chan error
+		var (
+			feedback chan error
+		)
+		messages := c.messages
+		if c.errorOnSend != nil {
+			messages = 1
+		}
 		startMock := &startFuncMock{}
 		newMessageMock := &newMessageFuncMock{}
 		pushParamsMock := &pushParamsFuncMock{}
 		p := &paramMock{uid: "params"}
-		send := make(chan string)
+		send := make(chan struct{})
 		h := state.NewHandle(
-			startMock.fn(send, c.throwErrorOnClose),
+			startMock.fn(send, c.errorOnSend, c.errorOnClose),
 			newMessageMock.fn(),
 			pushParamsMock.fn(),
 		)
 		go state.Loop(h, state.Ready)
 
 		// reach tested state
+		// remember last feedback channel
 		for _, e := range c.preparation {
 			feedback = e.Errc()
 			h.Eventc <- e
@@ -164,43 +168,31 @@ func TestStates(t *testing.T) {
 		// push params
 		h.Paramc <- p.params()
 
-		// send messages/error
-		if c.throwError {
-			close(send)
-			err := pipe.Wait(feedback)
-			assert.Equal(t, testError, err)
-			// close
-			errc := make(chan error)
-			h.Eventc <- state.Close{Feedback: errc}
-			err = pipe.Wait(errc)
-			assert.Nil(t, err)
-			// TODO: what if throwErrorOnExit here?
-			continue
-		} else {
-			for i := 0; i < c.messages; i++ {
-				send <- "test"
-			}
-		}
-
 		// test events
 		for _, e := range c.events {
 			h.Eventc <- e
 			err := pipe.Wait(e.Errc())
 			assert.Equal(t, state.ErrInvalidState, err)
 		}
+
+		// send messages
+		if messages > 0 {
+			for i := 0; i < messages; i++ {
+				send <- struct{}{}
+			}
+			close(send)
+			err := pipe.Wait(feedback)
+			assert.Equal(t, c.errorOnSend, err)
+		}
+
 		// close
 		errc := make(chan error)
 		h.Eventc <- state.Close{Feedback: errc}
 		err := pipe.Wait(errc)
-		if c.throwErrorOnClose {
-			assert.Equal(t, testError, err)
-		} else {
-			assert.Nil(t, err)
-		}
+		assert.Equal(t, c.errorOnClose, err)
 
 		_, ok := pushParamsMock.Params[p.uid]
 		assert.True(t, ok)
-
 		assert.Equal(t, c.messages, newMessageMock.sent)
 	}
 	goleak.VerifyNoLeaks(t)
