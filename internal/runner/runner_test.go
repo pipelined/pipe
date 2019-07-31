@@ -256,11 +256,6 @@ func TestSinkRunner(t *testing.T) {
 		switch {
 		case c.cancelOnReceive:
 			close(cancelc)
-		// case c.cancelOnSend:
-		// 	in <- runner.Message{
-		// 		SourceID: pipeID,
-		// 	}
-		// 	close(cancelc)
 		case c.sink.ErrorOnSend != nil:
 			in <- runner.Message{
 				SourceID: pipeID,
