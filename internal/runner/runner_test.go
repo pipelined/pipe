@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/pipelined/mock"
+	"github.com/pipelined/pipe"
 	"github.com/pipelined/pipe/metric"
 
 	"github.com/pipelined/pipe/internal/runner"
@@ -106,6 +107,8 @@ func TestPumpRunner(t *testing.T) {
 			}
 		}
 
+		pipe.Wait(errc)
+
 		// test channels closed
 		_, ok = <-out
 		assert.False(t, ok)
@@ -114,15 +117,103 @@ func TestPumpRunner(t *testing.T) {
 
 		assert.True(t, c.pump.Resetted)
 
-		if c.pump.ErrorOnSend != nil {
+		switch {
+		case c.pump.ErrorOnSend != nil:
 			assert.False(t, c.pump.Interrupted)
 			assert.False(t, c.pump.Flushed)
-		} else if c.cancelOnGive || c.cancelOnTake || c.cancelOnSend {
+		case c.cancelOnGive || c.cancelOnTake || c.cancelOnSend:
 			assert.True(t, c.pump.Interrupted)
 			assert.False(t, c.pump.Flushed)
-		} else {
+		default:
 			assert.False(t, c.pump.Interrupted)
 			assert.True(t, c.pump.Flushed)
 		}
+
 	}
+}
+
+func TestProcessorRunner(t *testing.T) {
+	tests := []struct {
+		messages        int
+		cancelOnReceive bool
+		cancelOnSend    bool
+		processor       *mock.Processor
+	}{
+		{
+			messages:  10,
+			processor: &mock.Processor{},
+		},
+		{
+			processor: &mock.Processor{
+				ErrorOnSend: testError,
+			},
+		},
+		{
+			cancelOnReceive: true,
+			processor:       &mock.Processor{},
+		},
+		{
+			cancelOnSend: true,
+			processor:    &mock.Processor{},
+		},
+	}
+	pipeID := "testPipeID"
+	componentID := "testComponentID"
+	sampleRate := 44100
+	numChannels := 1
+	for _, c := range tests {
+		fn, _ := c.processor.Process(pipeID, sampleRate, numChannels)
+		r := &runner.Processor{
+			Fn:    fn,
+			Meter: metric.Meter(c.processor, sampleRate),
+			Hooks: runner.BindHooks(c.processor),
+		}
+
+		cancelc := make(chan struct{})
+		in := make(chan runner.Message)
+		out, errc := r.Run(pipeID, componentID, cancelc, in)
+		assert.NotNil(t, out)
+		assert.NotNil(t, errc)
+
+		switch {
+		case c.cancelOnReceive:
+			close(cancelc)
+		case c.cancelOnSend:
+			in <- runner.Message{
+				SourceID: pipeID,
+			}
+			close(cancelc)
+		case c.processor.ErrorOnSend != nil:
+			in <- runner.Message{
+				SourceID: pipeID,
+			}
+			err := <-errc
+			assert.Equal(t, c.processor.ErrorOnSend, err)
+		default:
+			for i := 0; i <= c.messages; i++ {
+				in <- runner.Message{
+					SourceID: pipeID,
+				}
+				<-out
+			}
+			close(in)
+		}
+
+		pipe.Wait(errc)
+
+		assert.True(t, c.processor.Resetted)
+		switch {
+		case c.processor.ErrorOnSend != nil:
+			assert.False(t, c.processor.Flushed)
+			assert.False(t, c.processor.Interrupted)
+		case c.cancelOnReceive || c.cancelOnSend:
+			assert.False(t, c.processor.Flushed)
+			assert.True(t, c.processor.Interrupted)
+		default:
+			assert.True(t, c.processor.Flushed)
+			assert.False(t, c.processor.Interrupted)
+		}
+
+	}
+
 }

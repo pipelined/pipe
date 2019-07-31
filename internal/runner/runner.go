@@ -253,5 +253,4 @@ func call(fn hook, pipeID string, errc chan error) {
 	if err := fn(pipeID); err != nil {
 		errc <- err
 	}
-	return
 }
