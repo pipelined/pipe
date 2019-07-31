@@ -92,6 +92,7 @@ func TestPumpRunner(t *testing.T) {
 			takec <- runner.Message{
 				SourceID: pipeID,
 			}
+			<-out
 			err := <-errc
 			assert.Equal(t, c.pump.ErrorOnSend, err)
 		default:
