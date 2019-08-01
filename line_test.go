@@ -18,7 +18,7 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
-func TestNetwork(t *testing.T) {
+func TestLine(t *testing.T) {
 	pump := &mock.Pump{
 		Limit:       100 * bufferSize,
 		NumChannels: 1,
@@ -28,7 +28,7 @@ func TestNetwork(t *testing.T) {
 	sink1 := &mock.Sink{}
 	sink2 := &mock.Sink{}
 
-	n, err := pipe.Network(
+	n, err := pipe.Line(
 		&pipe.Pipe{
 			Pump:       pump,
 			Processors: pipe.Processors(proc1, proc2),
@@ -46,7 +46,6 @@ func TestNetwork(t *testing.T) {
 	pumpID, ok := n.ComponentID(pump)
 	assert.True(t, ok)
 	assert.NotEmpty(t, pumpID)
-	//TODO: ADD PUSH
 	// push new limit for pump
 	newLimit := 200
 	paramFn := pump.LimitParam(newLimit)
