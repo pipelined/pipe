@@ -12,6 +12,8 @@ github.com/pipelined/signal v0.0.0-20190225175958-4cd224292fb5 h1:NSz7J2PVSef+H9
 github.com/pipelined/signal v0.0.0-20190225175958-4cd224292fb5/go.mod h1:2hObqg30KY6FBiLwiO5kvSui/3C2XWCks06RD/A1m7I=
 github.com/pipelined/signal v0.0.0-20190411172221-40f38ff7f90f h1:MocdkP0b1MQI9N8oHRdO/RpF7WoaZYMSG8vhc8RsdtQ=
 github.com/pipelined/signal v0.0.0-20190411172221-40f38ff7f90f/go.mod h1:2hObqg30KY6FBiLwiO5kvSui/3C2XWCks06RD/A1m7I=
+github.com/pipelined/signal v0.1.0 h1:3UKsuDT/Gl1gFCeik59+28jpBC7ZVRIOJTV8p0SjvNQ=
+github.com/pipelined/signal v0.1.0/go.mod h1:2hObqg30KY6FBiLwiO5kvSui/3C2XWCks06RD/A1m7I=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rs/xid v1.2.1 h1:mhH9Nq+C1fY2l1XIpgxIiUOfNpRBYH1kKcr+qfKgjRc=
