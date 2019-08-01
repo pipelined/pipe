@@ -50,7 +50,7 @@ func TestPumpRunner(t *testing.T) {
 		},
 		{
 			pump: &mock.Pump{
-				ErrorOnSend: testError,
+				ErrorOnCall: testError,
 				NumChannels: 1,
 				Limit:       bufferSize,
 			},
@@ -88,14 +88,14 @@ func TestPumpRunner(t *testing.T) {
 				SourceID: pipeID,
 			}
 			close(cancelc)
-		case c.pump.ErrorOnSend != nil:
+		case c.pump.ErrorOnCall != nil:
 			<-givec
 			takec <- runner.Message{
 				SourceID: pipeID,
 			}
 			<-out
 			err := <-errc
-			assert.Equal(t, c.pump.ErrorOnSend, err)
+			assert.Equal(t, c.pump.ErrorOnCall, err)
 		default:
 			// test message exchange
 			for i := 0; i <= c.pump.Limit/bufferSize; i++ {
@@ -118,7 +118,7 @@ func TestPumpRunner(t *testing.T) {
 		assert.True(t, c.pump.Resetted)
 
 		switch {
-		case c.pump.ErrorOnSend != nil:
+		case c.pump.ErrorOnCall != nil:
 			assert.False(t, c.pump.Interrupted)
 			assert.False(t, c.pump.Flushed)
 		case c.cancelOnGive || c.cancelOnTake || c.cancelOnSend:
@@ -144,7 +144,7 @@ func TestProcessorRunner(t *testing.T) {
 		},
 		{
 			processor: &mock.Processor{
-				ErrorOnSend: testError,
+				ErrorOnCall: testError,
 			},
 		},
 		{
@@ -182,12 +182,12 @@ func TestProcessorRunner(t *testing.T) {
 				SourceID: pipeID,
 			}
 			close(cancelc)
-		case c.processor.ErrorOnSend != nil:
+		case c.processor.ErrorOnCall != nil:
 			in <- runner.Message{
 				SourceID: pipeID,
 			}
 			err := <-errc
-			assert.Equal(t, c.processor.ErrorOnSend, err)
+			assert.Equal(t, c.processor.ErrorOnCall, err)
 		default:
 			for i := 0; i <= c.messages; i++ {
 				in <- runner.Message{
@@ -202,7 +202,7 @@ func TestProcessorRunner(t *testing.T) {
 
 		assert.True(t, c.processor.Resetted)
 		switch {
-		case c.processor.ErrorOnSend != nil:
+		case c.processor.ErrorOnCall != nil:
 			assert.False(t, c.processor.Flushed)
 			assert.False(t, c.processor.Interrupted)
 		case c.cancelOnReceive || c.cancelOnSend:
@@ -227,7 +227,7 @@ func TestSinkRunner(t *testing.T) {
 		},
 		{
 			sink: &mock.Sink{
-				ErrorOnSend: testError,
+				ErrorOnCall: testError,
 			},
 		},
 		{
@@ -256,12 +256,12 @@ func TestSinkRunner(t *testing.T) {
 		switch {
 		case c.cancelOnReceive:
 			close(cancelc)
-		case c.sink.ErrorOnSend != nil:
+		case c.sink.ErrorOnCall != nil:
 			in <- runner.Message{
 				SourceID: pipeID,
 			}
 			err := <-errc
-			assert.Equal(t, c.sink.ErrorOnSend, err)
+			assert.Equal(t, c.sink.ErrorOnCall, err)
 		default:
 			for i := 0; i <= c.messages; i++ {
 				in <- runner.Message{
@@ -275,7 +275,7 @@ func TestSinkRunner(t *testing.T) {
 
 		assert.True(t, c.sink.Resetted)
 		switch {
-		case c.sink.ErrorOnSend != nil:
+		case c.sink.ErrorOnCall != nil:
 			assert.False(t, c.sink.Flushed)
 			assert.False(t, c.sink.Interrupted)
 		case c.cancelOnReceive:
