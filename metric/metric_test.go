@@ -1,108 +1,73 @@
 package metric_test
 
 import (
-	"fmt"
-	"math"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/mock"
-	"github.com/pipelined/pipe"
 	"github.com/pipelined/pipe/metric"
 )
 
 func TestMeter(t *testing.T) {
+	sampleRate := 44100
+	pint := 1
 	// test cases
 	var tests = []struct {
-		*metric.Metric
-		routines int
-		messages int
-		samples  int64
-		expected int64
+		component          interface{}
+		routines           int
+		buffers            int
+		bufferSize         int64
+		expectedSamples    string
+		expectedComponents string
 	}{
 		{
-			Metric:   &metric.Metric{},
-			routines: 2,
-			messages: 10,
-			samples:  100,
-			expected: 10 * 100,
+			component:          int(1),
+			routines:           2,
+			buffers:            10,
+			bufferSize:         100,
+			expectedSamples:    "2000",
+			expectedComponents: "2",
 		},
 		{
-			Metric:   &metric.Metric{},
-			routines: 10,
-			messages: 5,
-			samples:  100,
-			expected: 5 * 100,
+			component:          &pint,
+			routines:           2,
+			buffers:            10,
+			bufferSize:         100,
+			expectedSamples:    "4000",
+			expectedComponents: "4",
 		},
 		{
-			routines: 100,
-			messages: 5,
-			samples:  100,
-			expected: 0,
+			component:          "test",
+			routines:           2,
+			buffers:            10,
+			bufferSize:         100,
+			expectedSamples:    "2000",
+			expectedComponents: "2",
 		},
 	}
-
 	// function to test meter.
-	testFn := func(c *metric.Meter, wg *sync.WaitGroup, messages int, samples int64) {
-		for i := 0; i < messages; i++ {
-			c.Message().Sample(samples)
+	testFn := func(fn metric.ResetFunc, wg *sync.WaitGroup, buffers int, bufferSize int64) {
+		m := fn()
+		for i := 0; i < buffers; i++ {
+			m(bufferSize)
 		}
 		wg.Done()
 	}
 
 	for _, c := range tests {
-		m := c.Metric
 		wg := &sync.WaitGroup{}
 		wg.Add(c.routines)
 		for i := 0; i < c.routines; i++ {
-			meterName := fmt.Sprintf("test %d", i)
-			meter := m.Meter(meterName, 44100)
-			go testFn(meter, wg, c.messages, c.samples)
+			go testFn(metric.Meter(c.component, sampleRate), wg, c.buffers, c.bufferSize)
 		}
 		// check if no data race.
-		_ = m.Measure()
 		wg.Wait()
-		measure := m.Measure()
-		for _, meters := range measure {
-			assert.Equal(t, c.expected, meters[metric.SampleCounter])
-		}
+		values := metric.Get(c.component)
+		assert.Equal(t, c.expectedSamples, values[metric.SampleCounter])
+		assert.Equal(t, c.expectedComponents, values[metric.ComponentCounter])
 	}
-}
 
-func TestPipe(t *testing.T) {
-	bufferSize := 10
-	limit := 55
-	pump := &mock.Pump{
-		SampleRate:  44100,
-		Limit:       limit,
-		Interval:    10 * time.Microsecond,
-		NumChannels: 1,
-	}
-	proc1 := &mock.Processor{}
-	proc2 := &mock.Processor{}
-	sink1 := &mock.Sink{}
-	sink2 := &mock.Sink{}
-	m := &metric.Metric{}
-	p, _ := pipe.New(
-		bufferSize,
-		pipe.WithMetric(m),
-		pipe.WithName("Pipe"),
-		pipe.WithPump(pump),
-		pipe.WithProcessors(proc1, proc2),
-		pipe.WithSinks(sink1, sink2),
-	)
-	pipe.Wait(p.Run())
-
-	pumpID := p.ComponentID(pump)
-
-	measure := m.Measure()
-	assert.Equal(t, 1247165*time.Nanosecond, measure[pumpID][metric.DurationCounter])
-	pipe.Wait(p.Run())
-	measure = m.Measure()
-	assert.Equal(t, 1247165*time.Nanosecond, measure[pumpID][metric.DurationCounter])
-	assert.Equal(t, int64(limit), measure[pumpID][metric.SampleCounter])
-	assert.Equal(t, int64(math.Ceil(float64(limit)/float64(bufferSize))), measure[pumpID][metric.MessageCounter])
+	total := metric.GetAll()
+	assert.Equal(t, 2, len(total))
 }
