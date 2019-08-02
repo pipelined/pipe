@@ -1,30 +1,49 @@
-package pipe
+package runner
 
 import (
 	"io"
 
+	"github.com/pipelined/signal"
+
+	"github.com/pipelined/pipe/internal/state"
 	"github.com/pipelined/pipe/metric"
 )
 
-// pumpRunner is pump's runner.
-type pumpRunner struct {
-	Pump
-	fn  func() ([][]float64, error)
-	hooks
+// Message is a main structure for pipe transport
+type Message struct {
+	SourceID string         // ID of pipe which spawned this message.
+	Buffer   signal.Float64 // Buffer of message
+	Params   state.Params   // params for pipe
 }
 
-// processRunner represents processor's runner.
-type processRunner struct {
-	Processor
-	fn  func([][]float64) ([][]float64, error)
-	hooks
+// PumpFunc is closure of pipe.Pump that emits new messages.
+type PumpFunc func(bufferSize int) ([][]float64, error)
+
+// ProcessorFunc is closure of pipe.Processor that processes messages.
+type ProcessorFunc func([][]float64) ([][]float64, error)
+
+// SinkFunc is closure of pipe.Sink that sinks messages.
+type SinkFunc func([][]float64) error
+
+// Pump executes pipe.Pump components.
+type Pump struct {
+	Fn    PumpFunc
+	Meter metric.ResetFunc
+	Hooks
 }
 
-// sinkRunner represents sink's runner.
-type sinkRunner struct {
-	Sink
-	fn func([][]float64) error
-	hooks
+// Processor executes pipe.Processor components.
+type Processor struct {
+	Fn    ProcessorFunc
+	Meter metric.ResetFunc
+	Hooks
+}
+
+// Sink executes pipe.Sink components.
+type Sink struct {
+	Fn    SinkFunc
+	Meter metric.ResetFunc
+	Hooks
 }
 
 // Flusher defines component that must flushed in the end of execution.
@@ -45,16 +64,16 @@ type Resetter interface {
 // hook represents optional functions for components lyfecycle.
 type hook func(string) error
 
-// set of hooks for runners.
-type hooks struct {
+// Hooks is the set of components Hooks for runners.
+type Hooks struct {
 	flush     hook
 	interrupt hook
 	reset     hook
 }
 
-// bindHooks of component.
-func bindHooks(v interface{}) hooks {
-	return hooks{
+// BindHooks of component.
+func BindHooks(v interface{}) Hooks {
+	return Hooks{
 		flush:     flusher(v),
 		interrupt: interrupter(v),
 		reset:     resetter(v),
@@ -87,35 +106,21 @@ func resetter(i interface{}) hook {
 	return nil
 }
 
-// newPumpRunner creates the closure. it's separated from run to have pre-run
-// logic executed in correct order for all components.
-func newPumpRunner(pipeID string, bufferSize int, p Pump) (*pumpRunner, int, int, error) {
-	fn, sampleRate, numChannels, err := p.Pump(pipeID, bufferSize)
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	r := pumpRunner{
-		fn:    fn,
-		Pump:  p,
-		hooks: bindHooks(p),
-	}
-	return &r, sampleRate, numChannels, nil
-}
-
-// run the Pump runner.
-func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, provide chan<- struct{}, consume <-chan message, meter *metric.Meter) (<-chan message, <-chan error) {
-	out := make(chan message)
+// Run starts the Pump runner.
+func (r *Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan struct{}, givec chan<- string, takec <-chan Message) (<-chan Message, <-chan error) {
+	out := make(chan Message)
 	errc := make(chan error, 1)
+	meter := r.Meter()
 	go func() {
 		defer close(out)
 		defer close(errc)
 		call(r.reset, pipeID, errc) // reset hook
 		var err error
-		var m message
+		var m Message
 		for {
 			// request new message
 			select {
-			case provide <- do:
+			case givec <- pipeID:
 			case <-cancel:
 				call(r.interrupt, pipeID, errc) // interrupt hook
 				return
@@ -123,18 +128,17 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 
 			// receive new message
 			select {
-			case m = <-consume:
+			case m = <-takec:
 			case <-cancel:
 				call(r.interrupt, pipeID, errc) // interrupt hook
 				return
 			}
 
-			m.applyTo(componentID) // apply params
-			m.buffer, err = r.fn() // pump new buffer
+			m.Params.ApplyTo(componentID)    // apply params
+			m.Buffer, err = r.Fn(bufferSize) // pump new buffer
 			// process buffer
-			if m.buffer != nil {
-				meter = meter.Sample(int64(m.buffer.Size())).Message()
-				m.feedback.applyTo(componentID) // apply feedback
+			if m.Buffer != nil {
+				meter(int64(m.Buffer.Size())) // capture metrics
 
 				// push message further
 				select {
@@ -159,31 +163,17 @@ func (r *pumpRunner) run(pipeID, componentID string, cancel <-chan struct{}, pro
 	return out, errc
 }
 
-// newProcessRunner creates the closure. it's separated from run to have pre-run
-// logic executed in correct order for all components.
-func newProcessRunner(pipeID string, sampleRate, numChannels, bufferSize int, p Processor) (*processRunner, error) {
-	fn, err := p.Process(pipeID, sampleRate, numChannels, bufferSize)
-	if err != nil {
-		return nil, err
-	}
-	r := processRunner{
-		fn:        fn,
-		Processor: p,
-		hooks:     bindHooks(p),
-	}
-	return &r, nil
-}
-
-// run the Processor runner.
-func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in <-chan message, meter *metric.Meter) (<-chan message, <-chan error) {
+// Run starts the Processor runner.
+func (r *Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) (<-chan Message, <-chan error) {
 	errc := make(chan error, 1)
-	out := make(chan message)
+	out := make(chan Message)
+	meter := r.Meter()
 	go func() {
 		defer close(out)
 		defer close(errc)
 		call(r.reset, pipeID, errc) // reset hook
 		var err error
-		var m message
+		var m Message
 		var ok bool
 		for {
 			// retrieve new message
@@ -198,16 +188,14 @@ func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in
 				return
 			}
 
-			m.applyTo(componentID)         // apply params
-			m.buffer, err = r.fn(m.buffer) // process new buffer
+			m.Params.ApplyTo(componentID)  // apply params
+			m.Buffer, err = r.Fn(m.Buffer) // process new buffer
 			if err != nil {
 				errc <- err
 				return
 			}
 
-			meter = meter.Sample(int64(m.buffer.Size())).Message()
-
-			m.feedback.applyTo(componentID) // apply feedback
+			meter(int64(m.Buffer.Size())) // capture metrics
 
 			// send message further
 			select {
@@ -221,28 +209,14 @@ func (r *processRunner) run(pipeID, componentID string, cancel chan struct{}, in
 	return out, errc
 }
 
-// newSinkRunner creates the closure. it's separated from run to have pre-run
-// logic executed in correct order for all components.
-func newSinkRunner(pipeID string, sampleRate, numChannels, bufferSize int, s Sink) (*sinkRunner, error) {
-	fn, err := s.Sink(pipeID, sampleRate, numChannels, bufferSize)
-	if err != nil {
-		return nil, err
-	}
-	r := sinkRunner{
-		fn:    fn,
-		Sink:  s,
-		hooks: bindHooks(s),
-	}
-	return &r, nil
-}
-
-// run the sink runner.
-func (r *sinkRunner) run(pipeID, componentID string, cancel chan struct{}, in <-chan message, meter *metric.Meter) <-chan error {
+// Run starts the sink runner.
+func (r *Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) <-chan error {
 	errc := make(chan error, 1)
+	meter := r.Meter()
 	go func() {
 		defer close(errc)
 		call(r.reset, pipeID, errc) // reset hook
-		var m message
+		var m Message
 		var ok bool
 		for {
 			// receive new message
@@ -257,16 +231,14 @@ func (r *sinkRunner) run(pipeID, componentID string, cancel chan struct{}, in <-
 				return
 			}
 
-			m.params.applyTo(componentID) // apply params
-			err := r.fn(m.buffer)         // sink a buffer
+			m.Params.ApplyTo(componentID) // apply params
+			err := r.Fn(m.Buffer)         // sink a buffer
 			if err != nil {
 				errc <- err
 				return
 			}
 
-			meter = meter.Sample(int64(m.buffer.Size())).Message()
-
-			m.feedback.applyTo(componentID) // apply feedback
+			meter(int64(m.Buffer.Size())) // capture metrics
 		}
 	}()
 
@@ -281,5 +253,4 @@ func call(fn hook, pipeID string, errc chan error) {
 	if err := fn(pipeID); err != nil {
 		errc <- err
 	}
-	return
 }
