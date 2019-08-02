@@ -28,7 +28,7 @@ func TestLine(t *testing.T) {
 	sink1 := &mock.Sink{}
 	sink2 := &mock.Sink{}
 
-	n, err := pipe.Line(
+	l, err := pipe.Line(
 		&pipe.Pipe{
 			Pump:       pump,
 			Processors: pipe.Processors(proc1, proc2),
@@ -38,29 +38,29 @@ func TestLine(t *testing.T) {
 	assert.Nil(t, err)
 
 	// start the net
-	runc := n.Run(bufferSize)
+	runc := l.Run(bufferSize)
 	assert.NotNil(t, runc)
 	assert.Nil(t, err)
 
 	// test params push
-	pumpID, ok := n.ComponentID(pump)
+	pumpID, ok := l.ComponentID(pump)
 	assert.True(t, ok)
 	assert.NotEmpty(t, pumpID)
 	// push new limit for pump
 	newLimit := 200
 	paramFn := pump.LimitParam(newLimit)
-	n.Push(pumpID, paramFn)
+	l.Push(pumpID, paramFn)
 
 	// pause the net
-	err = pipe.Wait(n.Pause())
+	err = pipe.Wait(l.Pause())
 	assert.Nil(t, err)
 	// runc must be cancelled by now
 	err = pipe.Wait(runc)
 	assert.Nil(t, err)
 
 	// resume the net
-	err = pipe.Wait(n.Resume())
+	err = pipe.Wait(l.Resume())
 	assert.Nil(t, err)
 
-	pipe.Wait(n.Close())
+	pipe.Wait(l.Close())
 }
