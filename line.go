@@ -1,6 +1,8 @@
 package pipe
 
 import (
+	"context"
+
 	"github.com/pipelined/pipe/internal/runner"
 	"github.com/pipelined/pipe/internal/state"
 	"github.com/pipelined/pipe/metric"
@@ -127,7 +129,7 @@ func (l *L) ComponentID(component interface{}) (id string, ok bool) {
 
 // start starts the execution of pipe.
 func start(l *L) state.StartFunc {
-	return func(bufferSize int, cancelc chan struct{}, givec chan<- string) []<-chan error {
+	return func(bufferSize int, cancelc <-chan struct{}, givec chan<- string) []<-chan error {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
 		for _, c := range l.chains {
@@ -152,7 +154,7 @@ func start(l *L) state.StartFunc {
 }
 
 // broadcastToSinks passes messages to all sinks.
-func broadcastToSinks(sampleRate int, c chain, cancelc chan struct{}, in <-chan runner.Message) []<-chan error {
+func broadcastToSinks(sampleRate int, c chain, cancelc <-chan struct{}, in <-chan runner.Message) []<-chan error {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(c.sinks))
 	//list of channels for broadcast
@@ -221,10 +223,11 @@ func pushParams(l *L) state.PushParamsFunc {
 
 // Run sends a run event into handle.
 // Calling this method after handle is closed causes a panic.
-// Feedback is closed when Ready state is reached.
-func (l *L) Run(bufferSize int) chan error {
+// Feedback channel is closed when Ready state is reached or context is cancelled.
+func (l *L) Run(ctx context.Context, bufferSize int) chan error {
 	errc := make(chan error, 1)
 	l.h.Eventc <- state.Run{
+		Context:    ctx,
 		BufferSize: bufferSize,
 		Feedback:   errc,
 	}

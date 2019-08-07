@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"errors"
 	"sync"
 )
@@ -26,7 +27,7 @@ type Handle struct {
 	merger
 	// cancel the net execution.
 	// created in run event, closed on cancel event or when error is recieved.
-	cancelc      chan struct{}
+	cancelFn     context.CancelFunc
 	startFn      StartFunc
 	newMessageFn NewMessageFunc
 	pushParamsFn PushParamsFunc
@@ -39,7 +40,7 @@ type merger struct {
 }
 
 // StartFunc is the closure to trigger the start of a pipe.
-type StartFunc func(bufferSize int, cancelc chan struct{}, givec chan<- string) []<-chan error
+type StartFunc func(bufferSize int, cancelc <-chan struct{}, givec chan<- string) []<-chan error
 
 // NewMessageFunc is the closure to send a message into a pipe.
 type NewMessageFunc func(pipeID string)
@@ -99,6 +100,7 @@ func (f Feedback) Errc() chan error {
 
 // Run event is sent to start the run.
 type Run struct {
+	context.Context
 	BufferSize int
 	Feedback
 }
@@ -215,7 +217,7 @@ func (h *Handle) active(s activeState, t State, f Feedback) (State, State, Feedb
 			s.sendMessage(h, pipeID)
 		case err, ok := <-h.errc:
 			if ok {
-				close(h.cancelc)
+				h.cancelFn()
 				handle(f, err)
 			}
 			return Ready, t, f
@@ -227,7 +229,7 @@ func (h *Handle) active(s activeState, t State, f Feedback) (State, State, Feedb
 }
 
 func (h *Handle) cancel() error {
-	close(h.cancelc)
+	h.cancelFn()
 	return wait(h.errc)
 }
 
@@ -240,8 +242,9 @@ func (s ready) transition(h *Handle, e Event) (State, error) {
 	case Close:
 		return nil, nil
 	case Run:
-		h.cancelc = make(chan struct{})
-		h.merger = mergeErrors(h.startFn(ev.BufferSize, h.cancelc, h.givec))
+		ctx, cancelFn := context.WithCancel(ev.Context)
+		h.cancelFn = cancelFn
+		h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.givec))
 		return Running, nil
 	}
 	return s, ErrInvalidState
