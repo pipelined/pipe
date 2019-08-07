@@ -1,6 +1,7 @@
 package pipe_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,7 +39,7 @@ func TestLine(t *testing.T) {
 	assert.Nil(t, err)
 
 	// start the net
-	runc := l.Run(bufferSize)
+	runc := l.Run(context.Background(), bufferSize)
 	assert.NotNil(t, runc)
 	assert.Nil(t, err)
 
