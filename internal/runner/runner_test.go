@@ -116,17 +116,13 @@ func TestPumpRunner(t *testing.T) {
 		assert.False(t, ok)
 
 		assert.True(t, c.pump.Resetted)
+		assert.True(t, c.pump.Flushed)
 
 		switch {
-		case c.pump.ErrorOnCall != nil:
-			assert.False(t, c.pump.Interrupted)
-			assert.False(t, c.pump.Flushed)
 		case c.cancelOnGive || c.cancelOnTake || c.cancelOnSend:
 			assert.True(t, c.pump.Interrupted)
-			assert.False(t, c.pump.Flushed)
 		default:
 			assert.False(t, c.pump.Interrupted)
-			assert.True(t, c.pump.Flushed)
 		}
 	}
 }
@@ -201,15 +197,12 @@ func TestProcessorRunner(t *testing.T) {
 		pipe.Wait(errc)
 
 		assert.True(t, c.processor.Resetted)
+		assert.True(t, c.processor.Flushed)
+
 		switch {
-		case c.processor.ErrorOnCall != nil:
-			assert.False(t, c.processor.Flushed)
-			assert.False(t, c.processor.Interrupted)
 		case c.cancelOnReceive || c.cancelOnSend:
-			assert.False(t, c.processor.Flushed)
 			assert.True(t, c.processor.Interrupted)
 		default:
-			assert.True(t, c.processor.Flushed)
 			assert.False(t, c.processor.Interrupted)
 		}
 	}
@@ -274,15 +267,12 @@ func TestSinkRunner(t *testing.T) {
 		pipe.Wait(errc)
 
 		assert.True(t, c.sink.Resetted)
+		assert.True(t, c.sink.Flushed)
+
 		switch {
-		case c.sink.ErrorOnCall != nil:
-			assert.False(t, c.sink.Flushed)
-			assert.False(t, c.sink.Interrupted)
 		case c.cancelOnReceive:
-			assert.False(t, c.sink.Flushed)
 			assert.True(t, c.sink.Interrupted)
 		default:
-			assert.True(t, c.sink.Flushed)
 			assert.False(t, c.sink.Interrupted)
 		}
 	}

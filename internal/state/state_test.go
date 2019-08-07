@@ -141,6 +141,8 @@ func TestStates(t *testing.T) {
 		},
 		{
 			// Running state and cancel context
+			// message is needed to ensure params delivery
+			messages: 1,
 			preparation: []state.Event{
 				state.Run{Context: ctx, Feedback: make(chan error)},
 			},

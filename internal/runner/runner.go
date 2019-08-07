@@ -114,7 +114,8 @@ func (r *Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan str
 	go func() {
 		defer close(out)
 		defer close(errc)
-		call(r.reset, pipeID, errc) // reset hook
+		defer call(r.flush, pipeID, errc) // flush hook on return
+		call(r.reset, pipeID, errc)       // reset hook
 		var err error
 		var m Message
 		for {
@@ -152,7 +153,7 @@ func (r *Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan str
 			if err != nil {
 				switch err {
 				case io.EOF, io.ErrUnexpectedEOF:
-					call(r.flush, pipeID, errc) // flush hook
+					// run sucessfully completed
 				default:
 					errc <- err
 				}
@@ -171,7 +172,8 @@ func (r *Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <
 	go func() {
 		defer close(out)
 		defer close(errc)
-		call(r.reset, pipeID, errc) // reset hook
+		defer call(r.flush, pipeID, errc) // flush hook on return
+		call(r.reset, pipeID, errc)       // reset hook
 		var err error
 		var m Message
 		var ok bool
@@ -180,7 +182,6 @@ func (r *Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <
 			select {
 			case m, ok = <-in:
 				if !ok {
-					call(r.flush, pipeID, errc) // flush hook
 					return
 				}
 			case <-cancel:
@@ -215,7 +216,8 @@ func (r *Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan
 	meter := r.Meter()
 	go func() {
 		defer close(errc)
-		call(r.reset, pipeID, errc) // reset hook
+		defer call(r.flush, pipeID, errc) // flush hook on return
+		call(r.reset, pipeID, errc)       // reset hook
 		var m Message
 		var ok bool
 		for {
@@ -223,7 +225,6 @@ func (r *Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan
 			select {
 			case m, ok = <-in:
 				if !ok {
-					call(r.flush, pipeID, errc) // flush hook
 					return
 				}
 			case <-cancel:
