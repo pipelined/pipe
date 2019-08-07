@@ -1,6 +1,7 @@
 package state_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -19,7 +20,7 @@ type startFuncMock struct{}
 
 // send channel is closed ONLY when any messages were sent
 func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) state.StartFunc {
-	return func(bufferSize int, cancelc chan struct{}, givec chan<- string) []<-chan error {
+	return func(bufferSize int, cancelc <-chan struct{}, givec chan<- string) []<-chan error {
 		errc := make(chan error)
 		go func() {
 			defer close(errc)
@@ -70,12 +71,14 @@ func (m *pushParamsFuncMock) fn() state.PushParamsFunc {
 }
 
 func TestStates(t *testing.T) {
+	ctx, cancelFn := context.WithCancel(context.Background())
 	cases := []struct {
 		messages     int
 		errorOnSend  error
 		errorOnClose error
 		preparation  []state.Event
 		events       []state.Event
+		cancel       context.CancelFunc
 	}{
 		{
 			// Ready state
@@ -88,53 +91,62 @@ func TestStates(t *testing.T) {
 			// Running state
 			messages: 10,
 			preparation: []state.Event{
-				state.Run{Feedback: make(chan error)},
+				state.Run{Context: context.Background(), Feedback: make(chan error)},
 			},
 			events: []state.Event{
 				state.Resume{Feedback: make(chan error)},
-				state.Run{Feedback: make(chan error)},
+				state.Run{Context: context.Background(), Feedback: make(chan error)},
 			},
 		},
 		{
 			// Running state
 			errorOnSend: testError,
 			preparation: []state.Event{
-				state.Run{Feedback: make(chan error)},
+				state.Run{Context: context.Background(), Feedback: make(chan error)},
 			},
 		},
 		{
 			// Running state
 			errorOnClose: testError,
 			preparation: []state.Event{
-				state.Run{Feedback: make(chan error)},
+				state.Run{Context: context.Background(), Feedback: make(chan error)},
 			},
 			events: []state.Event{
 				state.Resume{Feedback: make(chan error)},
-				state.Run{Feedback: make(chan error)},
+				state.Run{Context: context.Background(), Feedback: make(chan error)},
 			},
 		},
 		{
 			// Paused state
 			preparation: []state.Event{
-				state.Run{Feedback: make(chan error)},
+				state.Run{Context: context.Background(), Feedback: make(chan error)},
 				state.Pause{Feedback: make(chan error)},
 			},
 			events: []state.Event{
 				state.Pause{Feedback: make(chan error)},
-				state.Run{Feedback: make(chan error)},
+				state.Run{Context: context.Background(), Feedback: make(chan error)},
 			},
 		},
 		{
 			// Running state after pause
 			preparation: []state.Event{
-				state.Run{Feedback: make(chan error)},
+				state.Run{Context: context.Background(), Feedback: make(chan error)},
 				state.Pause{Feedback: make(chan error)},
 				state.Resume{Feedback: make(chan error)},
 			},
 			events: []state.Event{
 				state.Resume{Feedback: make(chan error)},
-				state.Run{Feedback: make(chan error)},
+				state.Run{Context: context.Background(), Feedback: make(chan error)},
 			},
+		},
+		{
+			// Running state and cancel context
+			// message is needed to ensure params delivery
+			messages: 1,
+			preparation: []state.Event{
+				state.Run{Context: ctx, Feedback: make(chan error)},
+			},
+			cancel: cancelFn,
 		},
 	}
 
@@ -183,6 +195,10 @@ func TestStates(t *testing.T) {
 			close(send)
 			err := pipe.Wait(feedback)
 			assert.Equal(t, c.errorOnSend, err)
+		}
+
+		if c.cancel != nil {
+			c.cancel()
 		}
 
 		// close
