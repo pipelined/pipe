@@ -159,7 +159,7 @@ type duration struct {
 }
 
 func (v *duration) String() string {
-	return fmt.Sprintf("%v", time.Duration(atomic.LoadInt64(&v.d)))
+	return fmt.Sprintf("\"%v\"", time.Duration(atomic.LoadInt64(&v.d)))
 }
 
 func (v *duration) add(delta time.Duration) {
