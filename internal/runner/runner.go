@@ -46,19 +46,22 @@ type Sink struct {
 	Hooks
 }
 
-// Flusher defines component that must flushed in the end of execution.
-type Flusher interface {
-	Flush(string) error
+// Resetter is a component that must be resetted before new run.
+// Reset hook is executed when Run happens.
+type Resetter interface {
+	Reset(string) error
 }
 
 // Interrupter defines component that has custom interruption logic.
+// Interrupt hook is executed when Cancel happens.
 type Interrupter interface {
 	Interrupt(string) error
 }
 
-// Resetter defines component that must be resetted before consequent use.
-type Resetter interface {
-	Reset(string) error
+// Flusher defines component that must flushed in the end of execution.
+// Flush hook is executed in the end of the run. It will be skipped if Reset hook has failed.
+type Flusher interface {
+	Flush(string) error
 }
 
 // hook represents optional functions for components lyfecycle.
@@ -114,8 +117,11 @@ func (r *Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan str
 	go func() {
 		defer close(out)
 		defer close(errc)
+		// reset hook
+		if ok := call(r.reset, pipeID, errc); !ok {
+			return
+		}
 		defer call(r.flush, pipeID, errc) // flush hook on return
-		call(r.reset, pipeID, errc)       // reset hook
 		var err error
 		var m Message
 		for {
@@ -172,8 +178,11 @@ func (r *Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <
 	go func() {
 		defer close(out)
 		defer close(errc)
+		// reset hook
+		if ok := call(r.reset, pipeID, errc); !ok {
+			return
+		}
 		defer call(r.flush, pipeID, errc) // flush hook on return
-		call(r.reset, pipeID, errc)       // reset hook
 		var err error
 		var m Message
 		var ok bool
@@ -216,8 +225,11 @@ func (r *Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan
 	meter := r.Meter()
 	go func() {
 		defer close(errc)
+		// reset hook
+		if ok := call(r.reset, pipeID, errc); !ok {
+			return
+		}
 		defer call(r.flush, pipeID, errc) // flush hook on return
-		call(r.reset, pipeID, errc)       // reset hook
 		var m Message
 		var ok bool
 		for {
@@ -246,12 +258,15 @@ func (r *Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan
 	return errc
 }
 
-// call optional function with pipeID argument. if error happens, it will be send to errc.
-func call(fn hook, pipeID string, errc chan error) {
+// call optional function with pipeID argument. If error happens, it will be send to errc.
+// True is returned only if error happened.
+func call(fn hook, pipeID string, errc chan error) bool {
 	if fn == nil {
-		return
+		return true
 	}
 	if err := fn(pipeID); err != nil {
 		errc <- err
+		return false
 	}
+	return true
 }
