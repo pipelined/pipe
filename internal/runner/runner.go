@@ -27,6 +27,7 @@ type SinkFunc func([][]float64) error
 
 // Pump executes pipe.Pump components.
 type Pump struct {
+	ID    string
 	Fn    PumpFunc
 	Meter metric.ResetFunc
 	Hooks
@@ -34,6 +35,7 @@ type Pump struct {
 
 // Processor executes pipe.Processor components.
 type Processor struct {
+	ID    string
 	Fn    ProcessorFunc
 	Meter metric.ResetFunc
 	Hooks
@@ -41,6 +43,7 @@ type Processor struct {
 
 // Sink executes pipe.Sink components.
 type Sink struct {
+	ID    string
 	Fn    SinkFunc
 	Meter metric.ResetFunc
 	Hooks
@@ -59,7 +62,7 @@ type Hooks struct {
 var do struct{}
 
 // Run starts the Pump runner.
-func (r *Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan struct{}, givec chan<- string, takec <-chan Message) (<-chan Message, <-chan error) {
+func (r Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan struct{}, givec chan<- string, takec <-chan Message) (<-chan Message, <-chan error) {
 	out := make(chan Message)
 	errc := make(chan error, 1)
 	meter := r.Meter()
@@ -120,7 +123,7 @@ func (r *Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan str
 }
 
 // Run starts the Processor runner.
-func (r *Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) (<-chan Message, <-chan error) {
+func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) (<-chan Message, <-chan error) {
 	errc := make(chan error, 1)
 	out := make(chan Message)
 	meter := r.Meter()
@@ -169,7 +172,7 @@ func (r *Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <
 }
 
 // Run starts the sink runner.
-func (r *Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) <-chan error {
+func (r Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) <-chan error {
 	errc := make(chan error, 1)
 	meter := r.Meter()
 	go func() {
