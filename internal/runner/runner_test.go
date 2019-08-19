@@ -72,7 +72,7 @@ func TestPumpRunner(t *testing.T) {
 
 	for _, c := range tests {
 		fn, sampleRate, _, _ := c.pump.Pump(pipeID)
-		r := &runner.Pump{
+		r := runner.Pump{
 			Fn:    fn,
 			Meter: metric.Meter(c.pump, sampleRate),
 			Hooks: pipe.BindHooks(c.pump),
@@ -181,7 +181,7 @@ func TestProcessorRunner(t *testing.T) {
 	numChannels := 1
 	for _, c := range tests {
 		fn, _ := c.processor.Process(pipeID, sampleRate, numChannels)
-		r := &runner.Processor{
+		r := runner.Processor{
 			Fn:    fn,
 			Meter: metric.Meter(c.processor, sampleRate),
 			Hooks: pipe.BindHooks(c.processor),
@@ -272,7 +272,7 @@ func TestSinkRunner(t *testing.T) {
 	for _, c := range tests {
 		fn, _ := c.sink.Sink(pipeID, sampleRate, numChannels)
 
-		r := &runner.Sink{
+		r := runner.Sink{
 			Fn:    fn,
 			Meter: metric.Meter(c.sink, sampleRate),
 			Hooks: pipe.BindHooks(c.sink),

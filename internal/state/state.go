@@ -25,7 +25,7 @@ type Handle struct {
 	// errc used to fan-in errors from components.
 	// created in run event, closed when all components are done.
 	merger
-	// cancel the net execution.
+	// cancel the line execution.
 	// created in run event, closed on cancel event or when error is recieved.
 	cancelFn     context.CancelFunc
 	startFn      StartFunc
