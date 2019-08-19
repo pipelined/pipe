@@ -72,7 +72,7 @@ func bindPipe(p *Pipe) (chain, error) {
 	pumpRunner := &runner.Pump{
 		Fn:    pumpFn,
 		Meter: metric.Meter(p.Pump, sampleRate),
-		Hooks: runner.BindHooks(p.Pump),
+		Hooks: BindHooks(p.Pump),
 	}
 	components[p.Pump] = newUID()
 
@@ -86,7 +86,7 @@ func bindPipe(p *Pipe) (chain, error) {
 		processorRunners = append(processorRunners, &runner.Processor{
 			Fn:    processFn,
 			Meter: metric.Meter(proc, sampleRate),
-			Hooks: runner.BindHooks(proc),
+			Hooks: BindHooks(proc),
 		})
 		components[proc] = newUID()
 	}
@@ -101,7 +101,7 @@ func bindPipe(p *Pipe) (chain, error) {
 		sinkRunners = append(sinkRunners, &runner.Sink{
 			Fn:    sinkFn,
 			Meter: metric.Meter(sink, sampleRate),
-			Hooks: runner.BindHooks(sink),
+			Hooks: BindHooks(sink),
 		})
 		components[sink] = newUID()
 	}
