@@ -75,7 +75,7 @@ func TestPumpRunner(t *testing.T) {
 		r := &runner.Pump{
 			Fn:    fn,
 			Meter: metric.Meter(c.pump, sampleRate),
-			Hooks: runner.BindHooks(c.pump),
+			Hooks: pipe.BindHooks(c.pump),
 		}
 		cancelc := make(chan struct{})
 		givec := make(chan string)
@@ -184,7 +184,7 @@ func TestProcessorRunner(t *testing.T) {
 		r := &runner.Processor{
 			Fn:    fn,
 			Meter: metric.Meter(c.processor, sampleRate),
-			Hooks: runner.BindHooks(c.processor),
+			Hooks: pipe.BindHooks(c.processor),
 		}
 
 		cancelc := make(chan struct{})
@@ -275,7 +275,7 @@ func TestSinkRunner(t *testing.T) {
 		r := &runner.Sink{
 			Fn:    fn,
 			Meter: metric.Meter(c.sink, sampleRate),
-			Hooks: runner.BindHooks(c.sink),
+			Hooks: pipe.BindHooks(c.sink),
 		}
 
 		cancelc := make(chan struct{})
