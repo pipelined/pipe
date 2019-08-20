@@ -38,7 +38,7 @@ func TestLine(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
-	// start the net
+	// start
 	runc := l.Run(context.Background(), bufferSize)
 	assert.NotNil(t, runc)
 	assert.Nil(t, err)
@@ -52,14 +52,14 @@ func TestLine(t *testing.T) {
 	paramFn := pump.LimitParam(newLimit)
 	l.Push(pumpID, paramFn)
 
-	// pause the net
+	// pause
 	err = pipe.Wait(l.Pause())
 	assert.Nil(t, err)
 	// runc must be cancelled by now
 	err = pipe.Wait(runc)
 	assert.Nil(t, err)
 
-	// resume the net
+	// resume
 	err = pipe.Wait(l.Resume())
 	assert.Nil(t, err)
 
