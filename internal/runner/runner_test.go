@@ -55,6 +55,15 @@ func TestPumpRunner(t *testing.T) {
 				Limit:       bufferSize,
 			},
 		},
+		{
+			pump: &mock.Pump{
+				Hooks: mock.Hooks{
+					ErrorOnReset: testError,
+				},
+				NumChannels: 1,
+				Limit:       bufferSize,
+			},
+		},
 	}
 	pipeID := "testPipeID"
 	componentID := "testComponentID"
@@ -63,10 +72,10 @@ func TestPumpRunner(t *testing.T) {
 
 	for _, c := range tests {
 		fn, sampleRate, _, _ := c.pump.Pump(pipeID)
-		r := &runner.Pump{
+		r := runner.Pump{
 			Fn:    fn,
 			Meter: metric.Meter(c.pump, sampleRate),
-			Hooks: runner.BindHooks(c.pump),
+			Hooks: pipe.BindHooks(c.pump),
 		}
 		cancelc := make(chan struct{})
 		givec := make(chan string)
@@ -96,6 +105,9 @@ func TestPumpRunner(t *testing.T) {
 			<-out
 			err := <-errc
 			assert.Equal(t, c.pump.ErrorOnCall, err)
+		case c.pump.ErrorOnReset != nil:
+			err := <-errc
+			assert.Equal(t, c.pump.ErrorOnReset, err)
 		default:
 			// test message exchange
 			for i := 0; i <= c.pump.Limit/bufferSize; i++ {
@@ -116,12 +128,16 @@ func TestPumpRunner(t *testing.T) {
 		assert.False(t, ok)
 
 		assert.True(t, c.pump.Resetted)
-		assert.True(t, c.pump.Flushed)
 
-		switch {
-		case c.cancelOnGive || c.cancelOnTake || c.cancelOnSend:
+		if c.pump.ErrorOnReset != nil {
+			assert.False(t, c.pump.Flushed)
+		} else {
+			assert.True(t, c.pump.Flushed)
+		}
+
+		if c.cancelOnGive || c.cancelOnTake || c.cancelOnSend {
 			assert.True(t, c.pump.Interrupted)
-		default:
+		} else {
 			assert.False(t, c.pump.Interrupted)
 		}
 	}
@@ -151,6 +167,13 @@ func TestProcessorRunner(t *testing.T) {
 			cancelOnSend: true,
 			processor:    &mock.Processor{},
 		},
+		{
+			processor: &mock.Processor{
+				Hooks: mock.Hooks{
+					ErrorOnReset: testError,
+				},
+			},
+		},
 	}
 	pipeID := "testPipeID"
 	componentID := "testComponentID"
@@ -158,10 +181,10 @@ func TestProcessorRunner(t *testing.T) {
 	numChannels := 1
 	for _, c := range tests {
 		fn, _ := c.processor.Process(pipeID, sampleRate, numChannels)
-		r := &runner.Processor{
+		r := runner.Processor{
 			Fn:    fn,
 			Meter: metric.Meter(c.processor, sampleRate),
-			Hooks: runner.BindHooks(c.processor),
+			Hooks: pipe.BindHooks(c.processor),
 		}
 
 		cancelc := make(chan struct{})
@@ -184,6 +207,9 @@ func TestProcessorRunner(t *testing.T) {
 			}
 			err := <-errc
 			assert.Equal(t, c.processor.ErrorOnCall, err)
+		case c.processor.ErrorOnReset != nil:
+			err := <-errc
+			assert.Equal(t, c.processor.ErrorOnReset, err)
 		default:
 			for i := 0; i <= c.messages; i++ {
 				in <- runner.Message{
@@ -197,7 +223,11 @@ func TestProcessorRunner(t *testing.T) {
 		pipe.Wait(errc)
 
 		assert.True(t, c.processor.Resetted)
-		assert.True(t, c.processor.Flushed)
+		if c.processor.ErrorOnReset != nil {
+			assert.False(t, c.processor.Flushed)
+		} else {
+			assert.True(t, c.processor.Flushed)
+		}
 
 		switch {
 		case c.cancelOnReceive || c.cancelOnSend:
@@ -227,6 +257,13 @@ func TestSinkRunner(t *testing.T) {
 			cancelOnReceive: true,
 			sink:            &mock.Sink{},
 		},
+		{
+			sink: &mock.Sink{
+				Hooks: mock.Hooks{
+					ErrorOnReset: testError,
+				},
+			},
+		},
 	}
 	pipeID := "testPipeID"
 	componentID := "testComponentID"
@@ -235,10 +272,10 @@ func TestSinkRunner(t *testing.T) {
 	for _, c := range tests {
 		fn, _ := c.sink.Sink(pipeID, sampleRate, numChannels)
 
-		r := &runner.Sink{
+		r := runner.Sink{
 			Fn:    fn,
 			Meter: metric.Meter(c.sink, sampleRate),
-			Hooks: runner.BindHooks(c.sink),
+			Hooks: pipe.BindHooks(c.sink),
 		}
 
 		cancelc := make(chan struct{})
@@ -255,6 +292,9 @@ func TestSinkRunner(t *testing.T) {
 			}
 			err := <-errc
 			assert.Equal(t, c.sink.ErrorOnCall, err)
+		case c.sink.ErrorOnReset != nil:
+			err := <-errc
+			assert.Equal(t, c.sink.ErrorOnReset, err)
 		default:
 			for i := 0; i <= c.messages; i++ {
 				in <- runner.Message{
@@ -267,7 +307,11 @@ func TestSinkRunner(t *testing.T) {
 		pipe.Wait(errc)
 
 		assert.True(t, c.sink.Resetted)
-		assert.True(t, c.sink.Flushed)
+		if c.sink.ErrorOnReset != nil {
+			assert.False(t, c.sink.Flushed)
+		} else {
+			assert.True(t, c.sink.Flushed)
+		}
 
 		switch {
 		case c.cancelOnReceive:
