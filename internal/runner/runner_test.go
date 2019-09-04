@@ -8,9 +8,10 @@ import (
 
 	"github.com/pipelined/mock"
 	"github.com/pipelined/pipe"
-	"github.com/pipelined/pipe/metric"
+	"github.com/pipelined/signal"
 
 	"github.com/pipelined/pipe/internal/runner"
+	"github.com/pipelined/pipe/metric"
 )
 
 var testError = errors.New("Test runner error")
@@ -74,7 +75,7 @@ func TestPumpRunner(t *testing.T) {
 		fn, sampleRate, _, _ := c.pump.Pump(pipeID)
 		r := runner.Pump{
 			Fn:    fn,
-			Meter: metric.Meter(c.pump, sampleRate),
+			Meter: metric.Meter(c.pump, signal.SampleRate(sampleRate)),
 			Hooks: pipe.BindHooks(c.pump),
 		}
 		cancelc := make(chan struct{})
@@ -183,7 +184,7 @@ func TestProcessorRunner(t *testing.T) {
 		fn, _ := c.processor.Process(pipeID, sampleRate, numChannels)
 		r := runner.Processor{
 			Fn:    fn,
-			Meter: metric.Meter(c.processor, sampleRate),
+			Meter: metric.Meter(c.processor, signal.SampleRate(sampleRate)),
 			Hooks: pipe.BindHooks(c.processor),
 		}
 
@@ -274,7 +275,7 @@ func TestSinkRunner(t *testing.T) {
 
 		r := runner.Sink{
 			Fn:    fn,
-			Meter: metric.Meter(c.sink, sampleRate),
+			Meter: metric.Meter(c.sink, signal.SampleRate(sampleRate)),
 			Hooks: pipe.BindHooks(c.sink),
 		}
 

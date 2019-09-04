@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/goleak"
 
 	"github.com/pipelined/mock"
 	"github.com/pipelined/pipe"
-	"go.uber.org/goleak"
+	"github.com/pipelined/signal"
 )
 
 const (
@@ -64,4 +65,12 @@ func TestLine(t *testing.T) {
 	assert.Nil(t, err)
 
 	pipe.Wait(l.Close())
+}
+
+func TestSampleRate(t *testing.T) {
+	var p *pipe.Pipe
+	assert.Equal(t, signal.SampleRate(0), p.SampleRate())
+
+	p = &pipe.Pipe{}
+	assert.Equal(t, signal.SampleRate(0), p.SampleRate())
 }
