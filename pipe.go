@@ -4,6 +4,7 @@ import (
 	"github.com/rs/xid"
 
 	"github.com/pipelined/pipe/internal/runner"
+	"github.com/pipelined/signal"
 )
 
 // pipeline components
@@ -63,9 +64,19 @@ func newUID() string {
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
+	sampleRate signal.SampleRate
 	Pump
 	Processors []Processor
 	Sinks      []Sink
+}
+
+// SampleRate of the signal produced by Pump.
+func (p *Pipe) SampleRate() signal.SampleRate {
+	if p == nil {
+		return 0
+	}
+
+	return p.sampleRate
 }
 
 // Processors is a helper function to use in pipe constructors.

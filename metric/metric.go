@@ -75,7 +75,7 @@ type ResetFunc func() MeasureFunc
 type MeasureFunc func(bufferSize int64)
 
 // Meter creates new meter closure to capture component counters.
-func Meter(component interface{}, sampleRate int) ResetFunc {
+func Meter(component interface{}, sampleRate signal.SampleRate) ResetFunc {
 	t := getType(component)
 	metric := components.get(t)
 	metric.components.Add(1)
@@ -92,7 +92,7 @@ func Meter(component interface{}, sampleRate int) ResetFunc {
 			// recalculate buffer duration only when buffer size has changed
 			if bufferSize != s {
 				bufferSize = s
-				bufferDuration = signal.DurationOf(sampleRate, s)
+				bufferDuration = sampleRate.DurationOf(s)
 			}
 			metric.duration.add(bufferDuration)
 			calledAt = time.Now()
