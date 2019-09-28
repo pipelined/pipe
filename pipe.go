@@ -1,10 +1,12 @@
+// Package pipe provides functionality to build and execute DSP pipelines.
+// Examples could be found in [examples repository](https://github.com/pipelined/example).
 package pipe
 
 import (
-	"github.com/rs/xid"
+	"crypto/rand"
+	"fmt"
 
 	"github.com/pipelined/pipe/internal/runner"
-	"github.com/pipelined/signal"
 )
 
 // pipeline components
@@ -55,7 +57,9 @@ type (
 
 // newUID returns new unique id value.
 func newUID() string {
-	return xid.New().String()
+	b := make([]byte, 16)
+	rand.Read(b)
+	return fmt.Sprintf("%x-%x-%x-%x-%x\n", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence
@@ -64,19 +68,9 @@ func newUID() string {
 //	 0..n 	processors
 //	 1..n	sinks
 type Pipe struct {
-	sampleRate signal.SampleRate
 	Pump
 	Processors []Processor
 	Sinks      []Sink
-}
-
-// SampleRate of the signal produced by Pump.
-func (p *Pipe) SampleRate() signal.SampleRate {
-	if p == nil {
-		return 0
-	}
-
-	return p.sampleRate
 }
 
 // Processors is a helper function to use in pipe constructors.

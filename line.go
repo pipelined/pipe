@@ -112,7 +112,6 @@ func bindPipe(p *Pipe) (chain, error) {
 		sinkRunners = append(sinkRunners, sinkRunner)
 		components[sink] = sinkRunner.ID
 	}
-	p.sampleRate = signal.SampleRate(sampleRate)
 	return chain{
 		uid:        pipeID,
 		sampleRate: sampleRate,
