@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/goleak"
 
 	"github.com/pipelined/mock"
 	"github.com/pipelined/pipe"
-	"go.uber.org/goleak"
 )
 
 const (

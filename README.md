@@ -12,12 +12,6 @@
 
 ## Getting started
 
-To start with `pipe` you'll need some [components](https://github.com/pipelined?utf8=%E2%9C%93&q=component&type=&language=). Let's say, you want to encode an `.mp3` file into `.wav`. To do that you might build a `pipe.Pipe` with `mp3.Pump` and `wav.Sink`.
-
-```Go
-
-```
-
 Find examples in [example](https://github.com/pipelined/example) repository.
 
 ## Testing

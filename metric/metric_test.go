@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/pipelined/pipe/metric"
+	"github.com/pipelined/signal"
 )
 
 func TestMeter(t *testing.T) {
@@ -59,7 +60,7 @@ func TestMeter(t *testing.T) {
 		wg := &sync.WaitGroup{}
 		wg.Add(c.routines)
 		for i := 0; i < c.routines; i++ {
-			go testFn(metric.Meter(c.component, sampleRate), wg, c.buffers, c.bufferSize)
+			go testFn(metric.Meter(c.component, signal.SampleRate(sampleRate)), wg, c.buffers, c.bufferSize)
 		}
 		// check if no data race.
 		wg.Wait()
