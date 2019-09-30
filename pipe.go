@@ -1,7 +1,10 @@
+// Package pipe provides functionality to build and execute DSP pipelines.
+// Examples could be found in [examples repository](https://github.com/pipelined/example).
 package pipe
 
 import (
-	"github.com/rs/xid"
+	"crypto/rand"
+	"fmt"
 
 	"github.com/pipelined/pipe/internal/runner"
 )
@@ -54,7 +57,9 @@ type (
 
 // newUID returns new unique id value.
 func newUID() string {
-	return xid.New().String()
+	b := make([]byte, 16)
+	rand.Read(b)
+	return fmt.Sprintf("%x-%x-%x-%x-%x\n", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // Pipe is a pipeline with fully defined sound processing sequence

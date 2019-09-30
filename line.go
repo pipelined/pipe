@@ -3,6 +3,8 @@ package pipe
 import (
 	"context"
 
+	"github.com/pipelined/signal"
+
 	"github.com/pipelined/pipe/internal/runner"
 	"github.com/pipelined/pipe/internal/state"
 	"github.com/pipelined/pipe/metric"
@@ -72,7 +74,7 @@ func bindPipe(p *Pipe) (chain, error) {
 	pumpRunner := runner.Pump{
 		ID:    newUID(),
 		Fn:    pumpFn,
-		Meter: metric.Meter(p.Pump, sampleRate),
+		Meter: metric.Meter(p.Pump, signal.SampleRate(sampleRate)),
 		Hooks: BindHooks(p.Pump),
 	}
 	components[p.Pump] = pumpRunner.ID
@@ -87,7 +89,7 @@ func bindPipe(p *Pipe) (chain, error) {
 		processorRunner := runner.Processor{
 			ID:    newUID(),
 			Fn:    processFn,
-			Meter: metric.Meter(proc, sampleRate),
+			Meter: metric.Meter(proc, signal.SampleRate(sampleRate)),
 			Hooks: BindHooks(proc),
 		}
 		processorRunners = append(processorRunners, processorRunner)
@@ -104,7 +106,7 @@ func bindPipe(p *Pipe) (chain, error) {
 		sinkRunner := runner.Sink{
 			ID:    newUID(),
 			Fn:    sinkFn,
-			Meter: metric.Meter(sink, sampleRate),
+			Meter: metric.Meter(sink, signal.SampleRate(sampleRate)),
 			Hooks: BindHooks(sink),
 		}
 		sinkRunners = append(sinkRunners, sinkRunner)
