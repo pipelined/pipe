@@ -72,7 +72,7 @@ func getCounters(componentType string) map[string]string {
 type ResetFunc func() MeasureFunc
 
 // MeasureFunc captures metrics when buffer is processed.
-type MeasureFunc func(bufferSize int64)
+type MeasureFunc func(bufferSize int)
 
 // Meter creates new meter closure to capture component counters.
 func Meter(component interface{}, sampleRate signal.SampleRate) ResetFunc {
@@ -82,13 +82,13 @@ func Meter(component interface{}, sampleRate signal.SampleRate) ResetFunc {
 	return func() MeasureFunc {
 		calledAt := time.Now()
 		var (
-			bufferSize     int64
+			bufferSize     int
 			bufferDuration time.Duration
 		)
-		return func(s int64) {
+		return func(s int) {
 			metric.latency.set(time.Since(calledAt))
 			metric.messages.Add(1)
-			metric.samples.Add(s)
+			metric.samples.Add(int64(s))
 			// recalculate buffer duration only when buffer size has changed
 			if bufferSize != s {
 				bufferSize = s
