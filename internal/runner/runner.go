@@ -97,7 +97,7 @@ func (r Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan stru
 			m.Buffer, err = r.Fn(bufferSize) // pump new buffer
 			// process buffer
 			if m.Buffer != nil {
-				meter(int64(m.Buffer.Size())) // capture metrics
+				meter(m.Buffer.Size()) // capture metrics
 
 				// push message further
 				select {
@@ -157,7 +157,7 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 				return
 			}
 
-			meter(int64(m.Buffer.Size())) // capture metrics
+			meter(m.Buffer.Size()) // capture metrics
 
 			// send message further
 			select {
@@ -203,7 +203,7 @@ func (r Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan 
 				return
 			}
 
-			meter(int64(m.Buffer.Size())) // capture metrics
+			meter(m.Buffer.Size()) // capture metrics
 		}
 	}()
 

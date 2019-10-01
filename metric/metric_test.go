@@ -18,7 +18,7 @@ func TestMeter(t *testing.T) {
 		component          interface{}
 		routines           int
 		buffers            int
-		bufferSize         int64
+		bufferSize         int
 		expectedSamples    string
 		expectedComponents string
 	}{
@@ -48,7 +48,7 @@ func TestMeter(t *testing.T) {
 		},
 	}
 	// function to test meter.
-	testFn := func(fn metric.ResetFunc, wg *sync.WaitGroup, buffers int, bufferSize int64) {
+	testFn := func(fn metric.ResetFunc, wg *sync.WaitGroup, buffers int, bufferSize int) {
 		m := fn()
 		for i := 0; i < buffers; i++ {
 			m(bufferSize)
