@@ -27,7 +27,9 @@ type (
 		Process(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
 	}
 
-	// Sink is an interface for final stage in audio pipeline
+	// Sink is an interface for final stage in audio pipeline.
+	// This components must not change buffer content. Pipe can have
+	// multiple sinks and this will cause race condition.
 	Sink interface {
 		Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
 	}

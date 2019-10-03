@@ -99,28 +99,27 @@ func (r Pump) Run(bufferSize, numChannels int, pipeID, componentID string, cance
 
 			m.Params.ApplyTo(componentID) // apply params
 
+			// allocate new buffer
 			m.Buffer = signal.Float64Buffer(numChannels, bufferSize, 0)
-			err = r.Fn(m.Buffer) // pump new buffer
-			// process buffer
-			if m.Buffer != nil {
-				meter(m.Buffer.Size()) // capture metrics
 
-				// push message further
-				select {
-				case out <- m:
-				case <-cancel:
-					call(r.Interrupt, pipeID, errc) // Interrupt hook
-					return
-				}
-			}
+			err = r.Fn(m.Buffer)   // pump new buffer
+			meter(m.Buffer.Size()) // capture metrics
 			// handle error
 			if err != nil {
 				switch err {
-				case io.EOF, io.ErrUnexpectedEOF:
-					// run sucessfully completed
+				case io.EOF:
+					// EOF is a good end.
 				default:
 					errc <- err
 				}
+				return
+			}
+
+			// push message further
+			select {
+			case out <- m:
+			case <-cancel:
+				call(r.Interrupt, pipeID, errc) // Interrupt hook
 				return
 			}
 		}
