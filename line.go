@@ -22,14 +22,15 @@ type L struct {
 
 // chain is a runtime chain of the pipeline.
 type chain struct {
-	uid        string
-	sampleRate int
-	pump       runner.Pump
-	processors []runner.Processor
-	sinks      []runner.Sink
-	components map[interface{}]string
-	takec      chan runner.Message // emission of messages
-	params     state.Params
+	uid         string
+	sampleRate  signal.SampleRate
+	numChannels int
+	pump        runner.Pump
+	processors  []runner.Processor
+	sinks       []runner.Sink
+	components  map[interface{}]string
+	takec       chan runner.Message // emission of messages
+	params      state.Params
 }
 
 // Line creates a new pipeline.
@@ -73,7 +74,7 @@ func bindPipe(p *Pipe) (chain, error) {
 	}
 	pumpRunner := runner.Pump{
 		ID:    newUID(),
-		Fn:    pumpFn,
+		Fn:    runner.PumpFunc(pumpFn),
 		Meter: metric.Meter(p.Pump, signal.SampleRate(sampleRate)),
 		Hooks: BindHooks(p.Pump),
 	}
@@ -88,7 +89,7 @@ func bindPipe(p *Pipe) (chain, error) {
 		}
 		processorRunner := runner.Processor{
 			ID:    newUID(),
-			Fn:    processFn,
+			Fn:    runner.ProcessFunc(processFn),
 			Meter: metric.Meter(proc, signal.SampleRate(sampleRate)),
 			Hooks: BindHooks(proc),
 		}
@@ -105,7 +106,7 @@ func bindPipe(p *Pipe) (chain, error) {
 		}
 		sinkRunner := runner.Sink{
 			ID:    newUID(),
-			Fn:    sinkFn,
+			Fn:    runner.SinkFunc(sinkFn),
 			Meter: metric.Meter(sink, signal.SampleRate(sampleRate)),
 			Hooks: BindHooks(sink),
 		}
@@ -113,14 +114,15 @@ func bindPipe(p *Pipe) (chain, error) {
 		components[sink] = sinkRunner.ID
 	}
 	return chain{
-		uid:        pipeID,
-		sampleRate: sampleRate,
-		pump:       pumpRunner,
-		processors: processorRunners,
-		sinks:      sinkRunners,
-		takec:      make(chan runner.Message),
-		components: components,
-		params:     make(map[string][]func()),
+		uid:         pipeID,
+		sampleRate:  sampleRate,
+		numChannels: numChannels,
+		pump:        pumpRunner,
+		processors:  processorRunners,
+		sinks:       sinkRunners,
+		takec:       make(chan runner.Message),
+		components:  components,
+		params:      make(map[string][]func()),
 	}, nil
 }
 
@@ -141,7 +143,7 @@ func start(l *L) state.StartFunc {
 		errcList := make([]<-chan error, 0)
 		for _, c := range l.chains {
 			// start pump
-			out, errc := c.pump.Run(bufferSize, c.uid, c.pump.ID, cancelc, givec, c.takec)
+			out, errc := c.pump.Run(bufferSize, c.numChannels, c.uid, c.pump.ID, cancelc, givec, c.takec)
 			errcList = append(errcList, errc)
 
 			// start chained processesing
@@ -158,7 +160,7 @@ func start(l *L) state.StartFunc {
 }
 
 // broadcastToSinks passes messages to all sinks.
-func broadcastToSinks(sampleRate int, c chain, cancelc <-chan struct{}, in <-chan runner.Message) []<-chan error {
+func broadcastToSinks(sampleRate signal.SampleRate, c chain, cancelc <-chan struct{}, in <-chan runner.Message) []<-chan error {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(c.sinks))
 	//list of channels for broadcast

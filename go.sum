@@ -1,3 +1,4 @@
+github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -8,6 +9,7 @@ github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
 github.com/pipelined/mock v0.2.1 h1:vivEo6OtvQJFRteBQkpWWFAojZ/mRD3TDw2fPUMctig=
 github.com/pipelined/mock v0.2.1/go.mod h1:dqiGor+TaFjU0L1YYTj3FeqYfjPx9scnsFKL6rT3v8E=
+github.com/pipelined/pipe v0.5.3/go.mod h1:YhL24dHWxZ08WE3YhEI7T3MAiVrgQenthRIMkQ3GRqc=
 github.com/pipelined/signal v0.1.0 h1:3UKsuDT/Gl1gFCeik59+28jpBC7ZVRIOJTV8p0SjvNQ=
 github.com/pipelined/signal v0.1.0/go.mod h1:2hObqg30KY6FBiLwiO5kvSui/3C2XWCks06RD/A1m7I=
 github.com/pipelined/signal v0.2.1 h1:FbUdoEDBaeeA68yoFP1Iyod+KCZ0HvLRCuSytopA9TQ=
