@@ -16,53 +16,57 @@ type Message struct {
 	Params   state.Params   // params for pipe
 }
 
-// PumpFunc is closure of pipe.Pump that emits new messages.
-type PumpFunc func(bufferSize int) ([][]float64, error)
+type (
+	// PumpFunc is closure of pipe.Pump that emits new messages.
+	PumpFunc func(signal.Float64) error
 
-// ProcessorFunc is closure of pipe.Processor that processes messages.
-type ProcessorFunc func([][]float64) ([][]float64, error)
+	// ProcessFunc is closure of pipe.Processor that processes messages.
+	ProcessFunc func(signal.Float64) error
 
-// SinkFunc is closure of pipe.Sink that sinks messages.
-type SinkFunc func([][]float64) error
+	// SinkFunc is closure of pipe.Sink that sinks messages.
+	SinkFunc func(signal.Float64) error
 
-// Pump executes pipe.Pump components.
-type Pump struct {
-	ID    string
-	Fn    PumpFunc
-	Meter metric.ResetFunc
-	Hooks
-}
+	// Pump executes pipe.Pump components.
+	Pump struct {
+		ID    string
+		Fn    PumpFunc
+		Meter metric.ResetFunc
+		Hooks
+	}
 
-// Processor executes pipe.Processor components.
-type Processor struct {
-	ID    string
-	Fn    ProcessorFunc
-	Meter metric.ResetFunc
-	Hooks
-}
+	// Processor executes pipe.Processor components.
+	Processor struct {
+		ID    string
+		Fn    ProcessFunc
+		Meter metric.ResetFunc
+		Hooks
+	}
 
-// Sink executes pipe.Sink components.
-type Sink struct {
-	ID    string
-	Fn    SinkFunc
-	Meter metric.ResetFunc
-	Hooks
-}
+	// Sink executes pipe.Sink components.
+	Sink struct {
+		ID    string
+		Fn    SinkFunc
+		Meter metric.ResetFunc
+		Hooks
+	}
+)
 
-// Hook represents optional functions for components lyfecycle.
-type Hook func(string) error
+type (
+	// Hook represents optional functions for components lyfecycle.
+	Hook func(string) error
 
-// Hooks is the set of components Hooks for runners.
-type Hooks struct {
-	Flush     Hook
-	Interrupt Hook
-	Reset     Hook
-}
+	// Hooks is the set of components Hooks for runners.
+	Hooks struct {
+		Flush     Hook
+		Interrupt Hook
+		Reset     Hook
+	}
+)
 
 var do struct{}
 
 // Run starts the Pump runner.
-func (r Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan struct{}, givec chan<- string, takec <-chan Message) (<-chan Message, <-chan error) {
+func (r Pump) Run(bufferSize, numChannels int, pipeID, componentID string, cancel <-chan struct{}, givec chan<- string, takec <-chan Message) (<-chan Message, <-chan error) {
 	out := make(chan Message)
 	errc := make(chan error, 1)
 	meter := r.Meter()
@@ -93,8 +97,10 @@ func (r Pump) Run(bufferSize int, pipeID, componentID string, cancel <-chan stru
 				return
 			}
 
-			m.Params.ApplyTo(componentID)    // apply params
-			m.Buffer, err = r.Fn(bufferSize) // pump new buffer
+			m.Params.ApplyTo(componentID) // apply params
+
+			m.Buffer = signal.Float64Buffer(numChannels, bufferSize, 0)
+			err = r.Fn(m.Buffer) // pump new buffer
 			// process buffer
 			if m.Buffer != nil {
 				meter(m.Buffer.Size()) // capture metrics
@@ -150,8 +156,8 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 				return
 			}
 
-			m.Params.ApplyTo(componentID)  // apply params
-			m.Buffer, err = r.Fn(m.Buffer) // process new buffer
+			m.Params.ApplyTo(componentID) // apply params
+			err = r.Fn(m.Buffer)          // process new buffer
 			if err != nil {
 				errc <- err
 				return

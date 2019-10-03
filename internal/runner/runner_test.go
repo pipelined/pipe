@@ -81,7 +81,7 @@ func TestPumpRunner(t *testing.T) {
 		cancelc := make(chan struct{})
 		givec := make(chan string)
 		takec := make(chan runner.Message)
-		out, errc := r.Run(bufferSize, pipeID, componentID, cancelc, givec, takec)
+		out, errc := r.Run(bufferSize, c.pump.NumChannels, pipeID, componentID, cancelc, givec, takec)
 		assert.NotNil(t, out)
 		assert.NotNil(t, errc)
 
@@ -178,7 +178,7 @@ func TestProcessorRunner(t *testing.T) {
 	}
 	pipeID := "testPipeID"
 	componentID := "testComponentID"
-	sampleRate := 44100
+	sampleRate := signal.SampleRate(44100)
 	numChannels := 1
 	for _, c := range tests {
 		fn, _ := c.processor.Process(pipeID, sampleRate, numChannels)
@@ -268,7 +268,7 @@ func TestSinkRunner(t *testing.T) {
 	}
 	pipeID := "testPipeID"
 	componentID := "testComponentID"
-	sampleRate := 44100
+	sampleRate := signal.SampleRate(44100)
 	numChannels := 1
 	for _, c := range tests {
 		fn, _ := c.sink.Sink(pipeID, sampleRate, numChannels)
