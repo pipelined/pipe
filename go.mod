@@ -7,6 +7,9 @@ require (
 	go.uber.org/goleak v0.10.0
 )
 
-replace github.com/pipelined/mock => ../mock
+replace (
+	github.com/pipelined/mock => ../mock
+	github.com/pipelined/signal => ../signal
+)
 
 go 1.13
