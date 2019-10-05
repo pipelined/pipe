@@ -99,8 +99,9 @@ func (r Pump) Run(bufferSize, numChannels int, pipeID, componentID string, cance
 
 			m.Params.ApplyTo(componentID) // apply params
 
+			// POOL: Allocate buffer here.
 			// allocate new buffer
-			m.Buffer = signal.Float64Buffer(numChannels, bufferSize, 0)
+			m.Buffer = signal.Float64Buffer(numChannels, bufferSize)
 
 			err = r.Fn(m.Buffer)   // pump new buffer
 			meter(m.Buffer.Size()) // capture metrics
@@ -207,7 +208,7 @@ func (r Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan 
 				errc <- err
 				return
 			}
-
+			// POOL: Free buffer here.
 			meter(m.Buffer.Size()) // capture metrics
 		}
 	}()
@@ -226,4 +227,48 @@ func call(fn Hook, pipeID string, errc chan error) bool {
 		return false
 	}
 	return true
+}
+
+// Broadcast passes messages to all sinks.
+func Broadcast(pipeID string, sinks []Sink, cancelc <-chan struct{}, in <-chan Message) []<-chan error {
+	//init errcList for sinks error channels
+	errcList := make([]<-chan error, 0, len(sinks))
+	//list of channels for broadcast
+	broadcasts := make([]chan Message, len(sinks))
+	for i := range broadcasts {
+		broadcasts[i] = make(chan Message)
+	}
+
+	//start broadcast
+	for i, s := range sinks {
+		errc := s.Run(pipeID, s.ID, cancelc, broadcasts[i])
+		errcList = append(errcList, errc)
+	}
+
+	go func() {
+		//close broadcasts on return
+		defer func() {
+			for i := range broadcasts {
+				close(broadcasts[i])
+			}
+		}()
+		for msg := range in {
+			for i := range broadcasts {
+				// POOL: allocate new buffer here
+				m := Message{
+					SourceID: msg.SourceID,
+					Buffer:   msg.Buffer,
+					Params:   msg.Params.Detach(sinks[i].ID),
+				}
+				select {
+				case broadcasts[i] <- m:
+				case <-cancelc:
+					return
+				}
+			}
+			// POOL: free buffer here
+		}
+	}()
+
+	return errcList
 }

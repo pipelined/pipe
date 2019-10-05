@@ -152,53 +152,11 @@ func start(l *L) state.StartFunc {
 				errcList = append(errcList, errc)
 			}
 
-			sinkErrcList := broadcastToSinks(c.sampleRate, c, cancelc, out)
+			sinkErrcList := runner.Broadcast(c.uid, c.sinks, cancelc, out)
 			errcList = append(errcList, sinkErrcList...)
 		}
 		return errcList
 	}
-}
-
-// broadcastToSinks passes messages to all sinks.
-func broadcastToSinks(sampleRate signal.SampleRate, c chain, cancelc <-chan struct{}, in <-chan runner.Message) []<-chan error {
-	//init errcList for sinks error channels
-	errcList := make([]<-chan error, 0, len(c.sinks))
-	//list of channels for broadcast
-	broadcasts := make([]chan runner.Message, len(c.sinks))
-	for i := range broadcasts {
-		broadcasts[i] = make(chan runner.Message)
-	}
-
-	//start broadcast
-	for i, s := range c.sinks {
-		errc := s.Run(c.uid, s.ID, cancelc, broadcasts[i])
-		errcList = append(errcList, errc)
-	}
-
-	go func() {
-		//close broadcasts on return
-		defer func() {
-			for i := range broadcasts {
-				close(broadcasts[i])
-			}
-		}()
-		for msg := range in {
-			for i := range broadcasts {
-				m := runner.Message{
-					SourceID: msg.SourceID,
-					Buffer:   msg.Buffer,
-					Params:   msg.Params.Detach(c.sinks[i].ID),
-				}
-				select {
-				case broadcasts[i] <- m:
-				case <-cancelc:
-					return
-				}
-			}
-		}
-	}()
-
-	return errcList
 }
 
 // newMessage creates a new message with cached Params.
