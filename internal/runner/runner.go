@@ -2,6 +2,7 @@ package runner
 
 import (
 	"io"
+	"sync/atomic"
 
 	"github.com/pipelined/signal"
 
@@ -9,11 +10,18 @@ import (
 	"github.com/pipelined/pipe/metric"
 )
 
+// Pool provides pooling of signal.Float64 buffers.
+type Pool interface {
+	Alloc() signal.Float64
+	Free(signal.Float64)
+}
+
 // Message is a main structure for pipe transport
 type Message struct {
-	SourceID string         // ID of pipe which spawned this message.
-	Buffer   signal.Float64 // Buffer of message
-	Params   state.Params   // params for pipe
+	sinkRefs int32          // number of sinks referencing buffer in this message.
+	PipeID   string         // ID of pipe which spawned this message.
+	Buffer   signal.Float64 // Buffer of message.
+	Params   state.Params   // params for pipe.
 }
 
 type (
@@ -66,8 +74,8 @@ type (
 var do struct{}
 
 // Run starts the Pump runner.
-func (r Pump) Run(bufferSize, numChannels int, pipeID, componentID string, cancel <-chan struct{}, givec chan<- string, takec <-chan Message) (<-chan Message, <-chan error) {
-	out := make(chan Message)
+func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, givec chan<- string, takec <-chan Message) (<-chan Message, <-chan error) {
+	out := make(chan Message, 1)
 	errc := make(chan error, 1)
 	meter := r.Meter()
 	go func() {
@@ -101,7 +109,7 @@ func (r Pump) Run(bufferSize, numChannels int, pipeID, componentID string, cance
 
 			// POOL: Allocate buffer here.
 			// allocate new buffer
-			m.Buffer = signal.Float64Buffer(numChannels, bufferSize)
+			m.Buffer = p.Alloc()
 
 			err = r.Fn(m.Buffer)   // pump new buffer
 			meter(m.Buffer.Size()) // capture metrics
@@ -131,7 +139,7 @@ func (r Pump) Run(bufferSize, numChannels int, pipeID, componentID string, cance
 // Run starts the Processor runner.
 func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) (<-chan Message, <-chan error) {
 	errc := make(chan error, 1)
-	out := make(chan Message)
+	out := make(chan Message, 1)
 	meter := r.Meter()
 	go func() {
 		defer close(out)
@@ -178,7 +186,7 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 }
 
 // Run starts the sink runner.
-func (r Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) <-chan error {
+func (r Sink) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) <-chan error {
 	errc := make(chan error, 1)
 	meter := r.Meter()
 	go func() {
@@ -208,8 +216,10 @@ func (r Sink) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan 
 				errc <- err
 				return
 			}
-			// POOL: Free buffer here.
 			meter(m.Buffer.Size()) // capture metrics
+			if atomic.AddInt32(&m.sinkRefs, -1) == 0 {
+				p.Free(m.Buffer)
+			}
 		}
 	}()
 
@@ -230,18 +240,18 @@ func call(fn Hook, pipeID string, errc chan error) bool {
 }
 
 // Broadcast passes messages to all sinks.
-func Broadcast(pipeID string, sinks []Sink, cancelc <-chan struct{}, in <-chan Message) []<-chan error {
+func Broadcast(p Pool, pipeID string, sinks []Sink, cancelc <-chan struct{}, in <-chan Message) []<-chan error {
 	//init errcList for sinks error channels
 	errcList := make([]<-chan error, 0, len(sinks))
 	//list of channels for broadcast
 	broadcasts := make([]chan Message, len(sinks))
 	for i := range broadcasts {
-		broadcasts[i] = make(chan Message)
+		broadcasts[i] = make(chan Message, 1)
 	}
 
 	//start broadcast
 	for i, s := range sinks {
-		errc := s.Run(pipeID, s.ID, cancelc, broadcasts[i])
+		errc := s.Run(p, pipeID, s.ID, cancelc, broadcasts[i])
 		errcList = append(errcList, errc)
 	}
 
@@ -254,9 +264,9 @@ func Broadcast(pipeID string, sinks []Sink, cancelc <-chan struct{}, in <-chan M
 		}()
 		for msg := range in {
 			for i := range broadcasts {
-				// POOL: allocate new buffer here
 				m := Message{
-					SourceID: msg.SourceID,
+					sinkRefs: int32(len(broadcasts)),
+					PipeID:   pipeID,
 					Buffer:   msg.Buffer,
 					Params:   msg.Params.Detach(sinks[i].ID),
 				}
@@ -266,7 +276,6 @@ func Broadcast(pipeID string, sinks []Sink, cancelc <-chan struct{}, in <-chan M
 					return
 				}
 			}
-			// POOL: free buffer here
 		}
 	}()
 
