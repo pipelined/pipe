@@ -5,6 +5,7 @@ import (
 
 	"github.com/pipelined/signal"
 
+	"github.com/pipelined/pipe/internal/pool"
 	"github.com/pipelined/pipe/internal/runner"
 	"github.com/pipelined/pipe/internal/state"
 	"github.com/pipelined/pipe/metric"
@@ -142,8 +143,9 @@ func start(l *L) state.StartFunc {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
 		for _, c := range l.chains {
+			p := pool.New(c.numChannels, bufferSize)
 			// start pump
-			out, errc := c.pump.Run(bufferSize, c.numChannels, c.uid, c.pump.ID, cancelc, givec, c.takec)
+			out, errc := c.pump.Run(p, c.uid, c.pump.ID, cancelc, givec, c.takec)
 			errcList = append(errcList, errc)
 
 			// start chained processesing
@@ -152,7 +154,7 @@ func start(l *L) state.StartFunc {
 				errcList = append(errcList, errc)
 			}
 
-			sinkErrcList := runner.Broadcast(c.uid, c.sinks, cancelc, out)
+			sinkErrcList := runner.Broadcast(p, c.uid, c.sinks, cancelc, out)
 			errcList = append(errcList, sinkErrcList...)
 		}
 		return errcList
@@ -164,7 +166,7 @@ func start(l *L) state.StartFunc {
 func newMessage(l *L) state.NewMessageFunc {
 	return func(pipeID string) {
 		c := l.chains[pipeID]
-		m := runner.Message{SourceID: c.uid}
+		m := runner.Message{PipeID: c.uid}
 		if len(c.params) > 0 {
 			m.Params = c.params
 			c.params = make(map[string][]func())
