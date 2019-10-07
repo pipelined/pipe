@@ -14,6 +14,11 @@ import (
 	"github.com/pipelined/pipe/metric"
 )
 
+const (
+	pipeID      = "testPipeID"
+	componentID = "testComponentID"
+)
+
 type noOpPool struct {
 	numChannels int
 	bufferSize  int
@@ -77,8 +82,6 @@ func TestPumpRunner(t *testing.T) {
 			},
 		},
 	}
-	pipeID := "testPipeID"
-	componentID := "testComponentID"
 
 	var ok bool
 
@@ -119,6 +122,9 @@ func TestPumpRunner(t *testing.T) {
 				PipeID: pipeID,
 			}
 			close(cancelc)
+			// loop because cancel might happen later
+			for _ = range out {
+			}
 		case c.pump.ErrorOnCall != nil:
 			<-givec
 			takec <- runner.Message{
@@ -197,8 +203,6 @@ func TestProcessorRunner(t *testing.T) {
 			},
 		},
 	}
-	pipeID := "testPipeID"
-	componentID := "testComponentID"
 	sampleRate := signal.SampleRate(44100)
 	numChannels := 1
 	for _, c := range tests {
@@ -287,8 +291,7 @@ func TestSinkRunner(t *testing.T) {
 			},
 		},
 	}
-	pipeID := "testPipeID"
-	componentID := "testComponentID"
+
 	sampleRate := signal.SampleRate(44100)
 	numChannels := 1
 	for _, c := range tests {
@@ -340,6 +343,60 @@ func TestSinkRunner(t *testing.T) {
 			assert.True(t, c.sink.Interrupted)
 		default:
 			assert.False(t, c.sink.Interrupted)
+		}
+	}
+}
+
+func TestBroadcast(t *testing.T) {
+	tests := []struct {
+		sinks    []pipe.Sink
+		messages int
+	}{
+		{
+			sinks: []pipe.Sink{
+				&mock.Sink{},
+				&mock.Sink{},
+			},
+			messages: 10,
+		},
+	}
+	sampleRate := signal.SampleRate(44100)
+	numChannels := 1
+	for _, test := range tests {
+
+		// create runners
+		runners := make([]runner.Sink, len(test.sinks))
+		for i, sink := range test.sinks {
+			fn, _ := sink.Sink(pipeID, sampleRate, numChannels)
+			r := runner.Sink{
+				Fn:    fn,
+				Meter: metric.Meter(sink, sampleRate),
+				Hooks: pipe.BindHooks(sink),
+			}
+			runners[i] = r
+		}
+
+		cancelChan := make(chan struct{})
+		inChan := make(chan runner.Message)
+		errChanList := runner.Broadcast(
+			noOpPool{},
+			pipeID,
+			runners,
+			cancelChan,
+			inChan,
+		)
+		assert.Equal(t, len(runners), len(errChanList))
+		for i := 0; i < test.messages; i++ {
+			inChan <- runner.Message{
+				PipeID: pipeID,
+			}
+		}
+		close(inChan)
+		// _, ok := <-cancelChan
+		// assert.False(t, ok)
+		for _, errChan := range errChanList {
+			_, ok := <-errChan
+			assert.False(t, ok)
 		}
 	}
 }
