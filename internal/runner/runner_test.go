@@ -14,6 +14,17 @@ import (
 	"github.com/pipelined/pipe/metric"
 )
 
+type noOpPool struct {
+	numChannels int
+	bufferSize  int
+}
+
+func (p noOpPool) Alloc() signal.Float64 {
+	return signal.Float64Buffer(p.numChannels, p.bufferSize)
+}
+
+func (p noOpPool) Free(signal.Float64) {}
+
 var testError = errors.New("Test runner error")
 
 func TestPumpRunner(t *testing.T) {
@@ -81,7 +92,17 @@ func TestPumpRunner(t *testing.T) {
 		cancelc := make(chan struct{})
 		givec := make(chan string)
 		takec := make(chan runner.Message)
-		out, errc := r.Run(bufferSize, c.pump.NumChannels, pipeID, componentID, cancelc, givec, takec)
+		out, errc := r.Run(
+			noOpPool{
+				numChannels: c.pump.NumChannels,
+				bufferSize:  bufferSize,
+			},
+			pipeID,
+			componentID,
+			cancelc,
+			givec,
+			takec,
+		)
 		assert.NotNil(t, out)
 		assert.NotNil(t, errc)
 
@@ -281,7 +302,7 @@ func TestSinkRunner(t *testing.T) {
 
 		cancelc := make(chan struct{})
 		in := make(chan runner.Message)
-		errc := r.Run(pipeID, componentID, cancelc, in)
+		errc := r.Run(noOpPool{}, pipeID, componentID, cancelc, in)
 		assert.NotNil(t, errc)
 
 		switch {
