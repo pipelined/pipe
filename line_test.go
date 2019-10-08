@@ -71,7 +71,7 @@ func TestLine(t *testing.T) {
 func BenchmarkSingleLine(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		pump := &mock.Pump{
-			Limit:       100 * bufferSize,
+			Limit:       862 * bufferSize,
 			NumChannels: 2,
 		}
 		proc1 := &mock.Processor{}
