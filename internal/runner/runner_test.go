@@ -14,6 +14,22 @@ import (
 	"github.com/pipelined/pipe/metric"
 )
 
+const (
+	pipeID      = "testPipeID"
+	componentID = "testComponentID"
+)
+
+type noOpPool struct {
+	numChannels int
+	bufferSize  int
+}
+
+func (p noOpPool) Alloc() signal.Float64 {
+	return signal.Float64Buffer(p.numChannels, p.bufferSize)
+}
+
+func (p noOpPool) Free(signal.Float64) {}
+
 var testError = errors.New("Test runner error")
 
 func TestPumpRunner(t *testing.T) {
@@ -66,8 +82,6 @@ func TestPumpRunner(t *testing.T) {
 			},
 		},
 	}
-	pipeID := "testPipeID"
-	componentID := "testComponentID"
 
 	var ok bool
 
@@ -81,7 +95,17 @@ func TestPumpRunner(t *testing.T) {
 		cancelc := make(chan struct{})
 		givec := make(chan string)
 		takec := make(chan runner.Message)
-		out, errc := r.Run(bufferSize, c.pump.NumChannels, pipeID, componentID, cancelc, givec, takec)
+		out, errc := r.Run(
+			noOpPool{
+				numChannels: c.pump.NumChannels,
+				bufferSize:  bufferSize,
+			},
+			pipeID,
+			componentID,
+			cancelc,
+			givec,
+			takec,
+		)
 		assert.NotNil(t, out)
 		assert.NotNil(t, errc)
 
@@ -95,13 +119,16 @@ func TestPumpRunner(t *testing.T) {
 		case c.cancelOnSend:
 			<-givec
 			takec <- runner.Message{
-				SourceID: pipeID,
+				PipeID: pipeID,
 			}
 			close(cancelc)
+			// loop because cancel might happen later
+			for _ = range out {
+			}
 		case c.pump.ErrorOnCall != nil:
 			<-givec
 			takec <- runner.Message{
-				SourceID: pipeID,
+				PipeID: pipeID,
 			}
 			<-out
 			err := <-errc
@@ -114,7 +141,7 @@ func TestPumpRunner(t *testing.T) {
 			for i := 0; i <= c.pump.Limit/bufferSize; i++ {
 				<-givec
 				takec <- runner.Message{
-					SourceID: pipeID,
+					PipeID: pipeID,
 				}
 				<-out
 			}
@@ -176,8 +203,6 @@ func TestProcessorRunner(t *testing.T) {
 			},
 		},
 	}
-	pipeID := "testPipeID"
-	componentID := "testComponentID"
 	sampleRate := signal.SampleRate(44100)
 	numChannels := 1
 	for _, c := range tests {
@@ -199,12 +224,12 @@ func TestProcessorRunner(t *testing.T) {
 			close(cancelc)
 		case c.cancelOnSend:
 			in <- runner.Message{
-				SourceID: pipeID,
+				PipeID: pipeID,
 			}
 			close(cancelc)
 		case c.processor.ErrorOnCall != nil:
 			in <- runner.Message{
-				SourceID: pipeID,
+				PipeID: pipeID,
 			}
 			err := <-errc
 			assert.Equal(t, c.processor.ErrorOnCall, err)
@@ -214,7 +239,7 @@ func TestProcessorRunner(t *testing.T) {
 		default:
 			for i := 0; i <= c.messages; i++ {
 				in <- runner.Message{
-					SourceID: pipeID,
+					PipeID: pipeID,
 				}
 				<-out
 			}
@@ -266,8 +291,7 @@ func TestSinkRunner(t *testing.T) {
 			},
 		},
 	}
-	pipeID := "testPipeID"
-	componentID := "testComponentID"
+
 	sampleRate := signal.SampleRate(44100)
 	numChannels := 1
 	for _, c := range tests {
@@ -281,7 +305,7 @@ func TestSinkRunner(t *testing.T) {
 
 		cancelc := make(chan struct{})
 		in := make(chan runner.Message)
-		errc := r.Run(pipeID, componentID, cancelc, in)
+		errc := r.Run(noOpPool{}, pipeID, componentID, cancelc, in)
 		assert.NotNil(t, errc)
 
 		switch {
@@ -289,7 +313,7 @@ func TestSinkRunner(t *testing.T) {
 			close(cancelc)
 		case c.sink.ErrorOnCall != nil:
 			in <- runner.Message{
-				SourceID: pipeID,
+				PipeID: pipeID,
 			}
 			err := <-errc
 			assert.Equal(t, c.sink.ErrorOnCall, err)
@@ -299,7 +323,7 @@ func TestSinkRunner(t *testing.T) {
 		default:
 			for i := 0; i <= c.messages; i++ {
 				in <- runner.Message{
-					SourceID: pipeID,
+					PipeID: pipeID,
 				}
 			}
 			close(in)
@@ -319,6 +343,60 @@ func TestSinkRunner(t *testing.T) {
 			assert.True(t, c.sink.Interrupted)
 		default:
 			assert.False(t, c.sink.Interrupted)
+		}
+	}
+}
+
+func TestBroadcast(t *testing.T) {
+	tests := []struct {
+		sinks    []pipe.Sink
+		messages int
+	}{
+		{
+			sinks: []pipe.Sink{
+				&mock.Sink{},
+				&mock.Sink{},
+			},
+			messages: 10,
+		},
+	}
+	sampleRate := signal.SampleRate(44100)
+	numChannels := 1
+	for _, test := range tests {
+
+		// create runners
+		runners := make([]runner.Sink, len(test.sinks))
+		for i, sink := range test.sinks {
+			fn, _ := sink.Sink(pipeID, sampleRate, numChannels)
+			r := runner.Sink{
+				Fn:    fn,
+				Meter: metric.Meter(sink, sampleRate),
+				Hooks: pipe.BindHooks(sink),
+			}
+			runners[i] = r
+		}
+
+		cancelChan := make(chan struct{})
+		inChan := make(chan runner.Message)
+		errChanList := runner.Broadcast(
+			noOpPool{},
+			pipeID,
+			runners,
+			cancelChan,
+			inChan,
+		)
+		assert.Equal(t, len(runners), len(errChanList))
+		for i := 0; i < test.messages; i++ {
+			inChan <- runner.Message{
+				PipeID: pipeID,
+			}
+		}
+		close(inChan)
+		// _, ok := <-cancelChan
+		// assert.False(t, ok)
+		for _, errChan := range errChanList {
+			_, ok := <-errChan
+			assert.False(t, ok)
 		}
 	}
 }
