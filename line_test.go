@@ -65,3 +65,32 @@ func TestLine(t *testing.T) {
 
 	pipe.Wait(l.Close())
 }
+
+// This benchmark runs next line:
+// 1 Pump, 2 Processors, 2 Sinks, 1000 buffers of 512 samples with 2 channels.
+func BenchmarkSingleLine(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		pump := &mock.Pump{
+			Limit:       862 * bufferSize,
+			NumChannels: 2,
+		}
+		proc1 := &mock.Processor{}
+		proc2 := &mock.Processor{}
+		sink1 := &mock.Sink{
+			Discard: true,
+		}
+		sink2 := &mock.Sink{
+			Discard: true,
+		}
+
+		l, _ := pipe.Line(
+			&pipe.Pipe{
+				Pump:       pump,
+				Processors: pipe.Processors(proc1, proc2),
+				Sinks:      pipe.Sinks(sink1, sink2),
+			},
+		)
+		pipe.Wait(l.Run(context.Background(), bufferSize))
+		pipe.Wait(l.Close())
+	}
+}
