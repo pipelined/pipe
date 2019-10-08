@@ -1,5 +1,11 @@
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/pipelined/mock v0.2.2-0.20191008050932-dfd69870f9b6 h1:MlCn33TCnbMDQvVlmtIOYv8BOUILLoiO7+Eo+Bv6SMk=
+github.com/pipelined/mock v0.2.2-0.20191008050932-dfd69870f9b6/go.mod h1:9iS3U7KBFjRyBdVlV7WsU7NdDv6KhtZk4LSIAfpzEZU=
+github.com/pipelined/signal v0.2.1 h1:FbUdoEDBaeeA68yoFP1Iyod+KCZ0HvLRCuSytopA9TQ=
+github.com/pipelined/signal v0.2.1/go.mod h1:fbzWudlb7qHW4YQ61Y3qzIDI41rJnxNlcjUeTGNukh8=
+github.com/pipelined/signal v0.3.0 h1:iHWOtNTEpg6fuFmQAUpidtuhQOhffjBCMjmHMtVv1oA=
+github.com/pipelined/signal v0.3.0/go.mod h1:fbzWudlb7qHW4YQ61Y3qzIDI41rJnxNlcjUeTGNukh8=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0 h1:4G4v2dO3VZwixGIRoQ5Lfboy6nUhCyYzaqnIAPPhYs4=
