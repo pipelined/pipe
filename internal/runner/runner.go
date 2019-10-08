@@ -18,7 +18,7 @@ type Pool interface {
 
 // Message is a main structure for pipe transport
 type Message struct {
-	sinkRefs int32          // number of sinks referencing buffer in this message.
+	SinkRefs int32          // number of sinks referencing buffer in this message.
 	PipeID   string         // ID of pipe which spawned this message.
 	Buffer   signal.Float64 // Buffer of message.
 	Params   state.Params   // params for pipe.
@@ -217,7 +217,7 @@ func (r Sink) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, in
 				return
 			}
 			meter(m.Buffer.Size()) // capture metrics
-			if atomic.AddInt32(&m.sinkRefs, -1) == 0 {
+			if atomic.AddInt32(&m.SinkRefs, -1) == 0 {
 				p.Free(m.Buffer)
 			}
 		}
@@ -265,7 +265,7 @@ func Broadcast(p Pool, pipeID string, sinks []Sink, cancelc <-chan struct{}, in 
 		for msg := range in {
 			for i := range broadcasts {
 				m := Message{
-					sinkRefs: int32(len(broadcasts)),
+					SinkRefs: int32(len(broadcasts)),
 					PipeID:   pipeID,
 					Buffer:   msg.Buffer,
 					Params:   msg.Params.Detach(sinks[i].ID),
