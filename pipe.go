@@ -14,7 +14,8 @@ import (
 type (
 	// Pump is a source of samples. Pump method returns a new buffer with signal data.
 	// If no data is available, io.EOF should be returned. If pump cannot provide data
-	// to fulfill buffer, it can change size of the buffer to align it with actual data.
+	// to fulfill buffer, it can trim the size of the buffer to align it with actual data.
+	// Buffer size can only be decreased.
 	Pump interface {
 		Pump(pipeID string) (func(signal.Float64) error, signal.SampleRate, int, error)
 	}
@@ -22,7 +23,8 @@ type (
 	// Processor defines interface for pipe processors.
 	// Processor should return output in the same signal buffer as input.
 	// It is encouraged to implement in-place processing algorithms.
-	// Buffer size could be changed during execution, but not number of channels.
+	// Buffer size could be changed during execution, but only decrease allowed.
+	// Number of channels cannot be changed.
 	Processor interface {
 		Process(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
 	}
