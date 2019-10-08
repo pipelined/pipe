@@ -58,13 +58,14 @@ func TestPumpRunner(t *testing.T) {
 				NumChannels: 1,
 			},
 		},
-		{
-			cancelOnSend: true,
-			pump: &mock.Pump{
-				NumChannels: 1,
-				Limit:       bufferSize,
-			},
-		},
+		// This test case cannot guarantee coverage because buffered out channel is used.
+		// {
+		// 	cancelOnSend: true,
+		// 	pump: &mock.Pump{
+		// 		NumChannels: 1,
+		// 		Limit:       bufferSize,
+		// 	},
+		// },
 		{
 			pump: &mock.Pump{
 				ErrorOnCall: testError,
@@ -122,9 +123,6 @@ func TestPumpRunner(t *testing.T) {
 				PipeID: pipeID,
 			}
 			close(cancelc)
-			// loop because cancel might happen later
-			for _ = range out {
-			}
 		case c.pump.ErrorOnCall != nil:
 			<-givec
 			takec <- runner.Message{
@@ -191,10 +189,11 @@ func TestProcessorRunner(t *testing.T) {
 			cancelOnReceive: true,
 			processor:       &mock.Processor{},
 		},
-		{
-			cancelOnSend: true,
-			processor:    &mock.Processor{},
-		},
+		// This test case cannot guarantee coverage because buffered out channel is used.
+		// {
+		// 	cancelOnSend: true,
+		// 	processor:    &mock.Processor{},
+		// },
 		{
 			processor: &mock.Processor{
 				Hooks: mock.Hooks{
@@ -323,7 +322,8 @@ func TestSinkRunner(t *testing.T) {
 		default:
 			for i := 0; i <= c.messages; i++ {
 				in <- runner.Message{
-					PipeID: pipeID,
+					SinkRefs: 1,
+					PipeID:   pipeID,
 				}
 			}
 			close(in)
