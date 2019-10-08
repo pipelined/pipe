@@ -7,30 +7,33 @@ import (
 	"fmt"
 
 	"github.com/pipelined/pipe/internal/runner"
+	"github.com/pipelined/signal"
 )
 
 // pipeline components
 type (
 	// Pump is a source of samples. Pump method returns a new buffer with signal data.
-	// Implentetions should use next error conventions:
-	// 		- nil if a full buffer was read;
-	// 		- io.EOF if no data was read;
-	// 		- io.ErrUnexpectedEOF if not a full buffer was read.
-	// The latest case means that pump executed as expected, but not enough data was available.
-	// This incomplete buffer still will be sent further and pump will be finished gracefully.
-	// If no data was read or any other error was met, buffer should be nil.
+	// If no data is available, io.EOF should be returned. If pump cannot provide data
+	// to fulfill buffer, it can trim the size of the buffer to align it with actual data.
+	// Buffer size can only be decreased.
 	Pump interface {
-		Pump(pipeID string) (func(bufferSize int) ([][]float64, error), int, int, error)
+		Pump(pipeID string) (func(signal.Float64) error, signal.SampleRate, int, error)
 	}
 
-	// Processor defines interface for pipe processors
+	// Processor defines interface for pipe processors.
+	// Processor should return output in the same signal buffer as input.
+	// It is encouraged to implement in-place processing algorithms.
+	// Buffer size could be changed during execution, but only decrease allowed.
+	// Number of channels cannot be changed.
 	Processor interface {
-		Process(pipeID string, sampleRate, numChannels int) (func([][]float64) ([][]float64, error), error)
+		Process(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
 	}
 
-	// Sink is an interface for final stage in audio pipeline
+	// Sink is an interface for final stage in audio pipeline.
+	// This components must not change buffer content. Pipe can have
+	// multiple sinks and this will cause race condition.
 	Sink interface {
-		Sink(pipeID string, sampleRate, numChannels int) (func([][]float64) error, error)
+		Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
 	}
 )
 
