@@ -11,12 +11,12 @@ import (
 	"github.com/pipelined/pipe/metric"
 )
 
-// L is a pipe(L)ine. It controls the execution of multiple chained pipes.
-// If pipes are not chained, they must be controlled by separate (L)ines.
-// Use Line constructor to instantiate new pipelines.
-type L struct {
+// Pipe controls the execution of multiple chained lines. Lines might be chained
+// through components, mixer for example.  If lines are not chained, they must be
+// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
+type Pipe struct {
 	h                *state.Handle
-	pipes            map[*Pipe]string  // map pipe to chain id
+	lines            map[*Line]string  // map pipe to chain id
 	chains           map[string]chain  // map chain id to chain
 	chainByComponent map[string]string // map component id to chain id
 }
@@ -34,20 +34,20 @@ type chain struct {
 	params      state.Params
 }
 
-// Line creates a new pipeline.
-// Returned line is in Ready state.
-func Line(ps ...*Pipe) (*L, error) {
-	pipes := make(map[*Pipe]string)
+// New creates a new pipeline.
+// Returned pipeline is in Ready state.
+func New(ls ...*Line) (*Pipe, error) {
+	lines := make(map[*Line]string)
 	chains := make(map[string]chain)
 	chainByComponent := make(map[string]string)
-	for _, p := range ps {
-		// bind all pipes
-		c, err := bindPipe(p)
+	for _, p := range ls {
+		// bind all lines
+		c, err := bindLine(p)
 		if err != nil {
 			return nil, err
 		}
 		// map pipe to chain id
-		pipes[p] = c.uid
+		lines[p] = c.uid
 		// map chains
 		chains[c.uid] = c
 		for _, componentID := range c.components {
@@ -55,17 +55,17 @@ func Line(ps ...*Pipe) (*L, error) {
 		}
 	}
 
-	l := &L{
-		pipes:            pipes,
+	p := &Pipe{
+		lines:            lines,
 		chains:           chains,
 		chainByComponent: chainByComponent,
 	}
-	l.h = state.NewHandle(start(l), newMessage(l), pushParams(l))
-	go state.Loop(l.h, state.Ready)
-	return l, nil
+	p.h = state.NewHandle(start(p), newMessage(p), pushParams(p))
+	go state.Loop(p.h, state.Ready)
+	return p, nil
 }
 
-func bindPipe(p *Pipe) (chain, error) {
+func bindLine(p *Line) (chain, error) {
 	components := make(map[interface{}]string)
 	pipeID := newUID()
 	// bind pump
@@ -128,8 +128,8 @@ func bindPipe(p *Pipe) (chain, error) {
 }
 
 // ComponentID finds id of the component within network.
-func (l *L) ComponentID(component interface{}) (id string, ok bool) {
-	for _, c := range l.chains {
+func (p *Pipe) ComponentID(component interface{}) (id string, ok bool) {
+	for _, c := range p.chains {
 		if id, ok = c.components[component]; ok {
 			break
 		}
@@ -138,11 +138,11 @@ func (l *L) ComponentID(component interface{}) (id string, ok bool) {
 }
 
 // start starts the execution of pipe.
-func start(l *L) state.StartFunc {
+func start(p *Pipe) state.StartFunc {
 	return func(bufferSize int, cancelc <-chan struct{}, givec chan<- string) []<-chan error {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
-		for _, c := range l.chains {
+		for _, c := range p.chains {
 			p := pool.New(c.numChannels, bufferSize)
 			// start pump
 			out, errc := c.pump.Run(p, c.uid, c.pump.ID, cancelc, givec, c.takec)
@@ -163,9 +163,9 @@ func start(l *L) state.StartFunc {
 
 // newMessage creates a new message with cached Params.
 // if new Params are pushed into pipe - next message will contain them.
-func newMessage(l *L) state.NewMessageFunc {
+func newMessage(p *Pipe) state.NewMessageFunc {
 	return func(pipeID string) {
-		c := l.chains[pipeID]
+		c := p.chains[pipeID]
 		m := runner.Message{PipeID: c.uid}
 		if len(c.params) > 0 {
 			m.Params = c.params
@@ -175,12 +175,12 @@ func newMessage(l *L) state.NewMessageFunc {
 	}
 }
 
-func pushParams(l *L) state.PushParamsFunc {
+func pushParams(p *Pipe) state.PushParamsFunc {
 	return func(params state.Params) {
-		for id, p := range params {
-			chainID := l.chainByComponent[id]
-			chain := l.chains[chainID]
-			chain.params = chain.params.Append(map[string][]func(){id: p})
+		for id, param := range params {
+			chainID := p.chainByComponent[id]
+			chain := p.chains[chainID]
+			chain.params = chain.params.Append(map[string][]func(){id: param})
 		}
 	}
 }
@@ -188,9 +188,9 @@ func pushParams(l *L) state.PushParamsFunc {
 // Run sends a run event into handle.
 // Calling this method after handle is closed causes a panic.
 // Feedback channel is closed when Ready state is reached or context is cancelled.
-func (l *L) Run(ctx context.Context, bufferSize int) chan error {
+func (p *Pipe) Run(ctx context.Context, bufferSize int) chan error {
 	errc := make(chan error, 1)
-	l.h.Eventc <- state.Run{
+	p.h.Eventc <- state.Run{
 		Context:    ctx,
 		BufferSize: bufferSize,
 		Feedback:   errc,
@@ -201,9 +201,9 @@ func (l *L) Run(ctx context.Context, bufferSize int) chan error {
 // Pause sends a pause event into handle.
 // Calling this method after handle is closed causes a panic.
 // Feedback is closed when Paused state is reached.
-func (l *L) Pause() chan error {
+func (p *Pipe) Pause() chan error {
 	errc := make(chan error, 1)
-	l.h.Eventc <- state.Pause{
+	p.h.Eventc <- state.Pause{
 		Feedback: errc,
 	}
 	return errc
@@ -212,9 +212,9 @@ func (l *L) Pause() chan error {
 // Resume sends a resume event into handle.
 // Calling this method after handle is closed causes a panic.
 // Feedback is closed when Ready state is reached.
-func (l *L) Resume() chan error {
+func (p *Pipe) Resume() chan error {
 	errc := make(chan error, 1)
-	l.h.Eventc <- state.Resume{
+	p.h.Eventc <- state.Resume{
 		Feedback: errc,
 	}
 	return errc
@@ -222,9 +222,9 @@ func (l *L) Resume() chan error {
 
 // Close must be called to clean up handle's resources.
 // Feedback is closed when line is done.
-func (l *L) Close() chan error {
+func (p *Pipe) Close() chan error {
 	errc := make(chan error, 1)
-	l.h.Eventc <- state.Close{
+	p.h.Eventc <- state.Close{
 		Feedback: errc,
 	}
 	return errc
@@ -232,6 +232,6 @@ func (l *L) Close() chan error {
 
 // Push new params into pipe.
 // Calling this method after pipe is closed causes a panic.
-func (l *L) Push(id string, paramFuncs ...func()) {
-	l.h.Paramc <- map[string][]func(){id: paramFuncs}
+func (p *Pipe) Push(id string, paramFuncs ...func()) {
+	p.h.Paramc <- map[string][]func(){id: paramFuncs}
 }
