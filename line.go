@@ -1,237 +1,128 @@
+// Package pipe provides functionality to build and execute DSP pipelines.
+// Examples could be found in [examples repository](https://github.com/pipelined/example).
 package pipe
 
 import (
-	"context"
+	"crypto/rand"
+	"fmt"
 
-	"github.com/pipelined/signal"
-
-	"github.com/pipelined/pipe/internal/pool"
 	"github.com/pipelined/pipe/internal/runner"
-	"github.com/pipelined/pipe/internal/state"
-	"github.com/pipelined/pipe/metric"
+	"github.com/pipelined/signal"
 )
 
-// L is a pipe(L)ine. It controls the execution of multiple chained pipes.
-// If pipes are not chained, they must be controlled by separate (L)ines.
-// Use Line constructor to instantiate new pipelines.
-type L struct {
-	h                *state.Handle
-	pipes            map[*Pipe]string  // map pipe to chain id
-	chains           map[string]chain  // map chain id to chain
-	chainByComponent map[string]string // map component id to chain id
+// pipeline components
+type (
+	// Pump is a source of samples. Pump method returns a new buffer with signal data.
+	// If no data is available, io.EOF should be returned. If pump cannot provide data
+	// to fulfill buffer, it can trim the size of the buffer to align it with actual data.
+	// Buffer size can only be decreased.
+	Pump interface {
+		Pump(pipeID string) (func(signal.Float64) error, signal.SampleRate, int, error)
+	}
+
+	// Processor defines interface for pipe processors.
+	// Processor should return output in the same signal buffer as input.
+	// It is encouraged to implement in-place processing algorithms.
+	// Buffer size could be changed during execution, but only decrease allowed.
+	// Number of channels cannot be changed.
+	Processor interface {
+		Process(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
+	}
+
+	// Sink is an interface for final stage in audio pipeline.
+	// This components must not change buffer content. Line can have
+	// multiple sinks and this will cause race condition.
+	Sink interface {
+		Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
+	}
+)
+
+// optional interfaces
+type (
+	// Resetter is a component that must be resetted before new run.
+	// Reset hook is executed when Run happens.
+	Resetter interface {
+		Reset(string) error
+	}
+
+	// Interrupter is a component that has custom interruption logic.
+	// Interrupt hook is executed when Cancel happens.
+	Interrupter interface {
+		Interrupt(string) error
+	}
+
+	// Flusher is a component that must be flushed in the end of execution.
+	// Flush hook is executed in the end of the run. It will be skipped if Reset hook has failed.
+	Flusher interface {
+		Flush(string) error
+	}
+)
+
+// newUID returns new unique id value.
+func newUID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return fmt.Sprintf("%x-%x-%x-%x-%x\n", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
-// chain is a runtime chain of the pipeline.
-type chain struct {
-	uid         string
-	sampleRate  signal.SampleRate
-	numChannels int
-	pump        runner.Pump
-	processors  []runner.Processor
-	sinks       []runner.Sink
-	components  map[interface{}]string
-	takec       chan runner.Message // emission of messages
-	params      state.Params
+// Line is a sound processing sequence of components.
+// It has a single pump, zero or many processors executed sequentially
+// and one or many sinks executed in parallel.
+type Line struct {
+	Pump
+	Processors []Processor
+	Sinks      []Sink
 }
 
-// Line creates a new pipeline.
-// Returned line is in Ready state.
-func Line(ps ...*Pipe) (*L, error) {
-	pipes := make(map[*Pipe]string)
-	chains := make(map[string]chain)
-	chainByComponent := make(map[string]string)
-	for _, p := range ps {
-		// bind all pipes
-		c, err := bindPipe(p)
+// Processors is a helper function to use in line constructors.
+func Processors(processors ...Processor) []Processor {
+	return processors
+}
+
+// Sinks is a helper function to use in line constructors.
+func Sinks(sinks ...Sink) []Sink {
+	return sinks
+}
+
+// Wait for state transition or first error to occur.
+func Wait(d <-chan error) error {
+	for err := range d {
 		if err != nil {
-			return nil, err
-		}
-		// map pipe to chain id
-		pipes[p] = c.uid
-		// map chains
-		chains[c.uid] = c
-		for _, componentID := range c.components {
-			chainByComponent[componentID] = c.uid
+			return err
 		}
 	}
-
-	l := &L{
-		pipes:            pipes,
-		chains:           chains,
-		chainByComponent: chainByComponent,
-	}
-	l.h = state.NewHandle(start(l), newMessage(l), pushParams(l))
-	go state.Loop(l.h, state.Ready)
-	return l, nil
+	return nil
 }
 
-func bindPipe(p *Pipe) (chain, error) {
-	components := make(map[interface{}]string)
-	pipeID := newUID()
-	// bind pump
-	pumpFn, sampleRate, numChannels, err := p.Pump.Pump(pipeID)
-	if err != nil {
-		return chain{}, err
-	}
-	pumpRunner := runner.Pump{
-		ID:    newUID(),
-		Fn:    runner.PumpFunc(pumpFn),
-		Meter: metric.Meter(p.Pump, signal.SampleRate(sampleRate)),
-		Hooks: BindHooks(p.Pump),
-	}
-	components[p.Pump] = pumpRunner.ID
-
-	// bind processors
-	processorRunners := make([]runner.Processor, 0, len(p.Processors))
-	for _, proc := range p.Processors {
-		processFn, err := proc.Process(pipeID, sampleRate, numChannels)
-		if err != nil {
-			return chain{}, err
-		}
-		processorRunner := runner.Processor{
-			ID:    newUID(),
-			Fn:    runner.ProcessFunc(processFn),
-			Meter: metric.Meter(proc, signal.SampleRate(sampleRate)),
-			Hooks: BindHooks(proc),
-		}
-		processorRunners = append(processorRunners, processorRunner)
-		components[proc] = processorRunner.ID
-	}
-
-	// bind sinks
-	sinkRunners := make([]runner.Sink, 0, len(p.Sinks))
-	for _, sink := range p.Sinks {
-		sinkFn, err := sink.Sink(pipeID, sampleRate, numChannels)
-		if err != nil {
-			return chain{}, err
-		}
-		sinkRunner := runner.Sink{
-			ID:    newUID(),
-			Fn:    runner.SinkFunc(sinkFn),
-			Meter: metric.Meter(sink, signal.SampleRate(sampleRate)),
-			Hooks: BindHooks(sink),
-		}
-		sinkRunners = append(sinkRunners, sinkRunner)
-		components[sink] = sinkRunner.ID
-	}
-	return chain{
-		uid:         pipeID,
-		sampleRate:  sampleRate,
-		numChannels: numChannels,
-		pump:        pumpRunner,
-		processors:  processorRunners,
-		sinks:       sinkRunners,
-		takec:       make(chan runner.Message),
-		components:  components,
-		params:      make(map[string][]func()),
-	}, nil
-}
-
-// ComponentID finds id of the component within network.
-func (l *L) ComponentID(component interface{}) (id string, ok bool) {
-	for _, c := range l.chains {
-		if id, ok = c.components[component]; ok {
-			break
-		}
-	}
-	return id, ok
-}
-
-// start starts the execution of pipe.
-func start(l *L) state.StartFunc {
-	return func(bufferSize int, cancelc <-chan struct{}, givec chan<- string) []<-chan error {
-		// error channel for each component
-		errcList := make([]<-chan error, 0)
-		for _, c := range l.chains {
-			p := pool.New(c.numChannels, bufferSize)
-			// start pump
-			out, errc := c.pump.Run(p, c.uid, c.pump.ID, cancelc, givec, c.takec)
-			errcList = append(errcList, errc)
-
-			// start chained processesing
-			for _, proc := range c.processors {
-				out, errc = proc.Run(c.uid, proc.ID, cancelc, out)
-				errcList = append(errcList, errc)
-			}
-
-			sinkErrcList := runner.Broadcast(p, c.uid, c.sinks, cancelc, out)
-			errcList = append(errcList, sinkErrcList...)
-		}
-		return errcList
+// BindHooks of component.
+func BindHooks(v interface{}) runner.Hooks {
+	return runner.Hooks{
+		Flush:     flusher(v),
+		Interrupt: interrupter(v),
+		Reset:     resetter(v),
 	}
 }
 
-// newMessage creates a new message with cached Params.
-// if new Params are pushed into pipe - next message will contain them.
-func newMessage(l *L) state.NewMessageFunc {
-	return func(pipeID string) {
-		c := l.chains[pipeID]
-		m := runner.Message{PipeID: c.uid}
-		if len(c.params) > 0 {
-			m.Params = c.params
-			c.params = make(map[string][]func())
-		}
-		c.takec <- m
+// flusher checks if interface implements Flusher and if so, return it.
+func flusher(i interface{}) runner.Hook {
+	if v, ok := i.(Flusher); ok {
+		return v.Flush
 	}
+	return nil
 }
 
-func pushParams(l *L) state.PushParamsFunc {
-	return func(params state.Params) {
-		for id, p := range params {
-			chainID := l.chainByComponent[id]
-			chain := l.chains[chainID]
-			chain.params = chain.params.Append(map[string][]func(){id: p})
-		}
+// flusher checks if interface implements Flusher and if so, return it.
+func interrupter(i interface{}) runner.Hook {
+	if v, ok := i.(Interrupter); ok {
+		return v.Interrupt
 	}
+	return nil
 }
 
-// Run sends a run event into handle.
-// Calling this method after handle is closed causes a panic.
-// Feedback channel is closed when Ready state is reached or context is cancelled.
-func (l *L) Run(ctx context.Context, bufferSize int) chan error {
-	errc := make(chan error, 1)
-	l.h.Eventc <- state.Run{
-		Context:    ctx,
-		BufferSize: bufferSize,
-		Feedback:   errc,
+// flusher checks if interface implements Flusher and if so, return it.
+func resetter(i interface{}) runner.Hook {
+	if v, ok := i.(Resetter); ok {
+		return v.Reset
 	}
-	return errc
-}
-
-// Pause sends a pause event into handle.
-// Calling this method after handle is closed causes a panic.
-// Feedback is closed when Paused state is reached.
-func (l *L) Pause() chan error {
-	errc := make(chan error, 1)
-	l.h.Eventc <- state.Pause{
-		Feedback: errc,
-	}
-	return errc
-}
-
-// Resume sends a resume event into handle.
-// Calling this method after handle is closed causes a panic.
-// Feedback is closed when Ready state is reached.
-func (l *L) Resume() chan error {
-	errc := make(chan error, 1)
-	l.h.Eventc <- state.Resume{
-		Feedback: errc,
-	}
-	return errc
-}
-
-// Close must be called to clean up handle's resources.
-// Feedback is closed when line is done.
-func (l *L) Close() chan error {
-	errc := make(chan error, 1)
-	l.h.Eventc <- state.Close{
-		Feedback: errc,
-	}
-	return errc
-}
-
-// Push new params into pipe.
-// Calling this method after pipe is closed causes a panic.
-func (l *L) Push(id string, paramFuncs ...func()) {
-	l.h.Paramc <- map[string][]func(){id: paramFuncs}
+	return nil
 }
