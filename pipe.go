@@ -30,7 +30,7 @@ type (
 	}
 
 	// Sink is an interface for final stage in audio pipeline.
-	// This components must not change buffer content. Pipe can have
+	// This components must not change buffer content. Line can have
 	// multiple sinks and this will cause race condition.
 	Sink interface {
 		Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
@@ -65,23 +65,21 @@ func newUID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x\n", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
-// Pipe is a pipeline with fully defined sound processing sequence
-// it has:
-//	 1 		pump
-//	 0..n 	processors
-//	 1..n	sinks
-type Pipe struct {
+// Line is a sound processing sequence of components.
+// It has a single pump, zero or many processors executed sequentially
+// and one or many sinks executed in parallel.
+type Line struct {
 	Pump
 	Processors []Processor
 	Sinks      []Sink
 }
 
-// Processors is a helper function to use in pipe constructors.
+// Processors is a helper function to use in line constructors.
 func Processors(processors ...Processor) []Processor {
 	return processors
 }
 
-// Sinks is a helper function to use in pipe constructors.
+// Sinks is a helper function to use in line constructors.
 func Sinks(sinks ...Sink) []Sink {
 	return sinks
 }
