@@ -19,7 +19,7 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
-func TestLine(t *testing.T) {
+func TestPipe(t *testing.T) {
 	pump := &mock.Pump{
 		Limit:       100 * bufferSize,
 		NumChannels: 1,
@@ -29,8 +29,8 @@ func TestLine(t *testing.T) {
 	sink1 := &mock.Sink{}
 	sink2 := &mock.Sink{}
 
-	l, err := pipe.Line(
-		&pipe.Pipe{
+	l, err := pipe.New(
+		&pipe.Line{
 			Pump:       pump,
 			Processors: pipe.Processors(proc1, proc2),
 			Sinks:      pipe.Sinks(sink1, sink2),
@@ -83,8 +83,8 @@ func BenchmarkSingleLine(b *testing.B) {
 			Discard: true,
 		}
 
-		l, _ := pipe.Line(
-			&pipe.Pipe{
+		l, _ := pipe.New(
+			&pipe.Line{
 				Pump:       pump,
 				Processors: pipe.Processors(proc1, proc2),
 				Sinks:      pipe.Sinks(sink1, sink2),
