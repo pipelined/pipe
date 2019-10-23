@@ -19,7 +19,7 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
-func TestLine(t *testing.T) {
+func TestPipe(t *testing.T) {
 	pump := &mock.Pump{
 		Limit:       100 * bufferSize,
 		NumChannels: 1,
