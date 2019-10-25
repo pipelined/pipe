@@ -14,16 +14,16 @@ import (
 
 const bufferSize = 1024
 
-var testError = errors.New("Test error")
+var testError = errors.New("test error")
 
 type startFuncMock struct{}
 
 // send channel is closed ONLY when any messages were sent
 func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) state.StartFunc {
 	return func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error {
-		errors := make(chan error)
+		errs := make(chan error)
 		go func() {
-			defer close(errors)
+			defer close(errs)
 			// send messages
 			for {
 				select {
@@ -33,20 +33,20 @@ func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) 
 					}
 					// send error if provided
 					if errorOnSend != nil {
-						errors <- errorOnSend
+						errs <- errorOnSend
 					} else {
 						give <- "test"
 					}
 				case <-cancel: // block until cancelled
 					// send error on close if provided
 					if errorOnClose != nil {
-						errors <- errorOnClose
+						errs <- errorOnClose
 					}
 					return
 				}
 			}
 		}()
-		return []<-chan error{errors}
+		return []<-chan error{errs}
 	}
 }
 
@@ -152,7 +152,7 @@ func TestStates(t *testing.T) {
 
 	for _, c := range cases {
 		var (
-			errors chan error
+			errs chan error
 		)
 		messages := c.messages
 		if c.errorOnSend != nil {
@@ -171,9 +171,9 @@ func TestStates(t *testing.T) {
 		go state.Loop(h, state.Ready)
 
 		// reach tested state
-		// remember last errors channel
+		// remember last errs channel
 		for _, transition := range c.preparation {
-			errors = transition(h)
+			errs = transition(h)
 		}
 
 		// push params
@@ -182,7 +182,7 @@ func TestStates(t *testing.T) {
 		// test events
 		for _, transition := range c.events {
 			err := pipe.Wait(transition(h))
-			assert.Equal(t, state.ErrInvalidState, err)
+			assert.Equal(t, state.ErrInvalidState, errors.Unwrap(err))
 		}
 
 		// send messages
@@ -191,8 +191,8 @@ func TestStates(t *testing.T) {
 				send <- struct{}{}
 			}
 			close(send)
-			err := pipe.Wait(errors)
-			assert.Equal(t, c.errorOnSend, err)
+			err := pipe.Wait(errs)
+			assert.Equal(t, c.errorOnSend, errors.Unwrap(err))
 		}
 
 		if c.cancel != nil {
@@ -201,7 +201,7 @@ func TestStates(t *testing.T) {
 
 		// close
 		err := pipe.Wait(h.Stop())
-		assert.Equal(t, c.errorOnClose, err)
+		assert.Equal(t, c.errorOnClose, errors.Unwrap(err))
 
 		_, ok := pushParamsMock.Params[p.uid]
 		assert.True(t, ok)

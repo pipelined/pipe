@@ -1,6 +1,9 @@
 package state
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type (
 	// event triggers the state change.
@@ -11,6 +14,7 @@ type (
 	event interface {
 		target() idleState
 		feedback() chan error
+		fmt.Stringer
 	}
 
 	// errors is a wrapper for error channels. It's used to return errors
@@ -52,9 +56,17 @@ func (run) target() idleState {
 	return Ready
 }
 
+func (run) String() string {
+	return "event.Run"
+}
+
 // target() state of the Pause event is Paused.
 func (pause) target() idleState {
 	return Paused
+}
+
+func (pause) String() string {
+	return "event.Pause"
 }
 
 // target() state of the Resume event is Ready.
@@ -62,7 +74,15 @@ func (resume) target() idleState {
 	return Ready
 }
 
+func (resume) String() string {
+	return "event.Resume"
+}
+
 // target() state of the Close event is nil.
 func (stop) target() idleState {
 	return nil
+}
+
+func (stop) String() string {
+	return "event.Stop"
 }

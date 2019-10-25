@@ -55,6 +55,7 @@ type (
 	State interface {
 		listen(*Handle, State, errors) (State, idleState, errors)
 		transition(*Handle, event) (State, error)
+		fmt.Stringer
 	}
 
 	// idleState identifies that the pipe is ONLY waiting for user to send an event.
@@ -130,7 +131,7 @@ func (h *Handle) idle(s idleState, t idleState, f errors) (State, idleState, err
 			newState, err = s.transition(h, e)
 			if err != nil {
 				// transition failed, notify
-				e.feedback() <- err
+				e.feedback() <- fmt.Errorf("%v transition during %v: %w", e, s, err)
 			} else {
 				// got new target
 				if t != nil {
@@ -161,7 +162,8 @@ func (h *Handle) active(s activeState, t State, f errors) (State, idleState, err
 		case e := <-h.events:
 			newState, err = s.transition(h, e)
 			if err != nil {
-				e.feedback() <- err
+				// transition failed, notify
+				e.feedback() <- fmt.Errorf("%v transition during %v: %w", e, s, err)
 			} else {
 				close(f)
 				f = e.feedback()
@@ -174,7 +176,7 @@ func (h *Handle) active(s activeState, t State, f errors) (State, idleState, err
 		case err, ok := <-h.errors:
 			if ok {
 				h.cancelFn()
-				f <- err
+				f <- fmt.Errorf("error during %v: %w", s, err)
 			}
 			return Ready, t, f
 		}
@@ -250,6 +252,10 @@ func (s ready) transition(h *Handle, e event) (State, error) {
 	return s, ErrInvalidState
 }
 
+func (s ready) String() string {
+	return "state.Ready"
+}
+
 func (s running) listen(h *Handle, t State, f errors) (State, idleState, errors) {
 	return h.active(s, t, f)
 }
@@ -268,6 +274,10 @@ func (s running) sendMessage(h *Handle, pipeID string) {
 	h.newMessageFn(pipeID)
 }
 
+func (s running) String() string {
+	return "state.Running"
+}
+
 func (s paused) listen(h *Handle, t State, f errors) (State, idleState, errors) {
 	return h.idle(s, t, f)
 }
@@ -280,6 +290,10 @@ func (s paused) transition(h *Handle, e event) (State, error) {
 		return Running, nil
 	}
 	return s, ErrInvalidState
+}
+
+func (s paused) String() string {
+	return "state.Paused"
 }
 
 func wait(d <-chan error) error {
