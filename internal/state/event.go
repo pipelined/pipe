@@ -6,16 +6,16 @@ type (
 	// event triggers the state change.
 	// Use imperative verbs for implementations.
 	//
-	// Target identifies which idle state is expected after event is sent.
-	// Errc is used to provide feedback to the caller.
+	// target identifies which idle state is expected after event is sent.
+	// feedback is used to provide errors to the caller.
 	event interface {
-		Target() idleState
-		Feedback() chan error
+		target() idleState
+		feedback() chan error
 	}
 
-	// Feedback is a wrapper for error channels. It's used to give feedback
-	// about state change or error occured during that change.
-	feedback chan error
+	// errors is a wrapper for error channels. It's used to return errors
+	// of state transition or error occured during that transition.
+	errors chan error
 )
 
 type (
@@ -23,46 +23,46 @@ type (
 	run struct {
 		context.Context
 		BufferSize int
-		feedback
+		errors
 	}
 
 	// pause event is sent to pause the run.
 	pause struct {
-		feedback
+		errors
 	}
 
 	// resume event is sent to resume the run.
 	resume struct {
-		feedback
+		errors
 	}
 
 	// stop event is sent to stop the Handle.
 	stop struct {
-		feedback
+		errors
 	}
 )
 
 // Feedback exposes error channel and used to satisfy event interface.
-func (f feedback) Feedback() chan error {
+func (f errors) feedback() chan error {
 	return f
 }
 
-// Target state of the Run event is Ready.
-func (run) Target() idleState {
+// target() state of the Run event is Ready.
+func (run) target() idleState {
 	return Ready
 }
 
-// Target state of the Pause event is Paused.
-func (pause) Target() idleState {
+// target() state of the Pause event is Paused.
+func (pause) target() idleState {
 	return Paused
 }
 
-// Target state of the Resume event is Ready.
-func (resume) Target() idleState {
+// target() state of the Resume event is Ready.
+func (resume) target() idleState {
 	return Ready
 }
 
-// Target state of the Close event is nil.
-func (stop) Target() idleState {
+// target() state of the Close event is nil.
+func (stop) target() idleState {
 	return nil
 }
