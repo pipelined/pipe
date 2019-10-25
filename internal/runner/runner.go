@@ -74,34 +74,34 @@ type (
 var do struct{}
 
 // Run starts the Pump runner.
-func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, givec chan<- string, takec <-chan Message) (<-chan Message, <-chan error) {
+func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, give chan<- string, take <-chan Message) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
-	errc := make(chan error, 1)
+	errors := make(chan error, 1)
 	meter := r.Meter()
 	go func() {
 		defer close(out)
-		defer close(errc)
+		defer close(errors)
 		// Reset hook
-		if ok := call(r.Reset, pipeID, errc); !ok {
+		if ok := call(r.Reset, pipeID, errors); !ok {
 			return
 		}
-		defer call(r.Flush, pipeID, errc) // Flush hook on return
+		defer call(r.Flush, pipeID, errors) // Flush hook on return
 		var err error
 		var m Message
 		for {
 			// request new message
 			select {
-			case givec <- pipeID:
+			case give <- pipeID:
 			case <-cancel:
-				call(r.Interrupt, pipeID, errc) // Interrupt hook
+				call(r.Interrupt, pipeID, errors) // Interrupt hook
 				return
 			}
 
 			// receive new message
 			select {
-			case m = <-takec:
+			case m = <-take:
 			case <-cancel:
-				call(r.Interrupt, pipeID, errc) // Interrupt hook
+				call(r.Interrupt, pipeID, errors) // Interrupt hook
 				return
 			}
 
@@ -119,7 +119,7 @@ func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, gi
 				case io.EOF:
 					// EOF is a good end.
 				default:
-					errc <- err
+					errors <- err
 				}
 				return
 			}
@@ -128,27 +128,27 @@ func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, gi
 			select {
 			case out <- m:
 			case <-cancel:
-				call(r.Interrupt, pipeID, errc) // Interrupt hook
+				call(r.Interrupt, pipeID, errors) // Interrupt hook
 				return
 			}
 		}
 	}()
-	return out, errc
+	return out, errors
 }
 
 // Run starts the Processor runner.
 func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) (<-chan Message, <-chan error) {
-	errc := make(chan error, 1)
+	errors := make(chan error, 1)
 	out := make(chan Message, 1)
 	meter := r.Meter()
 	go func() {
 		defer close(out)
-		defer close(errc)
+		defer close(errors)
 		// Reset hook
-		if ok := call(r.Reset, pipeID, errc); !ok {
+		if ok := call(r.Reset, pipeID, errors); !ok {
 			return
 		}
-		defer call(r.Flush, pipeID, errc) // Flush hook on return
+		defer call(r.Flush, pipeID, errors) // Flush hook on return
 		var err error
 		var m Message
 		var ok bool
@@ -160,14 +160,14 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 					return
 				}
 			case <-cancel:
-				call(r.Interrupt, pipeID, errc) // Interrupt hook
+				call(r.Interrupt, pipeID, errors) // Interrupt hook
 				return
 			}
 
 			m.Params.ApplyTo(componentID) // apply params
 			err = r.Fn(m.Buffer)          // process new buffer
 			if err != nil {
-				errc <- err
+				errors <- err
 				return
 			}
 
@@ -177,25 +177,25 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 			select {
 			case out <- m:
 			case <-cancel:
-				call(r.Interrupt, pipeID, errc) // Interrupt hook
+				call(r.Interrupt, pipeID, errors) // Interrupt hook
 				return
 			}
 		}
 	}()
-	return out, errc
+	return out, errors
 }
 
 // Run starts the sink runner.
 func (r Sink) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) <-chan error {
-	errc := make(chan error, 1)
+	errors := make(chan error, 1)
 	meter := r.Meter()
 	go func() {
-		defer close(errc)
+		defer close(errors)
 		// Reset hook
-		if ok := call(r.Reset, pipeID, errc); !ok {
+		if ok := call(r.Reset, pipeID, errors); !ok {
 			return
 		}
-		defer call(r.Flush, pipeID, errc) // Flush hook on return
+		defer call(r.Flush, pipeID, errors) // Flush hook on return
 		var m Message
 		var ok bool
 		for {
@@ -206,14 +206,14 @@ func (r Sink) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, in
 					return
 				}
 			case <-cancel:
-				call(r.Interrupt, pipeID, errc) // Interrupt hook
+				call(r.Interrupt, pipeID, errors) // Interrupt hook
 				return
 			}
 
 			m.Params.ApplyTo(componentID) // apply params
 			err := r.Fn(m.Buffer)         // sink a buffer
 			if err != nil {
-				errc <- err
+				errors <- err
 				return
 			}
 			meter(m.Buffer.Size()) // capture metrics
@@ -223,26 +223,26 @@ func (r Sink) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, in
 		}
 	}()
 
-	return errc
+	return errors
 }
 
-// call optional function with pipeID argument. If error happens, it will be send to errc.
+// call optional function with pipeID argument. If error happens, it will be send to errors.
 // True is returned only if error happened.
-func call(fn Hook, pipeID string, errc chan error) bool {
+func call(fn Hook, pipeID string, errors chan error) bool {
 	if fn == nil {
 		return true
 	}
 	if err := fn(pipeID); err != nil {
-		errc <- err
+		errors <- err
 		return false
 	}
 	return true
 }
 
 // Broadcast passes messages to all sinks.
-func Broadcast(p Pool, pipeID string, sinks []Sink, cancelc <-chan struct{}, in <-chan Message) []<-chan error {
-	//init errcList for sinks error channels
-	errcList := make([]<-chan error, 0, len(sinks))
+func Broadcast(p Pool, pipeID string, sinks []Sink, cancel <-chan struct{}, in <-chan Message) []<-chan error {
+	//init errorss for sinks error channels
+	errorss := make([]<-chan error, 0, len(sinks))
 	//list of channels for broadcast
 	broadcasts := make([]chan Message, len(sinks))
 	for i := range broadcasts {
@@ -251,8 +251,8 @@ func Broadcast(p Pool, pipeID string, sinks []Sink, cancelc <-chan struct{}, in 
 
 	//start broadcast
 	for i, s := range sinks {
-		errc := s.Run(p, pipeID, s.ID, cancelc, broadcasts[i])
-		errcList = append(errcList, errc)
+		errors := s.Run(p, pipeID, s.ID, cancel, broadcasts[i])
+		errorss = append(errorss, errors)
 	}
 
 	go func() {
@@ -272,12 +272,12 @@ func Broadcast(p Pool, pipeID string, sinks []Sink, cancelc <-chan struct{}, in 
 				}
 				select {
 				case broadcasts[i] <- m:
-				case <-cancelc:
+				case <-cancel:
 					return
 				}
 			}
 		}
 	}()
 
-	return errcList
+	return errorss
 }

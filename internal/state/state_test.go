@@ -20,10 +20,10 @@ type startFuncMock struct{}
 
 // send channel is closed ONLY when any messages were sent
 func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) state.StartFunc {
-	return func(bufferSize int, cancelc <-chan struct{}, givec chan<- string) []<-chan error {
-		errc := make(chan error)
+	return func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error {
+		errors := make(chan error)
 		go func() {
-			defer close(errc)
+			defer close(errors)
 			// send messages
 			for {
 				select {
@@ -33,20 +33,20 @@ func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) 
 					}
 					// send error if provided
 					if errorOnSend != nil {
-						errc <- errorOnSend
+						errors <- errorOnSend
 					} else {
-						givec <- "test"
+						give <- "test"
 					}
-				case <-cancelc: // block until cancelled
+				case <-cancel: // block until cancelled
 					// send error on close if provided
 					if errorOnClose != nil {
-						errc <- errorOnClose
+						errors <- errorOnClose
 					}
 					return
 				}
 			}
 		}()
-		return []<-chan error{errc}
+		return []<-chan error{errors}
 	}
 }
 
@@ -177,7 +177,7 @@ func TestStates(t *testing.T) {
 		}
 
 		// push params
-		h.Paramc <- p.params()
+		h.Push(p.params())
 
 		// test events
 		for _, transition := range c.events {
