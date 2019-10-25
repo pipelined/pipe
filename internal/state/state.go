@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -13,9 +14,9 @@ var (
 
 // Handle manages the lifecycle of the pipe.
 type Handle struct {
-	// Event channel used to handle new events for state machine.
+	// event channel used to handle new events for state machine.
 	// created in constructor, closed when Handle is closed.
-	events chan Event
+	events chan event
 	// Params channel used to recieve new parameters.
 	// created in constructor, closed when Handle is closed.
 	params chan Params
@@ -35,7 +36,7 @@ type Handle struct {
 
 // merger fans-in error channels.
 type merger struct {
-	wg      *sync.WaitGroup
+	wg     *sync.WaitGroup
 	errors chan error
 }
 
@@ -50,8 +51,8 @@ type PushParamsFunc func(params Params)
 
 // State identifies one of the possible states pipe can be in.
 type State interface {
-	listen(*Handle, State, feedback) (State, State, feedback)
-	transition(*Handle, Event) (State, error)
+	listen(*Handle, State, feedback) (State, idleState, feedback)
+	transition(*Handle, event) (State, error)
 }
 
 // idleState identifies that the pipe is ONLY waiting for user to send an event.
@@ -82,7 +83,7 @@ var (
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
 func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParamsFunc) *Handle {
 	h := Handle{
-		events:       make(chan Event, 1),
+		events:       make(chan event, 1),
 		params:       make(chan Params, 1),
 		give:         make(chan string),
 		startFn:      start,
@@ -99,6 +100,7 @@ func Loop(h *Handle, s State) {
 		f feedback
 	)
 	for s != nil {
+		fmt.Printf("state: %T target: %T feedback: %v\n", s, t, f)
 		s, t, f = s.listen(h, t, f)
 	}
 	// close control channels
@@ -108,20 +110,26 @@ func Loop(h *Handle, s State) {
 }
 
 // idle is used to listen to handle's channels which are relevant for idle state.
-// s is the new state, t is the target state and d channel to notify target transition.
-func (h *Handle) idle(s idleState, t State, f feedback) (State, State, feedback) {
+// s is the new state, t is the target state and f channel to notify target transition.
+func (h *Handle) idle(s idleState, t idleState, f feedback) (State, idleState, feedback) {
+	// check if target state is reached
 	if s == t {
 		f = f.dismiss()
 	}
-	var err error
-	newState := State(s)
+	var (
+		err      error
+		newState = State(s)
+	)
 	for {
 		select {
 		case e := <-h.events:
 			newState, err = s.transition(h, e)
+
 			if err != nil {
-				handle(e.Feedback(), err)
+				// transition failed, notify
+				e.Feedback() <- err
 			} else {
+
 				f.dismiss()
 				f = e.Feedback()
 				t = e.Target()
@@ -136,15 +144,18 @@ func (h *Handle) idle(s idleState, t State, f feedback) (State, State, feedback)
 }
 
 // active is used to listen to handle's channels which are relevant for active state.
-func (h *Handle) active(s activeState, t State, f feedback) (State, State, feedback) {
-	var err error
-	newState := State(s)
+func (h *Handle) active(s activeState, t State, f feedback) (State, idleState, feedback) {
+	var (
+		err      error
+		newState = State(s)
+	)
 	for {
 		select {
 		case e := <-h.events:
+			fmt.Printf("event: %t feedback: %v\n", e, e.Feedback())
 			newState, err = s.transition(h, e)
 			if err != nil {
-				handle(e.Feedback(), err)
+				e.Feedback() <- err
 			} else {
 				f.dismiss()
 				f = e.Feedback()
@@ -157,7 +168,7 @@ func (h *Handle) active(s activeState, t State, f feedback) (State, State, feedb
 		case err, ok := <-h.errors:
 			if ok {
 				h.cancelFn()
-				handle(f, err)
+				f <- err
 			}
 			return Ready, t, f
 		}
@@ -210,11 +221,11 @@ func (h *Handle) cancel() error {
 	return wait(h.errors)
 }
 
-func (s ready) listen(h *Handle, t State, f feedback) (State, State, feedback) {
+func (s ready) listen(h *Handle, t State, f feedback) (State, idleState, feedback) {
 	return h.idle(s, t, f)
 }
 
-func (s ready) transition(h *Handle, e Event) (State, error) {
+func (s ready) transition(h *Handle, e event) (State, error) {
 	switch ev := e.(type) {
 	case stop:
 		return nil, nil
@@ -227,11 +238,11 @@ func (s ready) transition(h *Handle, e Event) (State, error) {
 	return s, ErrInvalidState
 }
 
-func (s running) listen(h *Handle, t State, f feedback) (State, State, feedback) {
+func (s running) listen(h *Handle, t State, f feedback) (State, idleState, feedback) {
 	return h.active(s, t, f)
 }
 
-func (s running) transition(h *Handle, e Event) (State, error) {
+func (s running) transition(h *Handle, e event) (State, error) {
 	switch e.(type) {
 	case stop:
 		return nil, h.cancel()
@@ -245,11 +256,11 @@ func (s running) sendMessage(h *Handle, pipeID string) {
 	h.newMessageFn(pipeID)
 }
 
-func (s paused) listen(h *Handle, t State, f feedback) (State, State, feedback) {
+func (s paused) listen(h *Handle, t State, f feedback) (State, idleState, feedback) {
 	return h.idle(s, t, f)
 }
 
-func (s paused) transition(h *Handle, e Event) (State, error) {
+func (s paused) transition(h *Handle, e event) (State, error) {
 	switch e.(type) {
 	case stop:
 		return nil, h.cancel()
@@ -261,15 +272,10 @@ func (s paused) transition(h *Handle, e Event) (State, error) {
 
 // reach closes error channel and cancel waiting of target.
 func (f feedback) dismiss() feedback {
-	if f != nil {
-		close(f)
-	}
+	// if f != nil {
+	close(f)
+	// }
 	return nil
-}
-
-// handleError pushes error into target. panic happens if no target defined.
-func handle(errors chan error, err error) {
-	errors <- err
 }
 
 func wait(d <-chan error) error {
@@ -284,7 +290,7 @@ func wait(d <-chan error) error {
 // merge error channels from all components into one.
 func mergeErrors(errcList []<-chan error) merger {
 	m := merger{
-		wg:      &sync.WaitGroup{},
+		wg:     &sync.WaitGroup{},
 		errors: make(chan error, 1),
 	}
 

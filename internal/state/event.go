@@ -3,13 +3,13 @@ package state
 import "context"
 
 type (
-	// Event triggers the state change.
+	// event triggers the state change.
 	// Use imperative verbs for implementations.
 	//
 	// Target identifies which idle state is expected after event is sent.
 	// Errc is used to provide feedback to the caller.
-	Event interface {
-		Target() State
+	event interface {
+		Target() idleState
 		Feedback() chan error
 	}
 
@@ -42,27 +42,27 @@ type (
 	}
 )
 
-// Feedback exposes error channel and used to satisfy Event interface.
+// Feedback exposes error channel and used to satisfy event interface.
 func (f feedback) Feedback() chan error {
 	return f
 }
 
 // Target state of the Run event is Ready.
-func (run) Target() State {
+func (run) Target() idleState {
 	return Ready
 }
 
 // Target state of the Pause event is Paused.
-func (pause) Target() State {
+func (pause) Target() idleState {
 	return Paused
 }
 
 // Target state of the Resume event is Ready.
-func (resume) Target() State {
+func (resume) Target() idleState {
 	return Ready
 }
 
 // Target state of the Close event is nil.
-func (stop) Target() State {
+func (stop) Target() idleState {
 	return nil
 }
