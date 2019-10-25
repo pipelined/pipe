@@ -50,7 +50,7 @@ type PushParamsFunc func(params Params)
 
 // State identifies one of the possible states pipe can be in.
 type State interface {
-	listen(*Handle, State, Feedback) (State, State, Feedback)
+	listen(*Handle, State, feedback) (State, State, feedback)
 	transition(*Handle, Event) (State, error)
 }
 
@@ -79,67 +79,6 @@ var (
 	Paused  paused  // Paused means that pipe is paused and can be resumed.
 )
 
-// Event triggers the state change.
-// Use imperative verbs for implementations.
-//
-// Target identifies which idle state is expected after event is sent.
-// Errc is used to provide feedback to the caller.
-type Event interface {
-	Target() State
-	Errc() chan error
-}
-
-// Feedback is a wrapper for error channels. It's used to give feedback
-// about state change or error occured during that change.
-type Feedback chan error
-
-// Errc exposes error channel and used to satisfy Event interface.
-func (f Feedback) Errc() chan error {
-	return f
-}
-
-// Run event is sent to start the run.
-type Run struct {
-	context.Context
-	BufferSize int
-	Feedback
-}
-
-// Target state of the Run event is Ready.
-func (Run) Target() State {
-	return Ready
-}
-
-// Pause event is sent to pause the run.
-type Pause struct {
-	Feedback
-}
-
-// Target state of the Pause event is Paused.
-func (Pause) Target() State {
-	return Paused
-}
-
-// Resume event is sent to resume the run.
-type Resume struct {
-	Feedback
-}
-
-// Target state of the Resume event is Ready.
-func (Resume) Target() State {
-	return Ready
-}
-
-// Close event is sent to close the Handle.
-type Close struct {
-	Feedback
-}
-
-// Target state of the Close event is nil.
-func (Close) Target() State {
-	return nil
-}
-
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
 func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParamsFunc) *Handle {
 	h := Handle{
@@ -157,7 +96,7 @@ func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParams
 func Loop(h *Handle, s State) {
 	var (
 		t State
-		f Feedback
+		f feedback
 	)
 	for s != nil {
 		s, t, f = s.listen(h, t, f)
@@ -170,7 +109,7 @@ func Loop(h *Handle, s State) {
 
 // idle is used to listen to handle's channels which are relevant for idle state.
 // s is the new state, t is the target state and d channel to notify target transition.
-func (h *Handle) idle(s idleState, t State, f Feedback) (State, State, Feedback) {
+func (h *Handle) idle(s idleState, t State, f feedback) (State, State, feedback) {
 	if s == t {
 		f = f.dismiss()
 	}
@@ -181,10 +120,10 @@ func (h *Handle) idle(s idleState, t State, f Feedback) (State, State, Feedback)
 		case e := <-h.Eventc:
 			newState, err = s.transition(h, e)
 			if err != nil {
-				handle(e.Errc(), err)
+				handle(e.Feedback(), err)
 			} else {
 				f.dismiss()
-				f = e.Errc()
+				f = e.Feedback()
 				t = e.Target()
 			}
 		case params := <-h.Paramc:
@@ -197,7 +136,7 @@ func (h *Handle) idle(s idleState, t State, f Feedback) (State, State, Feedback)
 }
 
 // active is used to listen to handle's channels which are relevant for active state.
-func (h *Handle) active(s activeState, t State, f Feedback) (State, State, Feedback) {
+func (h *Handle) active(s activeState, t State, f feedback) (State, State, feedback) {
 	var err error
 	newState := State(s)
 	for {
@@ -205,10 +144,10 @@ func (h *Handle) active(s activeState, t State, f Feedback) (State, State, Feedb
 		case e := <-h.Eventc:
 			newState, err = s.transition(h, e)
 			if err != nil {
-				handle(e.Errc(), err)
+				handle(e.Feedback(), err)
 			} else {
 				f.dismiss()
-				f = e.Errc()
+				f = e.Feedback()
 				t = e.Target()
 			}
 		case params := <-h.Paramc:
@@ -228,20 +167,54 @@ func (h *Handle) active(s activeState, t State, f Feedback) (State, State, Feedb
 	}
 }
 
+func (h *Handle) Run(ctx context.Context, bufferSize int) feedback {
+	errc := make(chan error, 1)
+	h.Eventc <- run{
+		Context:    ctx,
+		BufferSize: bufferSize,
+		feedback:   errc,
+	}
+	return errc
+}
+
+func (h *Handle) Pause() chan error {
+	errc := make(chan error, 1)
+	h.Eventc <- pause{
+		feedback: errc,
+	}
+	return errc
+}
+
+func (h *Handle) Resume() chan error {
+	errc := make(chan error, 1)
+	h.Eventc <- resume{
+		feedback: errc,
+	}
+	return errc
+}
+
+func (h *Handle) Stop() chan error {
+	errc := make(chan error, 1)
+	h.Eventc <- stop{
+		feedback: errc,
+	}
+	return errc
+}
+
 func (h *Handle) cancel() error {
 	h.cancelFn()
 	return wait(h.errc)
 }
 
-func (s ready) listen(h *Handle, t State, f Feedback) (State, State, Feedback) {
+func (s ready) listen(h *Handle, t State, f feedback) (State, State, feedback) {
 	return h.idle(s, t, f)
 }
 
 func (s ready) transition(h *Handle, e Event) (State, error) {
 	switch ev := e.(type) {
-	case Close:
+	case stop:
 		return nil, nil
-	case Run:
+	case run:
 		ctx, cancelFn := context.WithCancel(ev.Context)
 		h.cancelFn = cancelFn
 		h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.givec))
@@ -250,15 +223,15 @@ func (s ready) transition(h *Handle, e Event) (State, error) {
 	return s, ErrInvalidState
 }
 
-func (s running) listen(h *Handle, t State, f Feedback) (State, State, Feedback) {
+func (s running) listen(h *Handle, t State, f feedback) (State, State, feedback) {
 	return h.active(s, t, f)
 }
 
 func (s running) transition(h *Handle, e Event) (State, error) {
 	switch e.(type) {
-	case Close:
+	case stop:
 		return nil, h.cancel()
-	case Pause:
+	case pause:
 		return Paused, nil
 	}
 	return s, ErrInvalidState
@@ -268,22 +241,22 @@ func (s running) sendMessage(h *Handle, pipeID string) {
 	h.newMessageFn(pipeID)
 }
 
-func (s paused) listen(h *Handle, t State, f Feedback) (State, State, Feedback) {
+func (s paused) listen(h *Handle, t State, f feedback) (State, State, feedback) {
 	return h.idle(s, t, f)
 }
 
 func (s paused) transition(h *Handle, e Event) (State, error) {
 	switch e.(type) {
-	case Close:
+	case stop:
 		return nil, h.cancel()
-	case Resume:
+	case resume:
 		return Running, nil
 	}
 	return s, ErrInvalidState
 }
 
 // reach closes error channel and cancel waiting of target.
-func (f Feedback) dismiss() Feedback {
+func (f feedback) dismiss() feedback {
 	if f != nil {
 		close(f)
 	}
