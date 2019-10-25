@@ -130,14 +130,13 @@ func (h *Handle) idle(s idleState, t idleState, f errors) (State, idleState, err
 		case e := <-h.events:
 			newState, err = s.transition(h, e)
 			if err != nil {
-				// transition failed, notify
+				// transition failed, notify.
 				e.feedback() <- fmt.Errorf("%v transition during %v: %w", e, s, err)
 			} else {
-				// got new target
+				// got new target.
 				if t != nil {
 					close(f)
 				}
-				// f.dismiss()
 				f = e.feedback()
 				t = e.target()
 			}
@@ -162,9 +161,11 @@ func (h *Handle) active(s activeState, t State, f errors) (State, idleState, err
 		case e := <-h.events:
 			newState, err = s.transition(h, e)
 			if err != nil {
-				// transition failed, notify
+				// transition failed, notify.
 				e.feedback() <- fmt.Errorf("%v transition during %v: %w", e, s, err)
 			} else {
+				// because active state always starts intentially,
+				// target and feedback are never nil.
 				close(f)
 				f = e.feedback()
 				t = e.target()
@@ -326,8 +327,8 @@ func mergeErrors(errcList []<-chan error) merger {
 	return m
 }
 
+// done blocks until error is received or channel is closed.
 func (m merger) done(ec <-chan error) {
-	// block until error is received or channel is closed
 	if err, ok := <-ec; ok {
 		select {
 		case m.errors <- err:
