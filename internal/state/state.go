@@ -112,7 +112,8 @@ func Loop(h *Handle, s State) {
 func (h *Handle) idle(s idleState, t idleState, f errors) (State, idleState, errors) {
 	// check if target state is reached
 	if s == t {
-		f = f.dismiss()
+		close(f)
+		t = nil
 	}
 	var (
 		err      error
@@ -122,19 +123,22 @@ func (h *Handle) idle(s idleState, t idleState, f errors) (State, idleState, err
 		select {
 		case e := <-h.events:
 			newState, err = s.transition(h, e)
-
 			if err != nil {
 				// transition failed, notify
 				e.feedback() <- err
 			} else {
-
-				f.dismiss()
+				// got new target
+				if t != nil {
+					close(f)
+				}
+				// f.dismiss()
 				f = e.feedback()
 				t = e.target()
 			}
 		case params := <-h.params:
 			h.pushParamsFn(params)
 		}
+
 		if s != newState {
 			return newState, t, f
 		}
@@ -154,7 +158,7 @@ func (h *Handle) active(s activeState, t State, f errors) (State, idleState, err
 			if err != nil {
 				e.feedback() <- err
 			} else {
-				f.dismiss()
+				close(f)
 				f = e.feedback()
 				t = e.target()
 			}
@@ -169,13 +173,15 @@ func (h *Handle) active(s activeState, t State, f errors) (State, idleState, err
 			}
 			return Ready, t, f
 		}
+
 		if s != newState {
 			return newState, t, f
 		}
 	}
 }
 
-func (h *Handle) Run(ctx context.Context, bufferSize int) errors {
+// Run sends a run event into handle.
+func (h *Handle) Run(ctx context.Context, bufferSize int) chan error {
 	errors := make(chan error, 1)
 	h.events <- run{
 		Context:    ctx,
@@ -185,6 +191,7 @@ func (h *Handle) Run(ctx context.Context, bufferSize int) errors {
 	return errors
 }
 
+// Pause sends a pause event into handle.
 func (h *Handle) Pause() chan error {
 	errors := make(chan error, 1)
 	h.events <- pause{
@@ -193,6 +200,7 @@ func (h *Handle) Pause() chan error {
 	return errors
 }
 
+// Resume sends a resume event into handle.
 func (h *Handle) Resume() chan error {
 	errors := make(chan error, 1)
 	h.events <- resume{
@@ -201,6 +209,7 @@ func (h *Handle) Resume() chan error {
 	return errors
 }
 
+// Stop sends a stop event into handle.
 func (h *Handle) Stop() chan error {
 	errors := make(chan error, 1)
 	h.events <- stop{
@@ -209,6 +218,7 @@ func (h *Handle) Stop() chan error {
 	return errors
 }
 
+// Push new params into handle.
 func (h *Handle) Push(params Params) {
 	h.params <- params
 }
@@ -265,14 +275,6 @@ func (s paused) transition(h *Handle, e event) (State, error) {
 		return Running, nil
 	}
 	return s, ErrInvalidState
-}
-
-// reach closes error channel and cancel waiting of target.
-func (f errors) dismiss() errors {
-	if f != nil {
-		close(f)
-	}
-	return nil
 }
 
 func wait(d <-chan error) error {
