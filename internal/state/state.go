@@ -2,14 +2,13 @@ package state
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 )
 
 var (
 	// ErrInvalidState is returned if pipe method cannot be executed at this moment.
-	ErrInvalidState = errors.New("invalid state")
+	ErrInvalidState = fmt.Errorf("invalid state")
 )
 
 // Handle manages the lifecycle of the pipe.
@@ -51,7 +50,7 @@ type PushParamsFunc func(params Params)
 
 // State identifies one of the possible states pipe can be in.
 type State interface {
-	listen(*Handle, State, feedback) (State, idleState, feedback)
+	listen(*Handle, State, errors) (State, idleState, errors)
 	transition(*Handle, event) (State, error)
 }
 
@@ -97,10 +96,9 @@ func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParams
 func Loop(h *Handle, s State) {
 	var (
 		t State
-		f feedback
+		f errors
 	)
 	for s != nil {
-		fmt.Printf("state: %T target: %T feedback: %v\n", s, t, f)
 		s, t, f = s.listen(h, t, f)
 	}
 	// close control channels
@@ -111,7 +109,7 @@ func Loop(h *Handle, s State) {
 
 // idle is used to listen to handle's channels which are relevant for idle state.
 // s is the new state, t is the target state and f channel to notify target transition.
-func (h *Handle) idle(s idleState, t idleState, f feedback) (State, idleState, feedback) {
+func (h *Handle) idle(s idleState, t idleState, f errors) (State, idleState, errors) {
 	// check if target state is reached
 	if s == t {
 		f = f.dismiss()
@@ -127,12 +125,12 @@ func (h *Handle) idle(s idleState, t idleState, f feedback) (State, idleState, f
 
 			if err != nil {
 				// transition failed, notify
-				e.Feedback() <- err
+				e.feedback() <- err
 			} else {
 
 				f.dismiss()
-				f = e.Feedback()
-				t = e.Target()
+				f = e.feedback()
+				t = e.target()
 			}
 		case params := <-h.params:
 			h.pushParamsFn(params)
@@ -144,7 +142,7 @@ func (h *Handle) idle(s idleState, t idleState, f feedback) (State, idleState, f
 }
 
 // active is used to listen to handle's channels which are relevant for active state.
-func (h *Handle) active(s activeState, t State, f feedback) (State, idleState, feedback) {
+func (h *Handle) active(s activeState, t State, f errors) (State, idleState, errors) {
 	var (
 		err      error
 		newState = State(s)
@@ -152,14 +150,13 @@ func (h *Handle) active(s activeState, t State, f feedback) (State, idleState, f
 	for {
 		select {
 		case e := <-h.events:
-			fmt.Printf("event: %t feedback: %v\n", e, e.Feedback())
 			newState, err = s.transition(h, e)
 			if err != nil {
-				e.Feedback() <- err
+				e.feedback() <- err
 			} else {
 				f.dismiss()
-				f = e.Feedback()
-				t = e.Target()
+				f = e.feedback()
+				t = e.target()
 			}
 		case params := <-h.params:
 			h.pushParamsFn(params)
@@ -178,12 +175,12 @@ func (h *Handle) active(s activeState, t State, f feedback) (State, idleState, f
 	}
 }
 
-func (h *Handle) Run(ctx context.Context, bufferSize int) feedback {
+func (h *Handle) Run(ctx context.Context, bufferSize int) errors {
 	errors := make(chan error, 1)
 	h.events <- run{
 		Context:    ctx,
 		BufferSize: bufferSize,
-		feedback:   errors,
+		errors:     errors,
 	}
 	return errors
 }
@@ -191,7 +188,7 @@ func (h *Handle) Run(ctx context.Context, bufferSize int) feedback {
 func (h *Handle) Pause() chan error {
 	errors := make(chan error, 1)
 	h.events <- pause{
-		feedback: errors,
+		errors: errors,
 	}
 	return errors
 }
@@ -199,7 +196,7 @@ func (h *Handle) Pause() chan error {
 func (h *Handle) Resume() chan error {
 	errors := make(chan error, 1)
 	h.events <- resume{
-		feedback: errors,
+		errors: errors,
 	}
 	return errors
 }
@@ -207,7 +204,7 @@ func (h *Handle) Resume() chan error {
 func (h *Handle) Stop() chan error {
 	errors := make(chan error, 1)
 	h.events <- stop{
-		feedback: errors,
+		errors: errors,
 	}
 	return errors
 }
@@ -221,7 +218,7 @@ func (h *Handle) cancel() error {
 	return wait(h.errors)
 }
 
-func (s ready) listen(h *Handle, t State, f feedback) (State, idleState, feedback) {
+func (s ready) listen(h *Handle, t State, f errors) (State, idleState, errors) {
 	return h.idle(s, t, f)
 }
 
@@ -238,7 +235,7 @@ func (s ready) transition(h *Handle, e event) (State, error) {
 	return s, ErrInvalidState
 }
 
-func (s running) listen(h *Handle, t State, f feedback) (State, idleState, feedback) {
+func (s running) listen(h *Handle, t State, f errors) (State, idleState, errors) {
 	return h.active(s, t, f)
 }
 
@@ -256,7 +253,7 @@ func (s running) sendMessage(h *Handle, pipeID string) {
 	h.newMessageFn(pipeID)
 }
 
-func (s paused) listen(h *Handle, t State, f feedback) (State, idleState, feedback) {
+func (s paused) listen(h *Handle, t State, f errors) (State, idleState, errors) {
 	return h.idle(s, t, f)
 }
 
@@ -271,10 +268,10 @@ func (s paused) transition(h *Handle, e event) (State, error) {
 }
 
 // reach closes error channel and cancel waiting of target.
-func (f feedback) dismiss() feedback {
-	// if f != nil {
-	close(f)
-	// }
+func (f errors) dismiss() errors {
+	if f != nil {
+		close(f)
+	}
 	return nil
 }
 

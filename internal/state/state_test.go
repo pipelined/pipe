@@ -152,7 +152,7 @@ func TestStates(t *testing.T) {
 
 	for _, c := range cases {
 		var (
-			feedback chan error
+			errors chan error
 		)
 		messages := c.messages
 		if c.errorOnSend != nil {
@@ -171,9 +171,9 @@ func TestStates(t *testing.T) {
 		go state.Loop(h, state.Ready)
 
 		// reach tested state
-		// remember last feedback channel
+		// remember last errors channel
 		for _, transition := range c.preparation {
-			feedback = transition(h)
+			errors = transition(h)
 		}
 
 		// push params
@@ -191,7 +191,7 @@ func TestStates(t *testing.T) {
 				send <- struct{}{}
 			}
 			close(send)
-			err := pipe.Wait(feedback)
+			err := pipe.Wait(errors)
 			assert.Equal(t, c.errorOnSend, err)
 		}
 
