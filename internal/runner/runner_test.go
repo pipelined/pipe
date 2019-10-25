@@ -30,7 +30,7 @@ func (p noOpPool) Alloc() signal.Float64 {
 
 func (p noOpPool) Free(signal.Float64) {}
 
-var testError = errors.New("Test runner error")
+var testError = errors.New("test runner error")
 
 func TestPumpRunner(t *testing.T) {
 	bufferSize := 1024
@@ -96,7 +96,7 @@ func TestPumpRunner(t *testing.T) {
 		cancel := make(chan struct{})
 		give := make(chan string)
 		take := make(chan runner.Message)
-		out, errors := r.Run(
+		out, errs := r.Run(
 			noOpPool{
 				numChannels: c.pump.NumChannels,
 				bufferSize:  bufferSize,
@@ -108,7 +108,7 @@ func TestPumpRunner(t *testing.T) {
 			take,
 		)
 		assert.NotNil(t, out)
-		assert.NotNil(t, errors)
+		assert.NotNil(t, errs)
 
 		// test cancellation
 		switch {
@@ -129,11 +129,11 @@ func TestPumpRunner(t *testing.T) {
 				PipeID: pipeID,
 			}
 			<-out
-			err := <-errors
-			assert.Equal(t, c.pump.ErrorOnCall, err)
+			err := <-errs
+			assert.Equal(t, c.pump.ErrorOnCall, errors.Unwrap(err))
 		case c.pump.ErrorOnReset != nil:
-			err := <-errors
-			assert.Equal(t, c.pump.ErrorOnReset, err)
+			err := <-errs
+			assert.Equal(t, c.pump.ErrorOnReset, errors.Unwrap(err))
 		default:
 			// test message exchange
 			for i := 0; i <= c.pump.Limit/bufferSize; i++ {
@@ -145,12 +145,12 @@ func TestPumpRunner(t *testing.T) {
 			}
 		}
 
-		pipe.Wait(errors)
+		pipe.Wait(errs)
 
 		// test channels closed
 		_, ok = <-out
 		assert.False(t, ok)
-		_, ok = <-errors
+		_, ok = <-errs
 		assert.False(t, ok)
 
 		assert.True(t, c.pump.Resetted)
@@ -214,9 +214,9 @@ func TestProcessorRunner(t *testing.T) {
 
 		cancel := make(chan struct{})
 		in := make(chan runner.Message)
-		out, errors := r.Run(pipeID, componentID, cancel, in)
+		out, errs := r.Run(pipeID, componentID, cancel, in)
 		assert.NotNil(t, out)
-		assert.NotNil(t, errors)
+		assert.NotNil(t, errs)
 
 		switch {
 		case c.cancelOnReceive:
@@ -230,11 +230,11 @@ func TestProcessorRunner(t *testing.T) {
 			in <- runner.Message{
 				PipeID: pipeID,
 			}
-			err := <-errors
-			assert.Equal(t, c.processor.ErrorOnCall, err)
+			err := <-errs
+			assert.Equal(t, c.processor.ErrorOnCall, errors.Unwrap(err))
 		case c.processor.ErrorOnReset != nil:
-			err := <-errors
-			assert.Equal(t, c.processor.ErrorOnReset, err)
+			err := <-errs
+			assert.Equal(t, c.processor.ErrorOnReset, errors.Unwrap(err))
 		default:
 			for i := 0; i <= c.messages; i++ {
 				in <- runner.Message{
@@ -245,7 +245,7 @@ func TestProcessorRunner(t *testing.T) {
 			close(in)
 		}
 
-		pipe.Wait(errors)
+		pipe.Wait(errs)
 
 		assert.True(t, c.processor.Resetted)
 		if c.processor.ErrorOnReset != nil {
@@ -304,8 +304,8 @@ func TestSinkRunner(t *testing.T) {
 
 		cancel := make(chan struct{})
 		in := make(chan runner.Message)
-		errors := r.Run(noOpPool{}, pipeID, componentID, cancel, in)
-		assert.NotNil(t, errors)
+		errs := r.Run(noOpPool{}, pipeID, componentID, cancel, in)
+		assert.NotNil(t, errs)
 
 		switch {
 		case c.cancelOnReceive:
@@ -314,11 +314,11 @@ func TestSinkRunner(t *testing.T) {
 			in <- runner.Message{
 				PipeID: pipeID,
 			}
-			err := <-errors
-			assert.Equal(t, c.sink.ErrorOnCall, err)
+			err := <-errs
+			assert.Equal(t, c.sink.ErrorOnCall, errors.Unwrap(err))
 		case c.sink.ErrorOnReset != nil:
-			err := <-errors
-			assert.Equal(t, c.sink.ErrorOnReset, err)
+			err := <-errs
+			assert.Equal(t, c.sink.ErrorOnReset, errors.Unwrap(err))
 		default:
 			for i := 0; i <= c.messages; i++ {
 				in <- runner.Message{
@@ -329,7 +329,7 @@ func TestSinkRunner(t *testing.T) {
 			close(in)
 		}
 
-		pipe.Wait(errors)
+		pipe.Wait(errs)
 
 		assert.True(t, c.sink.Resetted)
 		if c.sink.ErrorOnReset != nil {
@@ -394,8 +394,8 @@ func TestBroadcast(t *testing.T) {
 		close(in)
 		// _, ok := <-cancel
 		// assert.False(t, ok)
-		for _, errors := range errorsList {
-			_, ok := <-errors
+		for _, errs := range errorsList {
+			_, ok := <-errs
 			assert.False(t, ok)
 		}
 	}

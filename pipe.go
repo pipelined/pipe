@@ -146,13 +146,13 @@ func start(p *Pipe) state.StartFunc {
 		for _, c := range p.chains {
 			p := pool.New(c.numChannels, bufferSize)
 			// start pump
-			out, errors := c.pump.Run(p, c.uid, c.pump.ID, cancel, give, c.take)
-			errcList = append(errcList, errors)
+			out, errs := c.pump.Run(p, c.uid, c.pump.ID, cancel, give, c.take)
+			errcList = append(errcList, errs)
 
 			// start chained processesing
 			for _, proc := range c.processors {
-				out, errors = proc.Run(c.uid, proc.ID, cancel, out)
-				errcList = append(errcList, errors)
+				out, errs = proc.Run(c.uid, proc.ID, cancel, out)
+				errcList = append(errcList, errs)
 			}
 
 			sinkErrcList := runner.Broadcast(p, c.uid, c.sinks, cancel, out)

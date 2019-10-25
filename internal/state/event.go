@@ -17,9 +17,9 @@ type (
 		fmt.Stringer
 	}
 
-	// errors is a wrapper for error channels. It's used to return errors
+	// errs is a wrapper for error channels. It's used to return errs
 	// of state transition or error occured during that transition.
-	errors chan error
+	errs chan error
 )
 
 type (
@@ -27,27 +27,27 @@ type (
 	run struct {
 		context.Context
 		BufferSize int
-		errors
+		errs
 	}
 
 	// pause event is sent to pause the run.
 	pause struct {
-		errors
+		errs
 	}
 
 	// resume event is sent to resume the run.
 	resume struct {
-		errors
+		errs
 	}
 
 	// stop event is sent to stop the Handle.
 	stop struct {
-		errors
+		errs
 	}
 )
 
 // Feedback exposes error channel and used to satisfy event interface.
-func (f errors) feedback() chan error {
+func (f errs) feedback() chan error {
 	return f
 }
 

@@ -23,7 +23,7 @@ type (
 		// ask for new message request for the chain.
 		// created in custructor, never closed.
 		give chan string
-		// errors used to fan-in errors from components.
+		// errs used to fan-in errs from components.
 		// created in run event, closed when all components are done.
 		merger
 		// cancel the line execution.
@@ -37,7 +37,7 @@ type (
 	// merger fans-in error channels.
 	merger struct {
 		wg     *sync.WaitGroup
-		errors chan error
+		errs chan error
 	}
 
 	// StartFunc is the closure to trigger the start of a pipe.
@@ -53,7 +53,7 @@ type (
 type (
 	// State identifies one of the possible states pipe can be in.
 	State interface {
-		listen(*Handle, State, errors) (State, idleState, errors)
+		listen(*Handle, State, errs) (State, idleState, errs)
 		transition(*Handle, event) (State, error)
 		fmt.Stringer
 	}
@@ -102,7 +102,7 @@ func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParams
 func Loop(h *Handle, s State) {
 	var (
 		t State
-		f errors
+		f errs
 	)
 	for s != nil {
 		s, t, f = s.listen(h, t, f)
@@ -115,7 +115,7 @@ func Loop(h *Handle, s State) {
 
 // idle is used to listen to handle's channels which are relevant for idle state.
 // s is the new state, t is the target state and f channel to notify target transition.
-func (h *Handle) idle(s idleState, t idleState, f errors) (State, idleState, errors) {
+func (h *Handle) idle(s idleState, t idleState, f errs) (State, idleState, errs) {
 	// check if target state is reached
 	if s == t {
 		close(f)
@@ -151,7 +151,7 @@ func (h *Handle) idle(s idleState, t idleState, f errors) (State, idleState, err
 }
 
 // active is used to listen to handle's channels which are relevant for active state.
-func (h *Handle) active(s activeState, t State, f errors) (State, idleState, errors) {
+func (h *Handle) active(s activeState, t State, f errs) (State, idleState, errs) {
 	var (
 		err      error
 		newState = State(s)
@@ -174,7 +174,7 @@ func (h *Handle) active(s activeState, t State, f errors) (State, idleState, err
 			h.pushParamsFn(params)
 		case pipeID := <-h.give:
 			s.sendMessage(h, pipeID)
-		case err, ok := <-h.errors:
+		case err, ok := <-h.errs:
 			if ok {
 				h.cancelFn()
 				f <- fmt.Errorf("error during %v: %w", s, err)
@@ -190,40 +190,40 @@ func (h *Handle) active(s activeState, t State, f errors) (State, idleState, err
 
 // Run sends a run event into handle.
 func (h *Handle) Run(ctx context.Context, bufferSize int) chan error {
-	errors := make(chan error, 1)
+	errs := make(chan error, 1)
 	h.events <- run{
 		Context:    ctx,
 		BufferSize: bufferSize,
-		errors:     errors,
+		errs:     errs,
 	}
-	return errors
+	return errs
 }
 
 // Pause sends a pause event into handle.
 func (h *Handle) Pause() chan error {
-	errors := make(chan error, 1)
+	errs := make(chan error, 1)
 	h.events <- pause{
-		errors: errors,
+		errs: errs,
 	}
-	return errors
+	return errs
 }
 
 // Resume sends a resume event into handle.
 func (h *Handle) Resume() chan error {
-	errors := make(chan error, 1)
+	errs := make(chan error, 1)
 	h.events <- resume{
-		errors: errors,
+		errs: errs,
 	}
-	return errors
+	return errs
 }
 
 // Stop sends a stop event into handle.
 func (h *Handle) Stop() chan error {
-	errors := make(chan error, 1)
+	errs := make(chan error, 1)
 	h.events <- stop{
-		errors: errors,
+		errs: errs,
 	}
-	return errors
+	return errs
 }
 
 // Push new params into handle.
@@ -233,10 +233,10 @@ func (h *Handle) Push(params Params) {
 
 func (h *Handle) cancel() error {
 	h.cancelFn()
-	return wait(h.errors)
+	return wait(h.errs)
 }
 
-func (s ready) listen(h *Handle, t State, f errors) (State, idleState, errors) {
+func (s ready) listen(h *Handle, t State, f errs) (State, idleState, errs) {
 	return h.idle(s, t, f)
 }
 
@@ -257,7 +257,7 @@ func (s ready) String() string {
 	return "state.Ready"
 }
 
-func (s running) listen(h *Handle, t State, f errors) (State, idleState, errors) {
+func (s running) listen(h *Handle, t State, f errs) (State, idleState, errs) {
 	return h.active(s, t, f)
 }
 
@@ -279,7 +279,7 @@ func (s running) String() string {
 	return "state.Running"
 }
 
-func (s paused) listen(h *Handle, t State, f errors) (State, idleState, errors) {
+func (s paused) listen(h *Handle, t State, f errs) (State, idleState, errs) {
 	return h.idle(s, t, f)
 }
 
@@ -310,7 +310,7 @@ func wait(d <-chan error) error {
 func mergeErrors(errcList []<-chan error) merger {
 	m := merger{
 		wg:     &sync.WaitGroup{},
-		errors: make(chan error, 1),
+		errs: make(chan error, 1),
 	}
 
 	//function to wait for error channel
@@ -322,7 +322,7 @@ func mergeErrors(errcList []<-chan error) merger {
 	//wait and close out
 	go func() {
 		m.wg.Wait()
-		close(m.errors)
+		close(m.errs)
 	}()
 	return m
 }
@@ -331,7 +331,7 @@ func mergeErrors(errcList []<-chan error) merger {
 func (m merger) done(ec <-chan error) {
 	if err, ok := <-ec; ok {
 		select {
-		case m.errors <- err:
+		case m.errs <- err:
 		default:
 		}
 	}
