@@ -31,7 +31,7 @@ type chain struct {
 	processors  []runner.Processor
 	sinks       []runner.Sink
 	components  map[interface{}]string
-	takec       chan runner.Message // emission of messages
+	take       chan runner.Message // emission of messages
 	params      state.Params
 }
 
@@ -122,7 +122,7 @@ func bindLine(p *Line) (chain, error) {
 		pump:        pumpRunner,
 		processors:  processorRunners,
 		sinks:       sinkRunners,
-		takec:       make(chan runner.Message),
+		take:       make(chan runner.Message),
 		components:  components,
 		params:      make(map[string][]func()),
 	}, nil
@@ -140,22 +140,22 @@ func (p *Pipe) ComponentID(component interface{}) (id string, ok bool) {
 
 // start starts the execution of pipe.
 func start(p *Pipe) state.StartFunc {
-	return func(bufferSize int, cancelc <-chan struct{}, givec chan<- string) []<-chan error {
+	return func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
 		for _, c := range p.chains {
 			p := pool.New(c.numChannels, bufferSize)
 			// start pump
-			out, errc := c.pump.Run(p, c.uid, c.pump.ID, cancelc, givec, c.takec)
-			errcList = append(errcList, errc)
+			out, errors := c.pump.Run(p, c.uid, c.pump.ID, cancel, give, c.take)
+			errcList = append(errcList, errors)
 
 			// start chained processesing
 			for _, proc := range c.processors {
-				out, errc = proc.Run(c.uid, proc.ID, cancelc, out)
-				errcList = append(errcList, errc)
+				out, errors = proc.Run(c.uid, proc.ID, cancel, out)
+				errcList = append(errcList, errors)
 			}
 
-			sinkErrcList := runner.Broadcast(p, c.uid, c.sinks, cancelc, out)
+			sinkErrcList := runner.Broadcast(p, c.uid, c.sinks, cancel, out)
 			errcList = append(errcList, sinkErrcList...)
 		}
 		return errcList
@@ -172,7 +172,7 @@ func newMessage(p *Pipe) state.NewMessageFunc {
 			m.Params = c.params
 			c.params = make(map[string][]func())
 		}
-		c.takec <- m
+		c.take <- m
 	}
 }
 
@@ -216,5 +216,5 @@ func (p *Pipe) Close() chan error {
 // Push new params into pipe.
 // Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Push(id string, paramFuncs ...func()) {
-	p.h.Paramc <- map[string][]func(){id: paramFuncs}
+	p.h.Push(state.Params{id: paramFuncs})
 }

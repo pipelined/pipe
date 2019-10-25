@@ -93,64 +93,64 @@ func TestPumpRunner(t *testing.T) {
 			Meter: metric.Meter(c.pump, signal.SampleRate(sampleRate)),
 			Hooks: pipe.BindHooks(c.pump),
 		}
-		cancelc := make(chan struct{})
-		givec := make(chan string)
-		takec := make(chan runner.Message)
-		out, errc := r.Run(
+		cancel := make(chan struct{})
+		give := make(chan string)
+		take := make(chan runner.Message)
+		out, errors := r.Run(
 			noOpPool{
 				numChannels: c.pump.NumChannels,
 				bufferSize:  bufferSize,
 			},
 			pipeID,
 			componentID,
-			cancelc,
-			givec,
-			takec,
+			cancel,
+			give,
+			take,
 		)
 		assert.NotNil(t, out)
-		assert.NotNil(t, errc)
+		assert.NotNil(t, errors)
 
 		// test cancellation
 		switch {
 		case c.cancelOnGive:
-			close(cancelc)
+			close(cancel)
 		case c.cancelOnTake:
-			<-givec
-			close(cancelc)
+			<-give
+			close(cancel)
 		case c.cancelOnSend:
-			<-givec
-			takec <- runner.Message{
+			<-give
+			take <- runner.Message{
 				PipeID: pipeID,
 			}
-			close(cancelc)
+			close(cancel)
 		case c.pump.ErrorOnCall != nil:
-			<-givec
-			takec <- runner.Message{
+			<-give
+			take <- runner.Message{
 				PipeID: pipeID,
 			}
 			<-out
-			err := <-errc
+			err := <-errors
 			assert.Equal(t, c.pump.ErrorOnCall, err)
 		case c.pump.ErrorOnReset != nil:
-			err := <-errc
+			err := <-errors
 			assert.Equal(t, c.pump.ErrorOnReset, err)
 		default:
 			// test message exchange
 			for i := 0; i <= c.pump.Limit/bufferSize; i++ {
-				<-givec
-				takec <- runner.Message{
+				<-give
+				take <- runner.Message{
 					PipeID: pipeID,
 				}
 				<-out
 			}
 		}
 
-		pipe.Wait(errc)
+		pipe.Wait(errors)
 
 		// test channels closed
 		_, ok = <-out
 		assert.False(t, ok)
-		_, ok = <-errc
+		_, ok = <-errors
 		assert.False(t, ok)
 
 		assert.True(t, c.pump.Resetted)
@@ -212,28 +212,28 @@ func TestProcessorRunner(t *testing.T) {
 			Hooks: pipe.BindHooks(c.processor),
 		}
 
-		cancelc := make(chan struct{})
+		cancel := make(chan struct{})
 		in := make(chan runner.Message)
-		out, errc := r.Run(pipeID, componentID, cancelc, in)
+		out, errors := r.Run(pipeID, componentID, cancel, in)
 		assert.NotNil(t, out)
-		assert.NotNil(t, errc)
+		assert.NotNil(t, errors)
 
 		switch {
 		case c.cancelOnReceive:
-			close(cancelc)
+			close(cancel)
 		case c.cancelOnSend:
 			in <- runner.Message{
 				PipeID: pipeID,
 			}
-			close(cancelc)
+			close(cancel)
 		case c.processor.ErrorOnCall != nil:
 			in <- runner.Message{
 				PipeID: pipeID,
 			}
-			err := <-errc
+			err := <-errors
 			assert.Equal(t, c.processor.ErrorOnCall, err)
 		case c.processor.ErrorOnReset != nil:
-			err := <-errc
+			err := <-errors
 			assert.Equal(t, c.processor.ErrorOnReset, err)
 		default:
 			for i := 0; i <= c.messages; i++ {
@@ -245,7 +245,7 @@ func TestProcessorRunner(t *testing.T) {
 			close(in)
 		}
 
-		pipe.Wait(errc)
+		pipe.Wait(errors)
 
 		assert.True(t, c.processor.Resetted)
 		if c.processor.ErrorOnReset != nil {
@@ -302,22 +302,22 @@ func TestSinkRunner(t *testing.T) {
 			Hooks: pipe.BindHooks(c.sink),
 		}
 
-		cancelc := make(chan struct{})
+		cancel := make(chan struct{})
 		in := make(chan runner.Message)
-		errc := r.Run(noOpPool{}, pipeID, componentID, cancelc, in)
-		assert.NotNil(t, errc)
+		errors := r.Run(noOpPool{}, pipeID, componentID, cancel, in)
+		assert.NotNil(t, errors)
 
 		switch {
 		case c.cancelOnReceive:
-			close(cancelc)
+			close(cancel)
 		case c.sink.ErrorOnCall != nil:
 			in <- runner.Message{
 				PipeID: pipeID,
 			}
-			err := <-errc
+			err := <-errors
 			assert.Equal(t, c.sink.ErrorOnCall, err)
 		case c.sink.ErrorOnReset != nil:
-			err := <-errc
+			err := <-errors
 			assert.Equal(t, c.sink.ErrorOnReset, err)
 		default:
 			for i := 0; i <= c.messages; i++ {
@@ -329,7 +329,7 @@ func TestSinkRunner(t *testing.T) {
 			close(in)
 		}
 
-		pipe.Wait(errc)
+		pipe.Wait(errors)
 
 		assert.True(t, c.sink.Resetted)
 		if c.sink.ErrorOnReset != nil {
@@ -376,26 +376,26 @@ func TestBroadcast(t *testing.T) {
 			runners[i] = r
 		}
 
-		cancelChan := make(chan struct{})
-		inChan := make(chan runner.Message)
-		errChanList := runner.Broadcast(
+		cancel := make(chan struct{})
+		in := make(chan runner.Message)
+		errorsList := runner.Broadcast(
 			noOpPool{},
 			pipeID,
 			runners,
-			cancelChan,
-			inChan,
+			cancel,
+			in,
 		)
-		assert.Equal(t, len(runners), len(errChanList))
+		assert.Equal(t, len(runners), len(errorsList))
 		for i := 0; i < test.messages; i++ {
-			inChan <- runner.Message{
+			in <- runner.Message{
 				PipeID: pipeID,
 			}
 		}
-		close(inChan)
-		// _, ok := <-cancelChan
+		close(in)
+		// _, ok := <-cancel
 		// assert.False(t, ok)
-		for _, errChan := range errChanList {
-			_, ok := <-errChan
+		for _, errors := range errorsList {
+			_, ok := <-errors
 			assert.False(t, ok)
 		}
 	}
