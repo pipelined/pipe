@@ -11,62 +11,64 @@ var (
 	ErrInvalidState = fmt.Errorf("invalid state")
 )
 
-// Handle manages the lifecycle of the pipe.
-type Handle struct {
-	// event channel used to handle new events for state machine.
-	// created in constructor, closed when Handle is closed.
-	events chan event
-	// Params channel used to recieve new parameters.
-	// created in constructor, closed when Handle is closed.
-	params chan Params
-	// ask for new message request for the chain.
-	// created in custructor, never closed.
-	give chan string
-	// errors used to fan-in errors from components.
-	// created in run event, closed when all components are done.
-	merger
-	// cancel the line execution.
-	// created in run event, closed on cancel event or when error is recieved.
-	cancelFn     context.CancelFunc
-	startFn      StartFunc
-	newMessageFn NewMessageFunc
-	pushParamsFn PushParamsFunc
-}
-
-// merger fans-in error channels.
-type merger struct {
-	wg     *sync.WaitGroup
-	errors chan error
-}
-
-// StartFunc is the closure to trigger the start of a pipe.
-type StartFunc func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error
-
-// NewMessageFunc is the closure to send a message into a pipe.
-type NewMessageFunc func(pipeID string)
-
-// PushParamsFunc is the closure to push new params into pipe.
-type PushParamsFunc func(params Params)
-
-// State identifies one of the possible states pipe can be in.
-type State interface {
-	listen(*Handle, State, errors) (State, idleState, errors)
-	transition(*Handle, event) (State, error)
-}
-
-// idleState identifies that the pipe is ONLY waiting for user to send an event.
-type idleState interface {
-	State
-}
-
-// activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
-type activeState interface {
-	State
-	sendMessage(h *Handle, pipeID string)
-}
-
-// states
 type (
+	// Handle manages the lifecycle of the pipe.
+	Handle struct {
+		// event channel used to handle new events for state machine.
+		// created in constructor, closed when Handle is closed.
+		events chan event
+		// Params channel used to recieve new parameters.
+		// created in constructor, closed when Handle is closed.
+		params chan Params
+		// ask for new message request for the chain.
+		// created in custructor, never closed.
+		give chan string
+		// errors used to fan-in errors from components.
+		// created in run event, closed when all components are done.
+		merger
+		// cancel the line execution.
+		// created in run event, closed on cancel event or when error is recieved.
+		cancelFn     context.CancelFunc
+		startFn      StartFunc
+		newMessageFn NewMessageFunc
+		pushParamsFn PushParamsFunc
+	}
+
+	// merger fans-in error channels.
+	merger struct {
+		wg     *sync.WaitGroup
+		errors chan error
+	}
+
+	// StartFunc is the closure to trigger the start of a pipe.
+	StartFunc func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error
+
+	// NewMessageFunc is the closure to send a message into a pipe.
+	NewMessageFunc func(pipeID string)
+
+	// PushParamsFunc is the closure to push new params into pipe.
+	PushParamsFunc func(params Params)
+)
+
+type (
+	// State identifies one of the possible states pipe can be in.
+	State interface {
+		listen(*Handle, State, errors) (State, idleState, errors)
+		transition(*Handle, event) (State, error)
+	}
+
+	// idleState identifies that the pipe is ONLY waiting for user to send an event.
+	idleState interface {
+		State
+	}
+
+	// activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
+	activeState interface {
+		State
+		sendMessage(h *Handle, pipeID string)
+	}
+
+	// states
 	ready   struct{}
 	running struct{}
 	paused  struct{}
@@ -74,9 +76,12 @@ type (
 
 // states variables
 var (
-	Ready   ready   // Ready means that pipe can be started.
-	Running running // Running means that pipe is executing at the moment.
-	Paused  paused  // Paused means that pipe is paused and can be resumed.
+	// Ready states that pipe can be started.
+	Ready ready
+	// Running states that pipe is executing at the moment and can be paused.
+	Running running
+	// Paused states that pipe is paused and can be resumed.
+	Paused paused
 )
 
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
