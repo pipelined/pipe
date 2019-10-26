@@ -2,6 +2,7 @@ package pipe
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/pipelined/signal"
 
@@ -30,7 +31,7 @@ type chain struct {
 	processors  []runner.Processor
 	sinks       []runner.Sink
 	components  map[interface{}]string
-	takec       chan runner.Message // emission of messages
+	take       chan runner.Message // emission of messages
 	params      state.Params
 }
 
@@ -44,7 +45,7 @@ func New(ls ...*Line) (*Pipe, error) {
 		// bind all lines
 		c, err := bindLine(p)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error binding line: %w", err)
 		}
 		// map pipe to chain id
 		lines[p] = c.uid
@@ -71,7 +72,7 @@ func bindLine(p *Line) (chain, error) {
 	// bind pump
 	pumpFn, sampleRate, numChannels, err := p.Pump.Pump(pipeID)
 	if err != nil {
-		return chain{}, err
+		return chain{}, fmt.Errorf("pump: %w", err)
 	}
 	pumpRunner := runner.Pump{
 		ID:    newUID(),
@@ -86,7 +87,7 @@ func bindLine(p *Line) (chain, error) {
 	for _, proc := range p.Processors {
 		processFn, err := proc.Process(pipeID, sampleRate, numChannels)
 		if err != nil {
-			return chain{}, err
+			return chain{}, fmt.Errorf("processor: %w", err)
 		}
 		processorRunner := runner.Processor{
 			ID:    newUID(),
@@ -103,7 +104,7 @@ func bindLine(p *Line) (chain, error) {
 	for _, sink := range p.Sinks {
 		sinkFn, err := sink.Sink(pipeID, sampleRate, numChannels)
 		if err != nil {
-			return chain{}, err
+			return chain{}, fmt.Errorf("sink: %w", err)
 		}
 		sinkRunner := runner.Sink{
 			ID:    newUID(),
@@ -121,7 +122,7 @@ func bindLine(p *Line) (chain, error) {
 		pump:        pumpRunner,
 		processors:  processorRunners,
 		sinks:       sinkRunners,
-		takec:       make(chan runner.Message),
+		take:       make(chan runner.Message),
 		components:  components,
 		params:      make(map[string][]func()),
 	}, nil
@@ -139,22 +140,22 @@ func (p *Pipe) ComponentID(component interface{}) (id string, ok bool) {
 
 // start starts the execution of pipe.
 func start(p *Pipe) state.StartFunc {
-	return func(bufferSize int, cancelc <-chan struct{}, givec chan<- string) []<-chan error {
+	return func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
 		for _, c := range p.chains {
 			p := pool.New(c.numChannels, bufferSize)
 			// start pump
-			out, errc := c.pump.Run(p, c.uid, c.pump.ID, cancelc, givec, c.takec)
-			errcList = append(errcList, errc)
+			out, errs := c.pump.Run(p, c.uid, c.pump.ID, cancel, give, c.take)
+			errcList = append(errcList, errs)
 
 			// start chained processesing
 			for _, proc := range c.processors {
-				out, errc = proc.Run(c.uid, proc.ID, cancelc, out)
-				errcList = append(errcList, errc)
+				out, errs = proc.Run(c.uid, proc.ID, cancel, out)
+				errcList = append(errcList, errs)
 			}
 
-			sinkErrcList := runner.Broadcast(p, c.uid, c.sinks, cancelc, out)
+			sinkErrcList := runner.Broadcast(p, c.uid, c.sinks, cancel, out)
 			errcList = append(errcList, sinkErrcList...)
 		}
 		return errcList
@@ -171,7 +172,7 @@ func newMessage(p *Pipe) state.NewMessageFunc {
 			m.Params = c.params
 			c.params = make(map[string][]func())
 		}
-		c.takec <- m
+		c.take <- m
 	}
 }
 
@@ -189,49 +190,31 @@ func pushParams(p *Pipe) state.PushParamsFunc {
 // Calling this method after handle is closed causes a panic.
 // Feedback channel is closed when Ready state is reached or context is cancelled.
 func (p *Pipe) Run(ctx context.Context, bufferSize int) chan error {
-	errc := make(chan error, 1)
-	p.h.Eventc <- state.Run{
-		Context:    ctx,
-		BufferSize: bufferSize,
-		Feedback:   errc,
-	}
-	return errc
+	return p.h.Run(ctx, bufferSize)
 }
 
 // Pause sends a pause event into handle.
 // Calling this method after handle is closed causes a panic.
 // Feedback is closed when Paused state is reached.
 func (p *Pipe) Pause() chan error {
-	errc := make(chan error, 1)
-	p.h.Eventc <- state.Pause{
-		Feedback: errc,
-	}
-	return errc
+	return p.h.Pause()
 }
 
 // Resume sends a resume event into handle.
 // Calling this method after handle is closed causes a panic.
 // Feedback is closed when Ready state is reached.
 func (p *Pipe) Resume() chan error {
-	errc := make(chan error, 1)
-	p.h.Eventc <- state.Resume{
-		Feedback: errc,
-	}
-	return errc
+	return p.h.Resume()
 }
 
 // Close must be called to clean up handle's resources.
 // Feedback is closed when line is done.
 func (p *Pipe) Close() chan error {
-	errc := make(chan error, 1)
-	p.h.Eventc <- state.Close{
-		Feedback: errc,
-	}
-	return errc
+	return p.h.Stop()
 }
 
 // Push new params into pipe.
 // Calling this method after pipe is closed causes a panic.
 func (p *Pipe) Push(id string, paramFuncs ...func()) {
-	p.h.Paramc <- map[string][]func(){id: paramFuncs}
+	p.h.Push(state.Params{id: paramFuncs})
 }
