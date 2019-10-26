@@ -72,8 +72,6 @@ type (
 	}
 )
 
-var do struct{}
-
 // Run starts the Pump runner.
 func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, give chan<- string, take <-chan Message) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
