@@ -81,13 +81,13 @@ func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, gi
 		defer close(out)
 		defer close(errs)
 		// Reset hook
-		if err := r.Reset(pipeID); err != nil {
+		if err := call(r.Reset, pipeID); err != nil {
 			errs <- fmt.Errorf("error resetting pump: %w", err)
 			return
 		}
 		// Flush hook on return
 		defer func() {
-			if err := r.Flush(pipeID); err != nil {
+			if err := call(r.Flush, pipeID); err != nil {
 				errs <- fmt.Errorf("error flushing pump: %w", err)
 			}
 		}()
@@ -98,7 +98,7 @@ func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, gi
 			select {
 			case give <- pipeID:
 			case <-cancel:
-				if err := r.Interrupt(pipeID); err != nil {
+				if err := call(r.Interrupt, pipeID); err != nil {
 					errs <- fmt.Errorf("error interrupting pump: %w", err)
 				}
 				return
@@ -108,7 +108,7 @@ func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, gi
 			select {
 			case m = <-take:
 			case <-cancel:
-				if err := r.Interrupt(pipeID); err != nil {
+				if err := call(r.Interrupt, pipeID); err != nil {
 					errs <- fmt.Errorf("error interrupting pump: %w", err)
 				}
 				return
@@ -137,7 +137,7 @@ func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, gi
 			select {
 			case out <- m:
 			case <-cancel:
-				if err := r.Interrupt(pipeID); err != nil {
+				if err := call(r.Interrupt, pipeID); err != nil {
 					errs <- fmt.Errorf("error interrupting pump: %w", err)
 				}
 				return
@@ -156,13 +156,13 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 		defer close(out)
 		defer close(errs)
 		// Reset hook
-		if err := r.Reset(pipeID); err != nil {
+		if err := call(r.Reset, pipeID); err != nil {
 			errs <- fmt.Errorf("error resetting processor: %w", err)
 			return
 		}
 		// Flush hook on return
 		defer func() {
-			if err := r.Flush(pipeID); err != nil {
+			if err := call(r.Flush, pipeID); err != nil {
 				errs <- fmt.Errorf("error flushing processor: %w", err)
 			}
 		}()
@@ -177,7 +177,7 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 					return
 				}
 			case <-cancel:
-				if err := r.Interrupt(pipeID); err != nil {
+				if err := call(r.Interrupt, pipeID); err != nil {
 					errs <- fmt.Errorf("error interrupting processor: %w", err)
 				}
 				return
@@ -196,7 +196,7 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 			select {
 			case out <- m:
 			case <-cancel:
-				if err := r.Interrupt(pipeID); err != nil {
+				if err := call(r.Interrupt, pipeID); err != nil {
 					errs <- fmt.Errorf("error interrupting pump: %w", err)
 				}
 				return
@@ -213,13 +213,13 @@ func (r Sink) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, in
 	go func() {
 		defer close(errs)
 		// Reset hook
-		if err := r.Reset(pipeID); err != nil {
+		if err := call(r.Reset, pipeID); err != nil {
 			errs <- fmt.Errorf("error resetting sink: %w", err)
 			return
 		}
 		// Flush hook on return
 		defer func() {
-			if err := r.Flush(pipeID); err != nil {
+			if err := call(r.Flush, pipeID); err != nil {
 				errs <- fmt.Errorf("error flushing sink: %w", err)
 			}
 		}()
@@ -233,7 +233,7 @@ func (r Sink) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, in
 					return
 				}
 			case <-cancel:
-				if err := r.Interrupt(pipeID); err != nil {
+				if err := call(r.Interrupt, pipeID); err != nil {
 					errs <- fmt.Errorf("error interrupting sink: %w", err)
 				}
 				return
@@ -295,4 +295,11 @@ func Broadcast(p Pool, pipeID string, sinks []Sink, cancel <-chan struct{}, in <
 	}()
 
 	return errs
+}
+
+func call(h Hook, pipeID string) error {
+	if h != nil {
+		return h(pipeID)
+	}
+	return nil
 }
