@@ -12,8 +12,6 @@ import (
 	"github.com/pipelined/pipe/internal/state"
 )
 
-const bufferSize = 1024
-
 var testError = errors.New("test error")
 
 type startFuncMock struct{}
