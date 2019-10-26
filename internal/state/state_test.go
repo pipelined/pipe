@@ -12,18 +12,16 @@ import (
 	"github.com/pipelined/pipe/internal/state"
 )
 
-const bufferSize = 1024
-
-var testError = errors.New("Test error")
+var testError = errors.New("test error")
 
 type startFuncMock struct{}
 
 // send channel is closed ONLY when any messages were sent
 func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) state.StartFunc {
-	return func(bufferSize int, cancelc <-chan struct{}, givec chan<- string) []<-chan error {
-		errc := make(chan error)
+	return func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error {
+		errs := make(chan error)
 		go func() {
-			defer close(errc)
+			defer close(errs)
 			// send messages
 			for {
 				select {
@@ -33,20 +31,20 @@ func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) 
 					}
 					// send error if provided
 					if errorOnSend != nil {
-						errc <- errorOnSend
+						errs <- errorOnSend
 					} else {
-						givec <- "test"
+						give <- "test"
 					}
-				case <-cancelc: // block until cancelled
+				case <-cancel: // block until cancelled
 					// send error on close if provided
 					if errorOnClose != nil {
-						errc <- errorOnClose
+						errs <- errorOnClose
 					}
 					return
 				}
 			}
 		}()
-		return []<-chan error{errc}
+		return []<-chan error{errs}
 	}
 }
 
@@ -76,75 +74,75 @@ func TestStates(t *testing.T) {
 		messages     int
 		errorOnSend  error
 		errorOnClose error
-		preparation  []state.Event
-		events       []state.Event
+		preparation  []transition
+		events       []transition
 		cancel       context.CancelFunc
 	}{
 		{
 			// Ready state
-			events: []state.Event{
-				state.Resume{Feedback: make(chan error)},
-				state.Pause{Feedback: make(chan error)},
+			events: []transition{
+				resume,
+				pause,
 			},
 		},
 		{
 			// Running state
 			messages: 10,
-			preparation: []state.Event{
-				state.Run{Context: context.Background(), Feedback: make(chan error)},
+			preparation: []transition{
+				run,
 			},
-			events: []state.Event{
-				state.Resume{Feedback: make(chan error)},
-				state.Run{Context: context.Background(), Feedback: make(chan error)},
+			events: []transition{
+				resume,
+				run,
 			},
 		},
 		{
 			// Running state
 			errorOnSend: testError,
-			preparation: []state.Event{
-				state.Run{Context: context.Background(), Feedback: make(chan error)},
+			preparation: []transition{
+				run,
 			},
 		},
 		{
 			// Running state
 			errorOnClose: testError,
-			preparation: []state.Event{
-				state.Run{Context: context.Background(), Feedback: make(chan error)},
+			preparation: []transition{
+				run,
 			},
-			events: []state.Event{
-				state.Resume{Feedback: make(chan error)},
-				state.Run{Context: context.Background(), Feedback: make(chan error)},
+			events: []transition{
+				resume,
+				run,
 			},
 		},
 		{
 			// Paused state
-			preparation: []state.Event{
-				state.Run{Context: context.Background(), Feedback: make(chan error)},
-				state.Pause{Feedback: make(chan error)},
+			preparation: []transition{
+				run,
+				pause,
 			},
-			events: []state.Event{
-				state.Pause{Feedback: make(chan error)},
-				state.Run{Context: context.Background(), Feedback: make(chan error)},
+			events: []transition{
+				pause,
+				run,
 			},
 		},
 		{
 			// Running state after pause
-			preparation: []state.Event{
-				state.Run{Context: context.Background(), Feedback: make(chan error)},
-				state.Pause{Feedback: make(chan error)},
-				state.Resume{Feedback: make(chan error)},
+			preparation: []transition{
+				run,
+				pause,
+				resume,
 			},
-			events: []state.Event{
-				state.Resume{Feedback: make(chan error)},
-				state.Run{Context: context.Background(), Feedback: make(chan error)},
+			events: []transition{
+				resume,
+				run,
 			},
 		},
 		{
 			// Running state and cancel context
 			// message is needed to ensure params delivery
 			messages: 1,
-			preparation: []state.Event{
-				state.Run{Context: ctx, Feedback: make(chan error)},
+			preparation: []transition{
+				runWithContext(ctx),
 			},
 			cancel: cancelFn,
 		},
@@ -152,7 +150,7 @@ func TestStates(t *testing.T) {
 
 	for _, c := range cases {
 		var (
-			feedback chan error
+			errs chan error
 		)
 		messages := c.messages
 		if c.errorOnSend != nil {
@@ -171,20 +169,18 @@ func TestStates(t *testing.T) {
 		go state.Loop(h, state.Ready)
 
 		// reach tested state
-		// remember last feedback channel
-		for _, e := range c.preparation {
-			feedback = e.Errc()
-			h.Eventc <- e
+		// remember last errs channel
+		for _, transition := range c.preparation {
+			errs = transition(h)
 		}
 
 		// push params
-		h.Paramc <- p.params()
+		h.Push(p.params())
 
 		// test events
-		for _, e := range c.events {
-			h.Eventc <- e
-			err := pipe.Wait(e.Errc())
-			assert.Equal(t, state.ErrInvalidState, err)
+		for _, transition := range c.events {
+			err := pipe.Wait(transition(h))
+			assert.Equal(t, state.ErrInvalidState, errors.Unwrap(err))
 		}
 
 		// send messages
@@ -193,8 +189,8 @@ func TestStates(t *testing.T) {
 				send <- struct{}{}
 			}
 			close(send)
-			err := pipe.Wait(feedback)
-			assert.Equal(t, c.errorOnSend, err)
+			err := pipe.Wait(errs)
+			assert.Equal(t, c.errorOnSend, errors.Unwrap(err))
 		}
 
 		if c.cancel != nil {
@@ -202,14 +198,32 @@ func TestStates(t *testing.T) {
 		}
 
 		// close
-		errc := make(chan error)
-		h.Eventc <- state.Close{Feedback: errc}
-		err := pipe.Wait(errc)
-		assert.Equal(t, c.errorOnClose, err)
+		err := pipe.Wait(h.Stop())
+		assert.Equal(t, c.errorOnClose, errors.Unwrap(err))
 
 		_, ok := pushParamsMock.Params[p.uid]
 		assert.True(t, ok)
 		assert.Equal(t, c.messages, newMessageMock.sent)
 	}
 	goleak.VerifyNoLeaks(t)
+}
+
+type transition func(*state.Handle) chan error
+
+var (
+	run = func(h *state.Handle) chan error {
+		return h.Run(context.Background(), 0)
+	}
+	resume = func(h *state.Handle) chan error {
+		return h.Resume()
+	}
+	pause = func(h *state.Handle) chan error {
+		return h.Pause()
+	}
+)
+
+func runWithContext(ctx context.Context) transition {
+	return func(h *state.Handle) chan error {
+		return h.Run(ctx, 0)
+	}
 }
