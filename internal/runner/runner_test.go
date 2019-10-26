@@ -351,6 +351,7 @@ func TestBroadcast(t *testing.T) {
 	tests := []struct {
 		sinks    []pipe.Sink
 		messages int
+		nilHooks bool
 	}{
 		{
 			sinks: []pipe.Sink{
@@ -358,6 +359,14 @@ func TestBroadcast(t *testing.T) {
 				&mock.Sink{},
 			},
 			messages: 10,
+		},
+		{
+			sinks: []pipe.Sink{
+				&mock.Sink{},
+				&mock.Sink{},
+			},
+			messages: 10,
+			nilHooks: true,
 		},
 	}
 	sampleRate := signal.SampleRate(44100)
@@ -371,7 +380,9 @@ func TestBroadcast(t *testing.T) {
 			r := runner.Sink{
 				Fn:    fn,
 				Meter: metric.Meter(sink, sampleRate),
-				Hooks: pipe.BindHooks(sink),
+			}
+			if !test.nilHooks {
+				r.Hooks = pipe.BindHooks(sink)
 			}
 			runners[i] = r
 		}
