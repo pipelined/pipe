@@ -85,6 +85,9 @@ var (
 	paused idlePaused
 )
 
+// initial state for the handle.
+var initialState = State(ready)
+
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
 func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParamsFunc) *Handle {
 	h := Handle{
@@ -101,10 +104,10 @@ func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParams
 // Loop listens until nil state is returned.
 func Loop(h *Handle) {
 	var (
-		s, t State
-		f    errs
+		s = initialState
+		t State
+		f errs
 	)
-	s = ready
 	for s != nil {
 		s, t, f = s.listen(h, t, f)
 	}
