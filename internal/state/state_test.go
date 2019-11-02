@@ -166,7 +166,7 @@ func TestStates(t *testing.T) {
 			newMessageMock.fn(),
 			pushParamsMock.fn(),
 		)
-		go state.Loop(h, state.Ready)
+		go state.Loop(h)
 
 		// reach tested state
 		// remember last errs channel
