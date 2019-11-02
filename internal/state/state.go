@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	// ErrInvalidState is returned if pipe method cannot be executed at this moment.
+	// ErrInvalidState is returned if event cannot be handled at this state.
 	ErrInvalidState = fmt.Errorf("invalid state")
 )
 
@@ -36,7 +36,7 @@ type (
 
 	// merger fans-in error channels.
 	merger struct {
-		wg     *sync.WaitGroup
+		wg   *sync.WaitGroup
 		errs chan error
 	}
 
@@ -70,19 +70,19 @@ type (
 	}
 
 	// states
-	ready   struct{}
-	running struct{}
-	paused  struct{}
+	idleReady     struct{}
+	activeRunning struct{}
+	idlePaused    struct{}
 )
 
 // states variables
 var (
 	// Ready states that pipe can be started.
-	Ready ready
+	ready idleReady
 	// Running states that pipe is executing at the moment and can be paused.
-	Running running
+	running activeRunning
 	// Paused states that pipe is paused and can be resumed.
-	Paused paused
+	paused idlePaused
 )
 
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
@@ -99,11 +99,12 @@ func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParams
 }
 
 // Loop listens until nil state is returned.
-func Loop(h *Handle, s State) {
+func Loop(h *Handle) {
 	var (
-		t State
-		f errs
+		s, t State
+		f    errs
 	)
+	s = ready
 	for s != nil {
 		s, t, f = s.listen(h, t, f)
 	}
@@ -164,7 +165,7 @@ func (h *Handle) active(s activeState, t State, f errs) (State, idleState, errs)
 				// transition failed, notify.
 				e.feedback() <- fmt.Errorf("%v transition during %v: %w", e, s, err)
 			} else {
-				// because active state always starts intentially,
+				// because active state always starts intentionally,
 				// target and feedback are never nil.
 				close(f)
 				f = e.feedback()
@@ -179,7 +180,7 @@ func (h *Handle) active(s activeState, t State, f errs) (State, idleState, errs)
 				h.cancelFn()
 				f <- fmt.Errorf("error during %v: %w", s, err)
 			}
-			return Ready, t, f
+			return ready, t, f
 		}
 
 		if s != newState {
@@ -194,7 +195,7 @@ func (h *Handle) Run(ctx context.Context, bufferSize int) chan error {
 	h.events <- run{
 		Context:    ctx,
 		BufferSize: bufferSize,
-		errs:     errs,
+		errs:       errs,
 	}
 	return errs
 }
@@ -236,11 +237,11 @@ func (h *Handle) cancel() error {
 	return wait(h.errs)
 }
 
-func (s ready) listen(h *Handle, t State, f errs) (State, idleState, errs) {
+func (s idleReady) listen(h *Handle, t State, f errs) (State, idleState, errs) {
 	return h.idle(s, t, f)
 }
 
-func (s ready) transition(h *Handle, e event) (State, error) {
+func (s idleReady) transition(h *Handle, e event) (State, error) {
 	switch ev := e.(type) {
 	case stop:
 		return nil, nil
@@ -248,52 +249,52 @@ func (s ready) transition(h *Handle, e event) (State, error) {
 		ctx, cancelFn := context.WithCancel(ev.Context)
 		h.cancelFn = cancelFn
 		h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.give))
-		return Running, nil
+		return running, nil
 	}
 	return s, ErrInvalidState
 }
 
-func (s ready) String() string {
+func (s idleReady) String() string {
 	return "state.Ready"
 }
 
-func (s running) listen(h *Handle, t State, f errs) (State, idleState, errs) {
+func (s activeRunning) listen(h *Handle, t State, f errs) (State, idleState, errs) {
 	return h.active(s, t, f)
 }
 
-func (s running) transition(h *Handle, e event) (State, error) {
+func (s activeRunning) transition(h *Handle, e event) (State, error) {
 	switch e.(type) {
 	case stop:
 		return nil, h.cancel()
 	case pause:
-		return Paused, nil
+		return paused, nil
 	}
 	return s, ErrInvalidState
 }
 
-func (s running) sendMessage(h *Handle, pipeID string) {
+func (s activeRunning) sendMessage(h *Handle, pipeID string) {
 	h.newMessageFn(pipeID)
 }
 
-func (s running) String() string {
+func (s activeRunning) String() string {
 	return "state.Running"
 }
 
-func (s paused) listen(h *Handle, t State, f errs) (State, idleState, errs) {
+func (s idlePaused) listen(h *Handle, t State, f errs) (State, idleState, errs) {
 	return h.idle(s, t, f)
 }
 
-func (s paused) transition(h *Handle, e event) (State, error) {
+func (s idlePaused) transition(h *Handle, e event) (State, error) {
 	switch e.(type) {
 	case stop:
 		return nil, h.cancel()
 	case resume:
-		return Running, nil
+		return running, nil
 	}
 	return s, ErrInvalidState
 }
 
-func (s paused) String() string {
+func (s idlePaused) String() string {
 	return "state.Paused"
 }
 
@@ -309,7 +310,7 @@ func wait(d <-chan error) error {
 // merge error channels from all components into one.
 func mergeErrors(errcList []<-chan error) merger {
 	m := merger{
-		wg:     &sync.WaitGroup{},
+		wg:   &sync.WaitGroup{},
 		errs: make(chan error, 1),
 	}
 

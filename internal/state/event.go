@@ -51,27 +51,27 @@ func (f errs) feedback() chan error {
 	return f
 }
 
-// target() state of the Run event is Ready.
+// target state of the Run event is Ready.
 func (run) target() idleState {
-	return Ready
+	return ready
 }
 
 func (run) String() string {
 	return "event.Run"
 }
 
-// target() state of the Pause event is Paused.
+// target state of the Pause event is Paused.
 func (pause) target() idleState {
-	return Paused
+	return paused
 }
 
 func (pause) String() string {
 	return "event.Pause"
 }
 
-// target() state of the Resume event is Ready.
+// target state of the Resume event is Ready.
 func (resume) target() idleState {
-	return Ready
+	return ready
 }
 
 func (resume) String() string {
