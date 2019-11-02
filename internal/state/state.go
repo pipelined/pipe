@@ -51,21 +51,21 @@ type (
 )
 
 type (
-	// State identifies one of the possible states pipe can be in.
-	State interface {
-		listen(*Handle, State, errs) (State, idleState, errs)
-		transition(*Handle, event) (State, error)
+	// state identifies one of the possible states pipe can be in.
+	state interface {
+		listen(*Handle, state, errs) (state, idleState, errs)
+		transition(*Handle, event) (state, error)
 		fmt.Stringer
 	}
 
 	// idleState identifies that the pipe is ONLY waiting for user to send an event.
 	idleState interface {
-		State
+		state
 	}
 
 	// activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
 	activeState interface {
-		State
+		state
 		sendMessage(h *Handle, pipeID string)
 	}
 
@@ -86,7 +86,7 @@ var (
 )
 
 // initial state for the handle.
-var initialState = State(ready)
+var initialState = state(ready)
 
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
 func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParamsFunc) *Handle {
@@ -105,7 +105,7 @@ func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParams
 func Loop(h *Handle) {
 	var (
 		s = initialState
-		t State
+		t state
 		f errs
 	)
 	for s != nil {
@@ -118,8 +118,8 @@ func Loop(h *Handle) {
 }
 
 // idle is used to listen to handle's channels which are relevant for idle state.
-// s is the new state, t is the target state and f channel to notify target transition.
-func (h *Handle) idle(s idleState, t idleState, f errs) (State, idleState, errs) {
+// s is the new state, t is the target state and f is the channel to notify target transition.
+func (h *Handle) idle(s idleState, t idleState, f errs) (state, idleState, errs) {
 	// check if target state is reached
 	if s == t {
 		close(f)
@@ -127,7 +127,7 @@ func (h *Handle) idle(s idleState, t idleState, f errs) (State, idleState, errs)
 	}
 	var (
 		err      error
-		newState = State(s)
+		newState = state(s)
 	)
 	for {
 		select {
@@ -155,10 +155,10 @@ func (h *Handle) idle(s idleState, t idleState, f errs) (State, idleState, errs)
 }
 
 // active is used to listen to handle's channels which are relevant for active state.
-func (h *Handle) active(s activeState, t State, f errs) (State, idleState, errs) {
+func (h *Handle) active(s activeState, t state, f errs) (state, idleState, errs) {
 	var (
 		err      error
-		newState = State(s)
+		newState = state(s)
 	)
 	for {
 		select {
@@ -240,11 +240,11 @@ func (h *Handle) cancel() error {
 	return wait(h.errs)
 }
 
-func (s idleReady) listen(h *Handle, t State, f errs) (State, idleState, errs) {
+func (s idleReady) listen(h *Handle, t state, f errs) (state, idleState, errs) {
 	return h.idle(s, t, f)
 }
 
-func (s idleReady) transition(h *Handle, e event) (State, error) {
+func (s idleReady) transition(h *Handle, e event) (state, error) {
 	switch ev := e.(type) {
 	case stop:
 		return nil, nil
@@ -261,11 +261,11 @@ func (s idleReady) String() string {
 	return "state.Ready"
 }
 
-func (s activeRunning) listen(h *Handle, t State, f errs) (State, idleState, errs) {
+func (s activeRunning) listen(h *Handle, t state, f errs) (state, idleState, errs) {
 	return h.active(s, t, f)
 }
 
-func (s activeRunning) transition(h *Handle, e event) (State, error) {
+func (s activeRunning) transition(h *Handle, e event) (state, error) {
 	switch e.(type) {
 	case stop:
 		return nil, h.cancel()
@@ -283,11 +283,11 @@ func (s activeRunning) String() string {
 	return "state.Running"
 }
 
-func (s idlePaused) listen(h *Handle, t State, f errs) (State, idleState, errs) {
+func (s idlePaused) listen(h *Handle, t state, f errs) (state, idleState, errs) {
 	return h.idle(s, t, f)
 }
 
-func (s idlePaused) transition(h *Handle, e event) (State, error) {
+func (s idlePaused) transition(h *Handle, e event) (state, error) {
 	switch e.(type) {
 	case stop:
 		return nil, h.cancel()
