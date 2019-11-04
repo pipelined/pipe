@@ -51,42 +51,26 @@ type (
 )
 
 type (
-// state identifies one of the possible states pipe can be in.
-// state interface {
-// 	listen(*Handle, state, errors) (state, idleState, errors)
-// 	transition(*Handle, event) (state, error)
-// 	fmt.Stringer
-// }
+	// state identifies one of the possible states handle can be in.
+	// It holds all channels that handle should listen to during this state.
+	state struct {
+		stateType
+		events   <-chan event
+		errors   <-chan error
+		messages <-chan string
+		params   <-chan Params
+	}
 
-// idleState identifies that the pipe is ONLY waiting for user to send an event.
-// idleState interface {
-// 	state
-// }
-
-// // activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
-// activeState interface {
-// 	state
-// 	sendMessage(h *Handle, pipeID string)
-// }
-
-// // states
-// idleReady     struct{}
-// activeRunning struct{}
-// idlePaused    struct{}
+	// stateType
+	stateType uint
 )
 
-// // states variables
-// var (
-// 	// Ready states that pipe can be started.
-// 	ready idleReady
-// 	// Running states that pipe is executing at the moment and can be paused.
-// 	running activeRunning
-// 	// Paused states that pipe is paused and can be resumed.
-// 	paused idlePaused
-// )
-
-// initial state for the handle.
-// var initialState = state(ready)
+const (
+	ready stateType = iota + 1
+	running
+	paused
+	stopped
+)
 
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
 func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParamsFunc) *Handle {
@@ -159,6 +143,92 @@ func (h *Handle) listen(s state, t stateType, f errors) (state, stateType, error
 		if s != newState {
 			return newState, t, f
 		}
+	}
+}
+
+// ready states that the handle is ready and user
+// can start it, send params or stop it.
+func (h *Handle) ready() state {
+	return state{
+		stateType: ready,
+		events:    h.events,
+		params:    h.params,
+	}
+}
+
+// running states that the handle is running and user
+// can pause it, send params or stop it.
+func (h *Handle) running() state {
+	return state{
+		stateType: running,
+		events:    h.events,
+		params:    h.params,
+		messages:  h.messages,
+		errors:    h.merger.errors,
+	}
+}
+
+// paused states that the handle is paused and
+// user can resume it, send params or stop it.
+func (h *Handle) paused() state {
+	return state{
+		stateType: paused,
+		events:    h.events,
+		params:    h.params,
+		errors:    h.merger.errors,
+	}
+}
+
+// transition takes current state and incoming event to decide if
+// new state should be reached. ErrInvalidState is returned if
+// event cannot be processed in the current state.
+func (h *Handle) transition(s state, e event) (state, error) {
+	switch s.stateType {
+	case ready:
+		switch ev := e.(type) {
+		case stop:
+			return state{
+				stateType: stopped,
+				events:    s.events,
+			}, nil
+		case run:
+			ctx, cancelFn := context.WithCancel(ev.Context)
+			h.cancelFn = cancelFn
+			h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.messages))
+			return h.running(), nil
+		}
+	case running:
+		switch e.(type) {
+		case stop:
+			return state{
+				stateType: stopped,
+			}, h.cancel()
+		case pause:
+			return h.paused(), nil
+		}
+	case paused:
+		switch e.(type) {
+		case stop:
+			return state{
+				stateType: stopped,
+			}, h.cancel()
+		case resume:
+			return h.running(), nil
+		}
+	}
+	return s, ErrInvalidState
+}
+
+func (s stateType) String() string {
+	switch s {
+	case ready:
+		return "state.Ready"
+	case running:
+		return "state.Running"
+	case paused:
+		return "state.Paused"
+	default:
+		return "state.Unknown"
 	}
 }
 
