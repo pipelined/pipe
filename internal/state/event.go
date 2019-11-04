@@ -12,14 +12,14 @@ type (
 	// target identifies which idle state is expected after event is sent.
 	// feedback is used to provide errors to the caller.
 	event interface {
-		target() idleState
+		target() stateType
 		feedback() chan error
 		fmt.Stringer
 	}
 
-	// errs is a wrapper for error channels. It's used to return errs
+	// errors is a wrapper for error channels. It's used to return errors
 	// of state transition or error occured during that transition.
-	errs chan error
+	errors chan error
 )
 
 type (
@@ -27,32 +27,32 @@ type (
 	run struct {
 		context.Context
 		BufferSize int
-		errs
+		errors
 	}
 
 	// pause event is sent to pause the run.
 	pause struct {
-		errs
+		errors
 	}
 
 	// resume event is sent to resume the run.
 	resume struct {
-		errs
+		errors
 	}
 
 	// stop event is sent to stop the Handle.
 	stop struct {
-		errs
+		errors
 	}
 )
 
 // Feedback exposes error channel and used to satisfy event interface.
-func (f errs) feedback() chan error {
+func (f errors) feedback() chan error {
 	return f
 }
 
 // target state of the Run event is Ready.
-func (run) target() idleState {
+func (run) target() stateType {
 	return ready
 }
 
@@ -61,7 +61,7 @@ func (run) String() string {
 }
 
 // target state of the Pause event is Paused.
-func (pause) target() idleState {
+func (pause) target() stateType {
 	return paused
 }
 
@@ -70,8 +70,8 @@ func (pause) String() string {
 }
 
 // target state of the Resume event is Ready.
-func (resume) target() idleState {
-	return ready
+func (resume) target() stateType {
+	return running
 }
 
 func (resume) String() string {
@@ -79,8 +79,8 @@ func (resume) String() string {
 }
 
 // target() state of the Close event is nil.
-func (stop) target() idleState {
-	return nil
+func (stop) target() stateType {
+	return stopped
 }
 
 func (stop) String() string {
