@@ -129,7 +129,13 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 		case err, ok := <-s.errors:
 			if ok {
 				h.cancelFn()
-				f <- fmt.Errorf("error during %v: %w", s, err)
+				// feedback has buffer of one error
+				// if more errors happen, they will be ignored
+				select {
+				case f <- fmt.Errorf("error during %v: %w", s, err):
+				default:
+					// ignore if feedback buffer is full
+				}
 			} else {
 				s = h.doneTransition(s)
 			}
