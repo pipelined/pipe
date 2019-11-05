@@ -97,9 +97,6 @@ func Loop(h *Handle) {
 	for state.stateType != done {
 		state, idle, feedback = h.listen(state, idle, feedback)
 	}
-	// close control channels
-	close(h.events)
-	close(h.params)
 }
 
 // listen to handle's channels which are relevant for passed state.
@@ -118,8 +115,8 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 				continue
 			}
 
-			// dismiss previous idle state when got the new one.
-			if e.idle() != undefined && idle != undefined {
+			// dismiss previous feedback when got the new one.
+			if f != nil {
 				close(f)
 			}
 			// got new idle state.
@@ -133,20 +130,23 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 			if ok {
 				h.cancelFn()
 				f <- fmt.Errorf("error during %v: %w", s, err)
+			} else {
+				s = h.doneTransition(s)
 			}
-			s = h.doneTransition(s)
 		}
 
-		// got new state
-		if s.stateType != current {
-			// check if idle state is reached
-			if s.stateType == idle {
-				close(f)
-				f = nil
-				idle = undefined
-			}
-			return s, idle, f
+		// state didn't change
+		if s.stateType == current {
+			continue
 		}
+
+		// check if idle state is reached
+		if s.stateType == idle {
+			close(f)
+			f = nil
+			idle = undefined
+		}
+		return s, idle, f
 	}
 }
 
@@ -158,6 +158,8 @@ func (h *Handle) transition(s state, e event) (state, error) {
 	case ready:
 		switch ev := e.(type) {
 		case interrupt:
+			close(h.params)
+			close(h.events)
 			return h.done(), nil
 		case run:
 			h.messages = make(chan string)
@@ -169,7 +171,6 @@ func (h *Handle) transition(s state, e event) (state, error) {
 	case running:
 		switch e.(type) {
 		case interrupt:
-			h.cancelFn()
 			return h.interrupting(), nil
 		case pause:
 			return h.paused(), nil
@@ -177,7 +178,6 @@ func (h *Handle) transition(s state, e event) (state, error) {
 	case paused:
 		switch e.(type) {
 		case interrupt:
-			h.cancelFn()
 			return h.interrupting(), nil
 		case resume:
 			return h.running(), nil
@@ -231,6 +231,9 @@ func (h *Handle) paused() state {
 // interrupting states that the handle is interrupting and
 // user cannot do anything whith it anymore.
 func (h *Handle) interrupting() state {
+	h.cancelFn()
+	close(h.params)
+	close(h.events)
 	return state{
 		stateType: interrupting,
 		errors:    h.merger.errors,
