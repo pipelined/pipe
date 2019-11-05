@@ -78,7 +78,7 @@ func (resume) String() string {
 	return "event.Resume"
 }
 
-// idle() state of the Close event is nil.
+// idle state of the Interrupt event is done.
 func (interrupt) idle() stateType {
 	return done
 }
