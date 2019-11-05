@@ -90,12 +90,12 @@ func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParams
 func Loop(h *Handle) {
 	var (
 		state    = h.ready()
-		target   = undefined
+		idle     = undefined
 		feedback errors
 	)
 	// loop until done state is reached
 	for state.stateType != done {
-		state, target, feedback = h.listen(state, target, feedback)
+		state, idle, feedback = h.listen(state, idle, feedback)
 	}
 	// close control channels
 	close(h.events)
@@ -103,26 +103,28 @@ func Loop(h *Handle) {
 }
 
 // listen to handle's channels which are relevant for passed state.
-// s is the new state, t is the target state and f is the channel to notify target transition.
-func (h *Handle) listen(s state, t stateType, f errors) (state, stateType, errors) {
+// s is the new state, t is the idle state and f is the channel to notify idle transition.
+func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, errors) {
 	var (
-		err      error
-		newState = state(s)
+		err     error
+		current = s.stateType
 	)
 	for {
 		select {
 		case e := <-s.events:
-			newState, err = h.transition(s, e)
+			s, err = h.transition(s, e)
 			if err != nil {
 				e.feedback() <- fmt.Errorf("%v transition during %v: %w", e, s, err)
-			} else {
-				// got new target.
-				if t != undefined {
-					close(f)
-				}
-				f = e.feedback()
-				t = e.target()
+				continue
 			}
+
+			// dismiss previous idle state when got the new one.
+			if e.idle() != undefined && idle != undefined {
+				close(f)
+			}
+			// got new idle state.
+			f = e.feedback()
+			idle = e.idle()
 		case params := <-s.params:
 			h.pushParamsFn(params)
 		case pipeID := <-s.messages:
@@ -132,18 +134,18 @@ func (h *Handle) listen(s state, t stateType, f errors) (state, stateType, error
 				h.cancelFn()
 				f <- fmt.Errorf("error during %v: %w", s, err)
 			}
-			newState = h.doneTransition(s)
+			s = h.doneTransition(s)
 		}
 
 		// got new state
-		if s.stateType != newState.stateType {
-			// check if target state is reached
-			if newState.stateType == t {
+		if s.stateType != current {
+			// check if idle state is reached
+			if s.stateType == idle {
 				close(f)
 				f = nil
-				t = undefined
+				idle = undefined
 			}
-			return newState, t, f
+			return s, idle, f
 		}
 	}
 }

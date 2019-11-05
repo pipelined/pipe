@@ -9,10 +9,10 @@ type (
 	// event triggers the state change.
 	// Use imperative verbs for implementations.
 	//
-	// target identifies which idle state is expected after event is sent.
+	// idle identifies which idle state is expected after event is sent.
 	// feedback is used to provide errors to the caller.
 	event interface {
-		target() stateType
+		idle() stateType
 		feedback() chan error
 		fmt.Stringer
 	}
@@ -51,8 +51,8 @@ func (f errors) feedback() chan error {
 	return f
 }
 
-// target state of the Run event is Ready.
-func (run) target() stateType {
+// idle state of the Run event is Ready.
+func (run) idle() stateType {
 	return ready
 }
 
@@ -60,8 +60,8 @@ func (run) String() string {
 	return "event.Run"
 }
 
-// target state of the Pause event is Paused.
-func (pause) target() stateType {
+// idle state of the Pause event is Paused.
+func (pause) idle() stateType {
 	return paused
 }
 
@@ -69,8 +69,8 @@ func (pause) String() string {
 	return "event.Pause"
 }
 
-// target state of the Resume event is Ready.
-func (resume) target() stateType {
+// idle state of the Resume event is Ready.
+func (resume) idle() stateType {
 	return running
 }
 
@@ -78,8 +78,8 @@ func (resume) String() string {
 	return "event.Resume"
 }
 
-// target() state of the Close event is nil.
-func (interrupt) target() stateType {
+// idle() state of the Close event is nil.
+func (interrupt) idle() stateType {
 	return done
 }
 
