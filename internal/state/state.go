@@ -115,7 +115,7 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 				continue
 			}
 
-			// dismiss previous feedback when got the new one.
+			// if we had previous feedback, dismiss.
 			if f != nil {
 				close(f)
 			}
@@ -129,12 +129,12 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 		case err, ok := <-s.errors:
 			if ok {
 				h.cancelFn()
-				// feedback has buffer of one error
-				// if more errors happen, they will be ignored
+				// feedback has buffer of one error,
+				// if more errors happen, they will be ignored.
 				select {
 				case f <- fmt.Errorf("error during %v: %w", s, err):
 				default:
-					// ignore if feedback buffer is full
+					// ignore if feedback buffer is full.
 				}
 			} else {
 				s = h.doneTransition(s)
@@ -192,6 +192,7 @@ func (h *Handle) transition(s state, e event) (state, error) {
 	return s, ErrInvalidState
 }
 
+// doneTransition handles state transition when merger is done.
 func (h *Handle) doneTransition(s state) state {
 	switch s.stateType {
 	case interrupting:
@@ -266,6 +267,7 @@ func (s stateType) String() string {
 }
 
 // Run sends a run event into handle.
+// Calling this method after Interrupt, will cause panic.
 func (h *Handle) Run(ctx context.Context, bufferSize int) chan error {
 	errors := make(chan error, 1)
 	h.events <- run{
@@ -277,6 +279,7 @@ func (h *Handle) Run(ctx context.Context, bufferSize int) chan error {
 }
 
 // Pause sends a pause event into handle.
+// Calling this method after Interrupt, will cause panic.
 func (h *Handle) Pause() chan error {
 	errors := make(chan error, 1)
 	h.events <- pause{
@@ -286,6 +289,7 @@ func (h *Handle) Pause() chan error {
 }
 
 // Resume sends a resume event into handle.
+// Calling this method after Interrupt, will cause panic.
 func (h *Handle) Resume() chan error {
 	errors := make(chan error, 1)
 	h.events <- resume{
@@ -304,6 +308,7 @@ func (h *Handle) Interrupt() chan error {
 }
 
 // Push new params into handle.
+// Calling this method after Interrupt, will cause panic.
 func (h *Handle) Push(params Params) {
 	h.params <- params
 }
