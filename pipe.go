@@ -210,7 +210,7 @@ func (p *Pipe) Resume() chan error {
 // Close must be called to clean up handle's resources.
 // Feedback is closed when line is done.
 func (p *Pipe) Close() chan error {
-	return p.h.Stop()
+	return p.h.Interrupt()
 }
 
 // Push new params into pipe.

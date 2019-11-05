@@ -40,8 +40,8 @@ type (
 		errors
 	}
 
-	// stop event is sent to stop the Handle.
-	stop struct {
+	// interrupt event is sent to interrupt the Handle.
+	interrupt struct {
 		errors
 	}
 )
@@ -79,10 +79,10 @@ func (resume) String() string {
 }
 
 // target() state of the Close event is nil.
-func (stop) target() stateType {
-	return stopped
+func (interrupt) target() stateType {
+	return done
 }
 
-func (stop) String() string {
-	return "event.Stop"
+func (interrupt) String() string {
+	return "event.Interrupt"
 }
