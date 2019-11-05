@@ -66,21 +66,22 @@ type (
 )
 
 const (
-	ready stateType = iota + 1
+	undefined stateType = iota
+	ready
 	running
 	paused
-	stopped
+	interrupting
+	done
 )
 
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
 func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParamsFunc) *Handle {
 	h := Handle{
-		events:       make(chan event, 1),
-		params:       make(chan Params, 1),
-		messages:     make(chan string),
 		startFn:      start,
 		newMessageFn: newMessage,
 		pushParamsFn: pushParams,
+		events:       make(chan event, 1),
+		params:       make(chan Params, 1),
 	}
 	return &h
 }
@@ -88,27 +89,22 @@ func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParams
 // Loop listens until nil state is returned.
 func Loop(h *Handle) {
 	var (
-		s = h.ready()
-		t stateType
-		f errors
+		state    = h.ready()
+		target   = undefined
+		feedback errors
 	)
-	for s.stateType != stopped {
-		s, t, f = h.listen(s, t, f)
+	// loop until done state is reached
+	for state.stateType != done {
+		state, target, feedback = h.listen(state, target, feedback)
 	}
 	// close control channels
 	close(h.events)
 	close(h.params)
-	close(f)
 }
 
-// idle is used to listen to handle's channels which are relevant for idle state.
+// listen to handle's channels which are relevant for passed state.
 // s is the new state, t is the target state and f is the channel to notify target transition.
 func (h *Handle) listen(s state, t stateType, f errors) (state, stateType, errors) {
-	// check if target state is reached
-	if s.stateType == t {
-		close(f)
-		t = 0
-	}
 	var (
 		err      error
 		newState = state(s)
@@ -118,11 +114,10 @@ func (h *Handle) listen(s state, t stateType, f errors) (state, stateType, error
 		case e := <-s.events:
 			newState, err = h.transition(s, e)
 			if err != nil {
-				// transition failed, notify.
 				e.feedback() <- fmt.Errorf("%v transition during %v: %w", e, s, err)
 			} else {
 				// got new target.
-				if t != 0 {
+				if t != undefined {
 					close(f)
 				}
 				f = e.feedback()
@@ -137,17 +132,69 @@ func (h *Handle) listen(s state, t stateType, f errors) (state, stateType, error
 				h.cancelFn()
 				f <- fmt.Errorf("error during %v: %w", s, err)
 			}
-			return h.ready(), t, f
+			newState = h.doneTransition(s)
 		}
 
-		if s != newState {
+		// got new state
+		if s.stateType != newState.stateType {
+			// check if target state is reached
+			if newState.stateType == t {
+				close(f)
+				f = nil
+				t = undefined
+			}
 			return newState, t, f
 		}
 	}
 }
 
+// transition takes current state and incoming event to decide if
+// new state should be reached. ErrInvalidState is returned if
+// event cannot be processed in the current state.
+func (h *Handle) transition(s state, e event) (state, error) {
+	switch s.stateType {
+	case ready:
+		switch ev := e.(type) {
+		case interrupt:
+			return h.done(), nil
+		case run:
+			h.messages = make(chan string)
+			ctx, cancelFn := context.WithCancel(ev.Context)
+			h.cancelFn = cancelFn
+			h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.messages))
+			return h.running(), nil
+		}
+	case running:
+		switch e.(type) {
+		case interrupt:
+			h.cancelFn()
+			return h.interrupting(), nil
+		case pause:
+			return h.paused(), nil
+		}
+	case paused:
+		switch e.(type) {
+		case interrupt:
+			h.cancelFn()
+			return h.interrupting(), nil
+		case resume:
+			return h.running(), nil
+		}
+	}
+	return s, ErrInvalidState
+}
+
+func (h *Handle) doneTransition(s state) state {
+	switch s.stateType {
+	case interrupting:
+		return h.done()
+	default:
+		return h.ready()
+	}
+}
+
 // ready states that the handle is ready and user
-// can start it, send params or stop it.
+// can start it, send params or interrupt it.
 func (h *Handle) ready() state {
 	return state{
 		stateType: ready,
@@ -157,7 +204,7 @@ func (h *Handle) ready() state {
 }
 
 // running states that the handle is running and user
-// can pause it, send params or stop it.
+// can pause it, send params or interrupt it.
 func (h *Handle) running() state {
 	return state{
 		stateType: running,
@@ -169,7 +216,7 @@ func (h *Handle) running() state {
 }
 
 // paused states that the handle is paused and
-// user can resume it, send params or stop it.
+// user can resume it, send params or interrupt it.
 func (h *Handle) paused() state {
 	return state{
 		stateType: paused,
@@ -179,44 +226,17 @@ func (h *Handle) paused() state {
 	}
 }
 
-// transition takes current state and incoming event to decide if
-// new state should be reached. ErrInvalidState is returned if
-// event cannot be processed in the current state.
-func (h *Handle) transition(s state, e event) (state, error) {
-	switch s.stateType {
-	case ready:
-		switch ev := e.(type) {
-		case stop:
-			return state{
-				stateType: stopped,
-				events:    s.events,
-			}, nil
-		case run:
-			ctx, cancelFn := context.WithCancel(ev.Context)
-			h.cancelFn = cancelFn
-			h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.messages))
-			return h.running(), nil
-		}
-	case running:
-		switch e.(type) {
-		case stop:
-			return state{
-				stateType: stopped,
-			}, h.cancel()
-		case pause:
-			return h.paused(), nil
-		}
-	case paused:
-		switch e.(type) {
-		case stop:
-			return state{
-				stateType: stopped,
-			}, h.cancel()
-		case resume:
-			return h.running(), nil
-		}
+// interrupting states that the handle is interrupting and
+// user cannot do anything whith it anymore.
+func (h *Handle) interrupting() state {
+	return state{
+		stateType: interrupting,
+		errors:    h.merger.errors,
 	}
-	return s, ErrInvalidState
+}
+
+func (h *Handle) done() state {
+	return state{stateType: done}
 }
 
 func (s stateType) String() string {
@@ -227,6 +247,8 @@ func (s stateType) String() string {
 		return "state.Running"
 	case paused:
 		return "state.Paused"
+	case interrupting:
+		return "state.Interrupting"
 	default:
 		return "state.Unknown"
 	}
@@ -261,10 +283,10 @@ func (h *Handle) Resume() chan error {
 	return errors
 }
 
-// Stop sends a stop event into handle.
-func (h *Handle) Stop() chan error {
+// Interrupt sends an interrupt event into handle.
+func (h *Handle) Interrupt() chan error {
 	errors := make(chan error, 1)
-	h.events <- stop{
+	h.events <- interrupt{
 		errors: errors,
 	}
 	return errors
@@ -273,20 +295,6 @@ func (h *Handle) Stop() chan error {
 // Push new params into handle.
 func (h *Handle) Push(params Params) {
 	h.params <- params
-}
-
-func (h *Handle) cancel() error {
-	h.cancelFn()
-	return wait(h.errors)
-}
-
-func wait(d <-chan error) error {
-	for err := range d {
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // merge error channels from all components into one.
