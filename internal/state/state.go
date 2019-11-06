@@ -71,7 +71,7 @@ const (
 	running
 	paused
 	interrupting
-	done
+	closed
 )
 
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
@@ -94,8 +94,14 @@ func Loop(h *Handle) {
 		feedback errors
 	)
 	// loop until done state is reached
-	for state.stateType != done {
+	for state.stateType != closed {
 		state, idle, feedback = h.listen(state, idle, feedback)
+		// check if idle state is reached
+		if state.stateType == idle {
+			close(feedback)
+			feedback = nil
+			idle = undefined
+		}
 	}
 }
 
@@ -108,6 +114,12 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 	)
 	for {
 		select {
+		case params := <-s.params:
+			h.pushParamsFn(params)
+			continue
+		case pipeID := <-s.messages:
+			h.newMessageFn(pipeID)
+			continue
 		case e := <-s.events:
 			s, err = h.transition(s, e)
 			if err != nil {
@@ -122,10 +134,6 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 			// got new idle state.
 			f = e.feedback()
 			idle = e.idle()
-		case params := <-s.params:
-			h.pushParamsFn(params)
-		case pipeID := <-s.messages:
-			h.newMessageFn(pipeID)
 		case err, ok := <-s.errors:
 			if ok {
 				h.cancelFn()
@@ -137,22 +145,14 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 					// ignore if feedback buffer is full.
 				}
 			} else {
-				s = h.doneTransition(s)
+				s, _ = h.transition(s, done{})
 			}
 		}
 
-		// state didn't change
-		if s.stateType == current {
-			continue
+		// return if state changed
+		if s.stateType != current {
+			return s, idle, f
 		}
-
-		// check if idle state is reached
-		if s.stateType == idle {
-			close(f)
-			f = nil
-			idle = undefined
-		}
-		return s, idle, f
 	}
 }
 
@@ -164,9 +164,11 @@ func (h *Handle) transition(s state, e event) (state, error) {
 	case ready:
 		switch ev := e.(type) {
 		case interrupt:
+			// this is a special case as ready
+			// state doesn't need an interruption.
 			close(h.params)
 			close(h.events)
-			return h.done(), nil
+			return h.closed(), nil
 		case run:
 			h.messages = make(chan string)
 			ctx, cancelFn := context.WithCancel(ev.Context)
@@ -180,6 +182,8 @@ func (h *Handle) transition(s state, e event) (state, error) {
 			return h.interrupting(), nil
 		case pause:
 			return h.paused(), nil
+		case done:
+			return h.ready(), nil
 		}
 	case paused:
 		switch e.(type) {
@@ -187,19 +191,16 @@ func (h *Handle) transition(s state, e event) (state, error) {
 			return h.interrupting(), nil
 		case resume:
 			return h.running(), nil
+		case done:
+			return h.ready(), nil
+		}
+	case interrupting:
+		switch e.(type) {
+		case done:
+			return h.closed(), nil
 		}
 	}
 	return s, ErrInvalidState
-}
-
-// doneTransition handles state transition when merger is done.
-func (h *Handle) doneTransition(s state) state {
-	switch s.stateType {
-	case interrupting:
-		return h.done()
-	default:
-		return h.ready()
-	}
 }
 
 // ready states that the handle is ready and user
@@ -247,8 +248,8 @@ func (h *Handle) interrupting() state {
 	}
 }
 
-func (h *Handle) done() state {
-	return state{stateType: done}
+func (h *Handle) closed() state {
+	return state{stateType: closed}
 }
 
 func (s stateType) String() string {
