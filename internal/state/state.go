@@ -267,53 +267,6 @@ func (s stateType) String() string {
 	}
 }
 
-// Run sends a run event into handle.
-// Calling this method after Interrupt, will cause panic.
-func (h *Handle) Run(ctx context.Context, bufferSize int) chan error {
-	errors := make(chan error, 1)
-	h.events <- run{
-		Context:    ctx,
-		BufferSize: bufferSize,
-		errors:     errors,
-	}
-	return errors
-}
-
-// Pause sends a pause event into handle.
-// Calling this method after Interrupt, will cause panic.
-func (h *Handle) Pause() chan error {
-	errors := make(chan error, 1)
-	h.events <- pause{
-		errors: errors,
-	}
-	return errors
-}
-
-// Resume sends a resume event into handle.
-// Calling this method after Interrupt, will cause panic.
-func (h *Handle) Resume() chan error {
-	errors := make(chan error, 1)
-	h.events <- resume{
-		errors: errors,
-	}
-	return errors
-}
-
-// Interrupt sends an interrupt event into handle.
-func (h *Handle) Interrupt() chan error {
-	errors := make(chan error, 1)
-	h.events <- interrupt{
-		errors: errors,
-	}
-	return errors
-}
-
-// Push new params into handle.
-// Calling this method after Interrupt, will cause panic.
-func (h *Handle) Push(params Params) {
-	h.params <- params
-}
-
 // merge error channels from all components into one.
 func mergeErrors(errcList []<-chan error) merger {
 	m := merger{
