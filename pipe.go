@@ -31,7 +31,7 @@ type chain struct {
 	processors  []runner.Processor
 	sinks       []runner.Sink
 	components  map[interface{}]string
-	take       chan runner.Message // emission of messages
+	take        chan runner.Message // emission of messages
 	params      state.Params
 }
 
@@ -62,7 +62,7 @@ func New(ls ...*Line) (*Pipe, error) {
 		chainByComponent: chainByComponent,
 	}
 	p.h = state.NewHandle(start(p), newMessage(p), pushParams(p))
-	go state.Loop(p.h, state.Ready)
+	go state.Loop(p.h)
 	return p, nil
 }
 
@@ -122,7 +122,7 @@ func bindLine(p *Line) (chain, error) {
 		pump:        pumpRunner,
 		processors:  processorRunners,
 		sinks:       sinkRunners,
-		take:       make(chan runner.Message),
+		take:        make(chan runner.Message),
 		components:  components,
 		params:      make(map[string][]func()),
 	}, nil
@@ -210,7 +210,7 @@ func (p *Pipe) Resume() chan error {
 // Close must be called to clean up handle's resources.
 // Feedback is closed when line is done.
 func (p *Pipe) Close() chan error {
-	return p.h.Stop()
+	return p.h.Interrupt()
 }
 
 // Push new params into pipe.

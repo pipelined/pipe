@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	// ErrInvalidState is returned if pipe method cannot be executed at this moment.
+	// ErrInvalidState is returned if event cannot be handled at this state.
 	ErrInvalidState = fmt.Errorf("invalid state")
 )
 
@@ -22,8 +22,8 @@ type (
 		params chan Params
 		// ask for new message request for the chain.
 		// created in custructor, never closed.
-		give chan string
-		// errs used to fan-in errs from components.
+		messages chan string
+		// errors used to fan-in errors from components.
 		// created in run event, closed when all components are done.
 		merger
 		// cancel the line execution.
@@ -37,11 +37,11 @@ type (
 	// merger fans-in error channels.
 	merger struct {
 		wg     *sync.WaitGroup
-		errs chan error
+		errors chan error
 	}
 
 	// StartFunc is the closure to trigger the start of a pipe.
-	StartFunc func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error
+	StartFunc func(bufferSize int, cancel <-chan struct{}, messages chan<- string) []<-chan error
 
 	// NewMessageFunc is the closure to send a message into a pipe.
 	NewMessageFunc func(pipeID string)
@@ -51,266 +51,227 @@ type (
 )
 
 type (
-	// State identifies one of the possible states pipe can be in.
-	State interface {
-		listen(*Handle, State, errs) (State, idleState, errs)
-		transition(*Handle, event) (State, error)
-		fmt.Stringer
+	// state identifies one of the possible states handle can be in.
+	// It holds all channels that handle should listen to during this state.
+	state struct {
+		stateType
+		events   <-chan event
+		errors   <-chan error
+		messages <-chan string
+		params   <-chan Params
 	}
 
-	// idleState identifies that the pipe is ONLY waiting for user to send an event.
-	idleState interface {
-		State
-	}
-
-	// activeState identifies that the pipe is processing signals and also is waiting for user to send an event.
-	activeState interface {
-		State
-		sendMessage(h *Handle, pipeID string)
-	}
-
-	// states
-	ready   struct{}
-	running struct{}
-	paused  struct{}
+	// stateType
+	stateType uint
 )
 
-// states variables
-var (
-	// Ready states that pipe can be started.
-	Ready ready
-	// Running states that pipe is executing at the moment and can be paused.
-	Running running
-	// Paused states that pipe is paused and can be resumed.
-	Paused paused
+const (
+	undefined stateType = iota
+	ready
+	running
+	paused
+	interrupting
+	closed
 )
 
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
 func NewHandle(start StartFunc, newMessage NewMessageFunc, pushParams PushParamsFunc) *Handle {
 	h := Handle{
-		events:       make(chan event, 1),
-		params:       make(chan Params, 1),
-		give:         make(chan string),
 		startFn:      start,
 		newMessageFn: newMessage,
 		pushParamsFn: pushParams,
+		events:       make(chan event, 1),
+		params:       make(chan Params, 1),
 	}
 	return &h
 }
 
 // Loop listens until nil state is returned.
-func Loop(h *Handle, s State) {
+func Loop(h *Handle) {
 	var (
-		t State
-		f errs
+		state    = h.ready()
+		idle     = undefined
+		feedback errors
 	)
-	for s != nil {
-		s, t, f = s.listen(h, t, f)
+	// loop until done state is reached
+	for state.stateType != closed {
+		state, idle, feedback = h.listen(state, idle, feedback)
+		// check if idle state is reached
+		if state.stateType == idle {
+			close(feedback)
+			feedback = nil
+			idle = undefined
+		}
 	}
-	// close control channels
-	close(h.events)
-	close(h.params)
-	close(f)
 }
 
-// idle is used to listen to handle's channels which are relevant for idle state.
-// s is the new state, t is the target state and f channel to notify target transition.
-func (h *Handle) idle(s idleState, t idleState, f errs) (State, idleState, errs) {
-	// check if target state is reached
-	if s == t {
-		close(f)
-		t = nil
-	}
+// listen to handle's channels which are relevant for passed state.
+// s is the new state, t is the idle state and f is the channel to notify idle transition.
+func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, errors) {
 	var (
-		err      error
-		newState = State(s)
+		err     error
+		current = s.stateType
 	)
 	for {
 		select {
-		case e := <-h.events:
-			newState, err = s.transition(h, e)
-			if err != nil {
-				// transition failed, notify.
-				e.feedback() <- fmt.Errorf("%v transition during %v: %w", e, s, err)
-			} else {
-				// got new target.
-				if t != nil {
-					close(f)
-				}
-				f = e.feedback()
-				t = e.target()
-			}
-		case params := <-h.params:
+		case params := <-s.params:
 			h.pushParamsFn(params)
-		}
-
-		if s != newState {
-			return newState, t, f
-		}
-	}
-}
-
-// active is used to listen to handle's channels which are relevant for active state.
-func (h *Handle) active(s activeState, t State, f errs) (State, idleState, errs) {
-	var (
-		err      error
-		newState = State(s)
-	)
-	for {
-		select {
-		case e := <-h.events:
-			newState, err = s.transition(h, e)
+			continue
+		case pipeID := <-s.messages:
+			h.newMessageFn(pipeID)
+			continue
+		case e := <-s.events:
+			s, err = h.transition(s, e)
 			if err != nil {
-				// transition failed, notify.
 				e.feedback() <- fmt.Errorf("%v transition during %v: %w", e, s, err)
-			} else {
-				// because active state always starts intentially,
-				// target and feedback are never nil.
+				continue
+			}
+
+			// if we had previous feedback, dismiss.
+			if f != nil {
 				close(f)
-				f = e.feedback()
-				t = e.target()
 			}
-		case params := <-h.params:
-			h.pushParamsFn(params)
-		case pipeID := <-h.give:
-			s.sendMessage(h, pipeID)
-		case err, ok := <-h.errs:
+			// got new idle state.
+			f = e.feedback()
+			idle = e.idle()
+		case err, ok := <-s.errors:
 			if ok {
 				h.cancelFn()
-				f <- fmt.Errorf("error during %v: %w", s, err)
+				// feedback has buffer of one error,
+				// if more errors happen, they will be ignored.
+				select {
+				case f <- fmt.Errorf("error during %v: %w", s, err):
+				default:
+					// ignore if feedback buffer is full.
+				}
+			} else {
+				s, _ = h.transition(s, done{})
 			}
-			return Ready, t, f
 		}
 
-		if s != newState {
-			return newState, t, f
+		// return if state changed
+		if s.stateType != current {
+			return s, idle, f
 		}
 	}
 }
 
-// Run sends a run event into handle.
-func (h *Handle) Run(ctx context.Context, bufferSize int) chan error {
-	errs := make(chan error, 1)
-	h.events <- run{
-		Context:    ctx,
-		BufferSize: bufferSize,
-		errs:     errs,
+// transition takes current state and incoming event to decide if
+// new state should be reached. ErrInvalidState is returned if
+// event cannot be processed in the current state.
+func (h *Handle) transition(s state, e event) (state, error) {
+	switch s.stateType {
+	case ready:
+		switch ev := e.(type) {
+		case interrupt:
+			// this is a special case as ready
+			// state doesn't need an interruption.
+			close(h.params)
+			close(h.events)
+			return h.closed(), nil
+		case run:
+			h.messages = make(chan string)
+			ctx, cancelFn := context.WithCancel(ev.Context)
+			h.cancelFn = cancelFn
+			h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.messages))
+			return h.running(), nil
+		}
+	case running:
+		switch e.(type) {
+		case interrupt:
+			return h.interrupting(), nil
+		case pause:
+			return h.paused(), nil
+		case done:
+			return h.ready(), nil
+		}
+	case paused:
+		switch e.(type) {
+		case interrupt:
+			return h.interrupting(), nil
+		case resume:
+			return h.running(), nil
+		case done:
+			return h.ready(), nil
+		}
+	case interrupting:
+		switch e.(type) {
+		case done:
+			return h.closed(), nil
+		}
 	}
-	return errs
+	return s, ErrInvalidState
 }
 
-// Pause sends a pause event into handle.
-func (h *Handle) Pause() chan error {
-	errs := make(chan error, 1)
-	h.events <- pause{
-		errs: errs,
+// ready states that the handle is ready and user
+// can start it, send params or interrupt it.
+func (h *Handle) ready() state {
+	return state{
+		stateType: ready,
+		events:    h.events,
+		params:    h.params,
 	}
-	return errs
 }
 
-// Resume sends a resume event into handle.
-func (h *Handle) Resume() chan error {
-	errs := make(chan error, 1)
-	h.events <- resume{
-		errs: errs,
+// running states that the handle is running and user
+// can pause it, send params or interrupt it.
+func (h *Handle) running() state {
+	return state{
+		stateType: running,
+		events:    h.events,
+		params:    h.params,
+		messages:  h.messages,
+		errors:    h.merger.errors,
 	}
-	return errs
 }
 
-// Stop sends a stop event into handle.
-func (h *Handle) Stop() chan error {
-	errs := make(chan error, 1)
-	h.events <- stop{
-		errs: errs,
+// paused states that the handle is paused and
+// user can resume it, send params or interrupt it.
+func (h *Handle) paused() state {
+	return state{
+		stateType: paused,
+		events:    h.events,
+		params:    h.params,
+		errors:    h.merger.errors,
 	}
-	return errs
 }
 
-// Push new params into handle.
-func (h *Handle) Push(params Params) {
-	h.params <- params
-}
-
-func (h *Handle) cancel() error {
+// interrupting states that the handle is interrupting and
+// user cannot do anything whith it anymore.
+func (h *Handle) interrupting() state {
 	h.cancelFn()
-	return wait(h.errs)
-}
-
-func (s ready) listen(h *Handle, t State, f errs) (State, idleState, errs) {
-	return h.idle(s, t, f)
-}
-
-func (s ready) transition(h *Handle, e event) (State, error) {
-	switch ev := e.(type) {
-	case stop:
-		return nil, nil
-	case run:
-		ctx, cancelFn := context.WithCancel(ev.Context)
-		h.cancelFn = cancelFn
-		h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.give))
-		return Running, nil
+	close(h.params)
+	close(h.events)
+	return state{
+		stateType: interrupting,
+		errors:    h.merger.errors,
 	}
-	return s, ErrInvalidState
 }
 
-func (s ready) String() string {
-	return "state.Ready"
+func (h *Handle) closed() state {
+	return state{stateType: closed}
 }
 
-func (s running) listen(h *Handle, t State, f errs) (State, idleState, errs) {
-	return h.active(s, t, f)
-}
-
-func (s running) transition(h *Handle, e event) (State, error) {
-	switch e.(type) {
-	case stop:
-		return nil, h.cancel()
-	case pause:
-		return Paused, nil
+func (s stateType) String() string {
+	switch s {
+	case ready:
+		return "state.Ready"
+	case running:
+		return "state.Running"
+	case paused:
+		return "state.Paused"
+	case interrupting:
+		return "state.Interrupting"
+	default:
+		return "state.Unknown"
 	}
-	return s, ErrInvalidState
-}
-
-func (s running) sendMessage(h *Handle, pipeID string) {
-	h.newMessageFn(pipeID)
-}
-
-func (s running) String() string {
-	return "state.Running"
-}
-
-func (s paused) listen(h *Handle, t State, f errs) (State, idleState, errs) {
-	return h.idle(s, t, f)
-}
-
-func (s paused) transition(h *Handle, e event) (State, error) {
-	switch e.(type) {
-	case stop:
-		return nil, h.cancel()
-	case resume:
-		return Running, nil
-	}
-	return s, ErrInvalidState
-}
-
-func (s paused) String() string {
-	return "state.Paused"
-}
-
-func wait(d <-chan error) error {
-	for err := range d {
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // merge error channels from all components into one.
 func mergeErrors(errcList []<-chan error) merger {
 	m := merger{
 		wg:     &sync.WaitGroup{},
-		errs: make(chan error, 1),
+		errors: make(chan error, 1),
 	}
 
 	//function to wait for error channel
@@ -322,7 +283,7 @@ func mergeErrors(errcList []<-chan error) merger {
 	//wait and close out
 	go func() {
 		m.wg.Wait()
-		close(m.errs)
+		close(m.errors)
 	}()
 	return m
 }
@@ -331,7 +292,7 @@ func mergeErrors(errcList []<-chan error) merger {
 func (m merger) done(ec <-chan error) {
 	if err, ok := <-ec; ok {
 		select {
-		case m.errs <- err:
+		case m.errors <- err:
 		default:
 		}
 	}
