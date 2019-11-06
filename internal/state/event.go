@@ -44,6 +44,9 @@ type (
 	interrupt struct {
 		errors
 	}
+
+	// done event is sent when merger is done.
+	done struct{}
 )
 
 // Feedback exposes error channel and used to satisfy event interface.
@@ -80,9 +83,21 @@ func (resume) String() string {
 
 // idle state of the Interrupt event is done.
 func (interrupt) idle() stateType {
-	return done
+	return closed
 }
 
 func (interrupt) String() string {
 	return "event.Interrupt"
+}
+
+func (done) idle() stateType {
+	return closed
+}
+
+func (done) String() string {
+	return "event.Done"
+}
+
+func (done) feedback() chan error {
+	return nil
 }
