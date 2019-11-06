@@ -166,7 +166,7 @@ func TestStates(t *testing.T) {
 			newMessageMock.fn(),
 			pushParamsMock.fn(),
 		)
-		go state.Loop(h, state.Ready)
+		go state.Loop(h)
 
 		// reach tested state
 		// remember last errs channel
@@ -176,7 +176,6 @@ func TestStates(t *testing.T) {
 
 		// push params
 		h.Push(p.params())
-
 		// test events
 		for _, transition := range c.events {
 			err := pipe.Wait(transition(h))
@@ -198,7 +197,7 @@ func TestStates(t *testing.T) {
 		}
 
 		// close
-		err := pipe.Wait(h.Stop())
+		err := pipe.Wait(h.Interrupt())
 		assert.Equal(t, c.errorOnClose, errors.Unwrap(err))
 
 		_, ok := pushParamsMock.Params[p.uid]

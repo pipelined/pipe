@@ -9,17 +9,17 @@ type (
 	// event triggers the state change.
 	// Use imperative verbs for implementations.
 	//
-	// target identifies which idle state is expected after event is sent.
+	// idle identifies which idle state is expected after event is sent.
 	// feedback is used to provide errors to the caller.
 	event interface {
-		target() idleState
+		idle() stateType
 		feedback() chan error
 		fmt.Stringer
 	}
 
-	// errs is a wrapper for error channels. It's used to return errs
+	// errors is a wrapper for error channels. It's used to return errors
 	// of state transition or error occured during that transition.
-	errs chan error
+	errors chan error
 )
 
 type (
@@ -27,62 +27,125 @@ type (
 	run struct {
 		context.Context
 		BufferSize int
-		errs
+		errors
 	}
 
 	// pause event is sent to pause the run.
 	pause struct {
-		errs
+		errors
 	}
 
 	// resume event is sent to resume the run.
 	resume struct {
-		errs
+		errors
 	}
 
-	// stop event is sent to stop the Handle.
-	stop struct {
-		errs
+	// interrupt event is sent to interrupt the Handle.
+	interrupt struct {
+		errors
 	}
+
+	// done event is sent when merger is done.
+	// this event is not send by user.
+	done struct{}
 )
 
 // Feedback exposes error channel and used to satisfy event interface.
-func (f errs) feedback() chan error {
+func (f errors) feedback() chan error {
 	return f
 }
 
-// target() state of the Run event is Ready.
-func (run) target() idleState {
-	return Ready
+// Run sends a run event into handle.
+// Calling this method after Interrupt, will cause panic.
+func (h *Handle) Run(ctx context.Context, bufferSize int) chan error {
+	errors := make(chan error, 1)
+	h.events <- run{
+		Context:    ctx,
+		BufferSize: bufferSize,
+		errors:     errors,
+	}
+	return errors
+}
+
+// Pause sends a pause event into handle.
+// Calling this method after Interrupt, will cause panic.
+func (h *Handle) Pause() chan error {
+	errors := make(chan error, 1)
+	h.events <- pause{
+		errors: errors,
+	}
+	return errors
+}
+
+// Resume sends a resume event into handle.
+// Calling this method after Interrupt, will cause panic.
+func (h *Handle) Resume() chan error {
+	errors := make(chan error, 1)
+	h.events <- resume{
+		errors: errors,
+	}
+	return errors
+}
+
+// Interrupt sends an interrupt event into handle.
+func (h *Handle) Interrupt() chan error {
+	errors := make(chan error, 1)
+	h.events <- interrupt{
+		errors: errors,
+	}
+	return errors
+}
+
+// Push new params into handle.
+// Calling this method after Interrupt, will cause panic.
+func (h *Handle) Push(params Params) {
+	h.params <- params
+}
+
+// idle state of the Run event is Ready.
+func (run) idle() stateType {
+	return ready
 }
 
 func (run) String() string {
 	return "event.Run"
 }
 
-// target() state of the Pause event is Paused.
-func (pause) target() idleState {
-	return Paused
+// idle state of the Pause event is Paused.
+func (pause) idle() stateType {
+	return paused
 }
 
 func (pause) String() string {
 	return "event.Pause"
 }
 
-// target() state of the Resume event is Ready.
-func (resume) target() idleState {
-	return Ready
+// idle state of the Resume event is Ready.
+func (resume) idle() stateType {
+	return running
 }
 
 func (resume) String() string {
 	return "event.Resume"
 }
 
-// target() state of the Close event is nil.
-func (stop) target() idleState {
-	return nil
+// idle state of the Interrupt event is done.
+func (interrupt) idle() stateType {
+	return closed
 }
 
-func (stop) String() string {
-	return "event.Stop"
+func (interrupt) String() string {
+	return "event.Interrupt"
+}
+
+func (done) idle() stateType {
+	return closed
+}
+
+func (done) String() string {
+	return "event.Done"
+}
+
+func (done) feedback() chan error {
+	return nil
 }
