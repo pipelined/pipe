@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/goleak"
 
-	"github.com/pipelined/pipe"
-	"github.com/pipelined/pipe/internal/mock"
+	"pipelined.dev/pipe"
+	"pipelined.dev/pipe/internal/mock"
 )
 
 const (

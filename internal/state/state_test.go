@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/goleak"
 
-	"github.com/pipelined/pipe"
-	"github.com/pipelined/pipe/internal/state"
+	"pipelined.dev/pipe"
+	"pipelined.dev/pipe/internal/state"
 )
 
 var testError = errors.New("test error")

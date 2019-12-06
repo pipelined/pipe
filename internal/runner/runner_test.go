@@ -6,12 +6,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/pipe"
-	"github.com/pipelined/signal"
+	"pipelined.dev/pipe"
+	"pipelined.dev/signal"
 
-	"github.com/pipelined/pipe/internal/mock"
-	"github.com/pipelined/pipe/internal/runner"
-	"github.com/pipelined/pipe/metric"
+	"pipelined.dev/pipe/internal/mock"
+	"pipelined.dev/pipe/internal/runner"
+	"pipelined.dev/pipe/metric"
 )
 
 const (

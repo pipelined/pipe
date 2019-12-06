@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pipelined/signal"
+	"pipelined.dev/signal"
 )
 
 const componentsLabel = "pipe.components"
