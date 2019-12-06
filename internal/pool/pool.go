@@ -3,7 +3,7 @@ package pool
 import (
 	"sync"
 
-	"github.com/pipelined/signal"
+	"pipelined.dev/signal"
 )
 
 // Pool for signal buffers.
