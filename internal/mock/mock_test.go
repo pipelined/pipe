@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pipelined/signal"
+	"pipelined.dev/signal"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/pipe/internal/mock"
+	"pipelined.dev/pipe/internal/mock"
 )
 
 var (

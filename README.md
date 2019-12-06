@@ -1,8 +1,8 @@
 ![](pipe.png)
 
-[![GoDoc](https://godoc.org/github.com/pipelined/pipe?status.svg)](https://godoc.org/github.com/pipelined/pipe)
+[![GoDoc](https://godoc.org/pipelined.dev/pipe?status.svg)](https://godoc.org/pipelined.dev/pipe)
 [![Build Status](https://travis-ci.org/pipelined/pipe.svg?branch=master)](https://travis-ci.org/pipelined/pipe)
-[![Go Report Card](https://goreportcard.com/badge/github.com/pipelined/pipe)](https://goreportcard.com/report/github.com/pipelined/pipe)
+[![Go Report Card](https://goreportcard.com/badge/pipelined.dev/pipe)](https://goreportcard.com/report/pipelined.dev/pipe)
 [![codecov](https://codecov.io/gh/pipelined/pipe/branch/master/graph/badge.svg)](https://codecov.io/gh/pipelined/pipe)
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fpipelined%2Fphono.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fpipelined%2Fphono?ref=badge_shield)
 
@@ -16,7 +16,7 @@ Find examples in [example](https://github.com/pipelined/example) repository.
 
 ## Testing
 
-[mock](https://godoc.org/github.com/pipelined/mock) package can be used to implement integration tests for custom Pumps, Processors and Sinks. It allows to mock up pipe components and then assert the data metrics.
+[mock](https://godoc.org/pipelined.dev/mock) package can be used to implement integration tests for custom Pumps, Processors and Sinks. It allows to mock up pipe components and then assert the data metrics.
 
 ## Contributing
 

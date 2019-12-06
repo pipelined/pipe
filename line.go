@@ -1,13 +1,12 @@
 // Package pipe provides functionality to build and execute DSP pipelines.
-// Examples could be found in [examples repository](https://github.com/pipelined/example).
 package pipe
 
 import (
 	"crypto/rand"
 	"fmt"
 
-	"github.com/pipelined/pipe/internal/runner"
-	"github.com/pipelined/signal"
+	"pipelined.dev/pipe/internal/runner"
+	"pipelined.dev/signal"
 )
 
 // pipeline components

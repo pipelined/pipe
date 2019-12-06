@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/pipelined/signal"
+	"pipelined.dev/signal"
 )
 
 // Pump mocks a pipe.Pump interface.

@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pipelined/signal"
+	"pipelined.dev/signal"
 
-	"github.com/pipelined/pipe/internal/pool"
-	"github.com/pipelined/pipe/internal/runner"
-	"github.com/pipelined/pipe/internal/state"
-	"github.com/pipelined/pipe/metric"
+	"pipelined.dev/pipe/internal/pool"
+	"pipelined.dev/pipe/internal/runner"
+	"pipelined.dev/pipe/internal/state"
+	"pipelined.dev/pipe/metric"
 )
 
 // Pipe controls the execution of multiple chained lines. Lines might be chained
