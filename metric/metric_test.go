@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/pipe/metric"
-	"github.com/pipelined/signal"
+	"pipelined.dev/pipe/metric"
+	"pipelined.dev/signal"
 )
 
 func TestMeter(t *testing.T) {

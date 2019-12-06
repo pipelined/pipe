@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/pipelined/pipe/internal/state"
+	"pipelined.dev/pipe/internal/state"
 )
 
 // paramMock used to set up test cases for params

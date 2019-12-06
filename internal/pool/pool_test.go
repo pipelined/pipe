@@ -3,7 +3,7 @@ package pool_test
 import (
 	"testing"
 
-	"github.com/pipelined/pipe/internal/pool"
+	"pipelined.dev/pipe/internal/pool"
 	"github.com/stretchr/testify/assert"
 )
 

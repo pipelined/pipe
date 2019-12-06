@@ -5,10 +5,10 @@ import (
 	"io"
 	"sync/atomic"
 
-	"github.com/pipelined/signal"
+	"pipelined.dev/signal"
 
-	"github.com/pipelined/pipe/internal/state"
-	"github.com/pipelined/pipe/metric"
+	"pipelined.dev/pipe/internal/state"
+	"pipelined.dev/pipe/metric"
 )
 
 // Pool provides pooling of signal.Float64 buffers.
