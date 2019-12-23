@@ -5,7 +5,6 @@ import (
 	"io"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe/internal/mock"
@@ -34,8 +33,12 @@ func TestPump(t *testing.T) {
 				}
 			}
 
-			assert.Equal(t, p.calls, counter.Messages)
-			assert.Equal(t, options.Limit, counter.Samples)
+			if p.calls != counter.Messages {
+				t.Fatalf("Invalid number of calls: %d expected: %d", counter.Messages, p.calls)
+			}
+			if options.Limit != counter.Samples {
+				t.Fatalf("Invalid number of samples: %d expected: %d", counter.Samples, options.Limit)
+			}
 		}
 	}
 
@@ -85,8 +88,12 @@ func TestProcessor(t *testing.T) {
 			out := signal.Float64Buffer(p.expected.NumChannels(), p.expected.Size())
 			err = processor.Process(p.in, out)
 			assertError(t, options.ErrorOnCall, err)
-			assert.Equal(t, p.expected.NumChannels(), out.NumChannels())
-			assert.Equal(t, p.expected.Size(), out.Size())
+			if p.expected.NumChannels() != out.NumChannels() {
+				t.Fatalf("Invalid number of channels: %d expected: %d", out.NumChannels(), p.expected.NumChannels())
+			}
+			if p.expected.Size() != out.Size() {
+				t.Fatalf("Invalid buffer size: %d expected: %d", out.Size(), p.expected.Size())
+			}
 		}
 	}
 
@@ -125,8 +132,13 @@ func TestSink(t *testing.T) {
 
 			err = sink.Sink(p.in)
 			assertError(t, options.ErrorOnCall, err)
-			assert.Equal(t, p.expected.NumChannels(), counter.Values.NumChannels())
-			assert.Equal(t, p.expected.Size(), counter.Values.Size())
+
+			if p.expected.NumChannels() != counter.Values.NumChannels() {
+				t.Fatalf("Invalid number of channels: %d expected: %d", counter.Values.NumChannels(), p.expected.NumChannels())
+			}
+			if p.expected.Size() != counter.Values.Size() {
+				t.Fatalf("Invalid buffer size: %d expected: %d", counter.Values.Size(), p.expected.Size())
+			}
 		}
 	}
 
@@ -160,19 +172,19 @@ func TestHooks(t *testing.T) {
 	testReset := func(h *mock.Hooks, expected error) func(*testing.T) {
 		return func(t *testing.T) {
 			err := h.Reset()
-			assert.Equal(t, expected, err)
+			assertError(t, expected, err)
 		}
 	}
 	testFlush := func(h *mock.Hooks, expected error) func(*testing.T) {
 		return func(t *testing.T) {
 			err := h.Flush()
-			assert.Equal(t, expected, err)
+			assertError(t, expected, err)
 		}
 	}
 	testInterrupt := func(h *mock.Hooks, expected error) func(*testing.T) {
 		return func(t *testing.T) {
 			err := h.Interrupt()
-			assert.Equal(t, expected, err)
+			assertError(t, expected, err)
 		}
 	}
 
