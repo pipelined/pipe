@@ -19,8 +19,7 @@ func TestPump(t *testing.T) {
 	}
 	testPump := func(options mock.PumpOptions, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			counter := &mock.Counter{}
-			pump, _, numChannels, err := mock.Pump(counter, nil, options)()
+			pump, _, numChannels, err := mock.Pump(&options)()
 			assertError(t, nil, err)
 
 			buf := signal.Float64Buffer(numChannels, p.bufferSize)
@@ -33,11 +32,11 @@ func TestPump(t *testing.T) {
 				}
 			}
 
-			if p.calls != counter.Messages {
-				t.Fatalf("Invalid number of calls: %d expected: %d", counter.Messages, p.calls)
+			if p.calls != options.Messages {
+				t.Fatalf("Invalid number of calls: %d expected: %d", options.Messages, p.calls)
 			}
-			if options.Limit != counter.Samples {
-				t.Fatalf("Invalid number of samples: %d expected: %d", counter.Samples, options.Limit)
+			if options.Limit != options.Samples {
+				t.Fatalf("Invalid number of samples: %d expected: %d", options.Samples, options.Limit)
 			}
 		}
 	}
@@ -81,8 +80,7 @@ func TestProcessor(t *testing.T) {
 	}
 	testProcessor := func(options mock.ProcessorOptions, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			counter := &mock.Counter{}
-			processor, _, _, err := mock.Processor(counter, nil, options)(0, 0)
+			processor, _, _, err := mock.Processor(&options)(0, 0)
 			assertError(t, nil, err)
 
 			out := signal.Float64Buffer(p.expected.NumChannels(), p.expected.Size())
@@ -126,18 +124,17 @@ func TestSink(t *testing.T) {
 	}
 	testSink := func(options mock.SinkOptions, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			counter := &mock.Counter{}
-			sink, err := mock.Sink(counter, nil, options)(0, 0)
+			sink, err := mock.Sink(&options)(0, 0)
 			assertError(t, nil, err)
 
 			err = sink.Sink(p.in)
 			assertError(t, options.ErrorOnCall, err)
 
-			if p.expected.NumChannels() != counter.Values.NumChannels() {
-				t.Fatalf("Invalid number of channels: %d expected: %d", counter.Values.NumChannels(), p.expected.NumChannels())
+			if p.expected.NumChannels() != options.Counter.Values.NumChannels() {
+				t.Fatalf("Invalid number of channels: %d expected: %d", options.Counter.Values.NumChannels(), p.expected.NumChannels())
 			}
-			if p.expected.Size() != counter.Values.Size() {
-				t.Fatalf("Invalid buffer size: %d expected: %d", counter.Values.Size(), p.expected.Size())
+			if p.expected.Size() != options.Counter.Values.Size() {
+				t.Fatalf("Invalid buffer size: %d expected: %d", options.Counter.Values.Size(), p.expected.Size())
 			}
 		}
 	}
