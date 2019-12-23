@@ -5,176 +5,22 @@ import (
 	"io"
 	"time"
 
+	"pipelined.dev/pipe"
+
 	"pipelined.dev/signal"
 )
 
-// Pump mocks a pipe.Pump interface.
-type Pump struct {
-	counter
-	Interval    time.Duration
-	Limit       int
-	Value       float64
-	NumChannels int
-	SampleRate  signal.SampleRate
-	ErrorOnCall error
-	Hooks
+// Counter counts messages, samples and can capture sinked values.
+type Counter struct {
+	Messages int
+	Samples  int
+	Values   signal.Float64
 }
 
-// IntervalParam pushes new interval value for pump.
-func (m *Pump) IntervalParam(i time.Duration) func() {
-	return func() {
-		m.Interval = i
-	}
-}
-
-// LimitParam pushes new limit value for pump.
-func (m *Pump) LimitParam(l int) func() {
-	return func() {
-		m.Limit = l
-	}
-}
-
-// ValueParam pushes new signal value for pump.
-func (m *Pump) ValueParam(v float64) func() {
-	return func() {
-		m.Value = v
-	}
-}
-
-// Pump returns new buffer for pipe.
-func (m *Pump) Pump(sourceID string) (func(b signal.Float64) error, signal.SampleRate, int, error) {
-	return func(b signal.Float64) error {
-		if m.ErrorOnCall != nil {
-			return m.ErrorOnCall
-		}
-
-		if m.samples >= m.Limit {
-			return io.EOF
-		}
-		time.Sleep(m.Interval)
-
-		// calculate buffer size.
-		bs := b.Size()
-		// check if we need a shorter.
-		if left := m.Limit - m.samples; left < bs {
-			bs = left
-		}
-		for i := range b {
-			// resize buffer
-			b[i] = b[i][:bs]
-			for j := range b[i] {
-				b[i][j] = m.Value
-			}
-		}
-		m.advance(bs)
-		return nil
-	}, m.SampleRate, m.NumChannels, nil
-}
-
-// Reset implements pipe.Resetter.
-func (m *Pump) Reset(string) error {
-	m.Resetted = true
-	if m.ErrorOnReset != nil {
-		return m.ErrorOnReset
-	}
-	m.reset()
-	return nil
-}
-
-// Interrupt implements pipe.Interrupter.
-func (m *Pump) Interrupt(string) error {
-	m.Interrupted = true
-	return m.ErrorOnInterrupt
-}
-
-// Flush implements pipe.Flusher.
-func (m *Pump) Flush(string) error {
-	m.Flushed = true
-	return m.ErrorOnFlush
-}
-
-// Processor mocks a pipe.Processor interface.
-type Processor struct {
-	counter
-	ErrorOnCall error
-	Hooks
-}
-
-// Process implementation for runner
-func (m *Processor) Process(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error) {
-	return func(b signal.Float64) error {
-		if m.ErrorOnCall != nil {
-			return m.ErrorOnCall
-		}
-		m.advance(b.Size())
-		return nil
-	}, nil
-}
-
-// Reset implements pipe.Resetter.
-func (m *Processor) Reset(string) error {
-	m.Resetted = true
-	if m.ErrorOnReset != nil {
-		return m.ErrorOnReset
-	}
-	m.reset()
-	return nil
-}
-
-// Interrupt implements pipe.Interrupter.
-func (m *Processor) Interrupt(string) error {
-	m.Interrupted = true
-	return m.ErrorOnInterrupt
-}
-
-// Flush implements pipe.Flusher.
-func (m *Processor) Flush(string) error {
-	m.Flushed = true
-	return m.ErrorOnFlush
-}
-
-// Sink mocks up a pipe.Sink interface.
-// Buffer is not thread-safe, so should not be checked while pipe is running.
-type Sink struct {
-	counter
-	buffer      signal.Float64
-	Discard     bool
-	ErrorOnCall error
-	Hooks
-}
-
-// Sink implementation for runner.
-func (m *Sink) Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error) {
-	return func(b signal.Float64) error {
-		if m.ErrorOnCall != nil {
-			return m.ErrorOnCall
-		}
-		if !m.Discard {
-			m.buffer = signal.Float64(m.buffer).Append(b)
-		}
-		m.advance(b.Size())
-		return nil
-	}, nil
-}
-
-// Reset implements pipe.Resetter.
-func (m *Sink) Reset(string) error {
-	m.Resetted = true
-	m.buffer = nil
-	m.reset()
-	return m.ErrorOnReset
-}
-
-// Interrupt implements pipe.Interrupter.
-func (m *Sink) Interrupt(string) error {
-	m.Interrupted = true
-	return m.ErrorOnInterrupt
-}
-
-// Flush implements pipe.Flusher.
-func (m *Sink) Flush(string) error {
-	m.Flushed = true
-	return m.ErrorOnFlush
+// advance counter's metrics.
+func (c *Counter) advance(size int) {
+	c.Messages++
+	c.Samples = c.Samples + size
 }
 
 // Hooks allows to mock components hooks.
@@ -188,30 +34,126 @@ type Hooks struct {
 	ErrorOnInterrupt error
 }
 
-// Buffer returns sink's buffer
-func (m *Sink) Buffer() signal.Float64 {
-	return m.buffer
+// Reset implements pipe.Resetter.
+func (h *Hooks) Reset() error {
+	h.Resetted = true
+	return h.ErrorOnReset
 }
 
-// Reset resets counter's metrics.
-func (c *counter) reset() {
-	c.messages, c.samples = 0, 0
+// Interrupt implements pipe.Interrupter.
+func (h *Hooks) Interrupt() error {
+	h.Interrupted = true
+	return h.ErrorOnInterrupt
 }
 
-// counter counts messages and samples.
-// Duration is not zero only in context of measure.
-type counter struct {
-	messages int
-	samples  int
+// Flush implements pipe.Flusher.
+func (h *Hooks) Flush() error {
+	h.Flushed = true
+	return h.ErrorOnFlush
 }
 
-// Advance counter's metrics.
-func (c *counter) advance(size int) {
-	c.messages++
-	c.samples = c.samples + size
+// PumpOptions are settings for pipe.Pump mock.
+type PumpOptions struct {
+	Interval    time.Duration
+	Limit       int
+	Value       float64
+	NumChannels int
+	SampleRate  signal.SampleRate
+	ErrorOnCall error
 }
 
-// Count returns messages and samples metrics.
-func (c *counter) Count() (int, int) {
-	return c.messages, c.samples
+// Pump returns closure with mocked pump.
+func Pump(counter *Counter, hooks *Hooks, options PumpOptions) pipe.PumpFunc {
+	return func() (pipe.Pump, signal.SampleRate, int, error) {
+		return pipe.Pump{
+			Hooks: pipe.Hooks{
+				Reset:     hooks.Reset,
+				Interrupt: hooks.Interrupt,
+				Flush:     hooks.Flush,
+			},
+			Pump: func(b signal.Float64) error {
+				if options.ErrorOnCall != nil {
+					return options.ErrorOnCall
+				}
+
+				if counter.Samples >= options.Limit {
+					return io.EOF
+				}
+				time.Sleep(options.Interval)
+
+				// calculate buffer size.
+				bs := b.Size()
+				// check if we need a shorter.
+				if left := options.Limit - counter.Samples; left < bs {
+					bs = left
+				}
+				for i := range b {
+					// resize buffer
+					b[i] = b[i][:bs]
+					for j := range b[i] {
+						b[i][j] = options.Value
+					}
+				}
+				counter.advance(bs)
+				return nil
+			},
+		}, options.SampleRate, options.NumChannels, nil
+	}
+}
+
+// ProcessorOptions are settings for pipe.Processor mock.
+type ProcessorOptions struct {
+	ErrorOnCall error
+}
+
+// Processor returns closure with mocked processor.
+func Processor(counter *Counter, hooks *Hooks, options ProcessorOptions) pipe.ProcessorFunc {
+	return func(sampleRate signal.SampleRate, numChannels int) (pipe.Processor, signal.SampleRate, int, error) {
+		return pipe.Processor{
+			Hooks: pipe.Hooks{
+				Reset:     hooks.Reset,
+				Interrupt: hooks.Interrupt,
+				Flush:     hooks.Flush,
+			},
+			Process: func(in, out signal.Float64) error {
+				if options.ErrorOnCall != nil {
+					return options.ErrorOnCall
+				}
+				counter.advance(in.Size())
+				for i := range in {
+					copy(out[i], in[i])
+				}
+				return nil
+			},
+		}, sampleRate, numChannels, nil
+	}
+}
+
+// SinkOptions are settings for pipe.Processor mock.
+type SinkOptions struct {
+	Discard     bool
+	ErrorOnCall error
+}
+
+// Sink returns closure with mocked processor.
+func Sink(counter *Counter, hooks *Hooks, options SinkOptions) pipe.SinkFunc {
+	return func(sampleRate signal.SampleRate, numChannels int) (pipe.Sink, error) {
+		return pipe.Sink{
+			Hooks: pipe.Hooks{
+				Reset:     hooks.Reset,
+				Interrupt: hooks.Interrupt,
+				Flush:     hooks.Flush,
+			},
+			Sink: func(in signal.Float64) error {
+				if options.ErrorOnCall != nil {
+					return options.ErrorOnCall
+				}
+				if !options.Discard {
+					counter.Values = counter.Values.Append(in)
+				}
+				counter.advance(in.Size())
+				return nil
+			},
+		}, nil
+	}
 }
