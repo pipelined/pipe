@@ -9,4 +9,6 @@ require (
 	pipelined.dev/signal v0.5.1
 )
 
+replace pipelined.dev/signal => ../signal
+
 go 1.13

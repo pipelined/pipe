@@ -11,28 +11,41 @@ import (
 
 // pipeline components
 type (
+	PumpFunc func() (Pump, signal.SampleRate, int, error)
 	// Pump is a source of samples. Pump method returns a new buffer with signal data.
 	// If no data is available, io.EOF should be returned. If pump cannot provide data
 	// to fulfill buffer, it can trim the size of the buffer to align it with actual data.
 	// Buffer size can only be decreased.
-	Pump interface {
-		Pump(pipeID string) (func(signal.Float64) error, signal.SampleRate, int, error)
+	Pump struct {
+		Pump func(out signal.Float64) error
+		Hooks
 	}
 
+	ProcessorFunc func(signal.SampleRate, int) (Processor, signal.SampleRate, int, error)
 	// Processor defines interface for pipe processors.
 	// Processor should return output in the same signal buffer as input.
 	// It is encouraged to implement in-place processing algorithms.
 	// Buffer size could be changed during execution, but only decrease allowed.
 	// Number of channels cannot be changed.
-	Processor interface {
-		Process(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
+	Processor struct {
+		Process func(in, out signal.Float64) error
+		Hooks
 	}
 
+	SinkFunc func(signal.SampleRate, int) (Sink, error)
 	// Sink is an interface for final stage in audio pipeline.
 	// This components must not change buffer content. Line can have
 	// multiple sinks and this will cause race condition.
-	Sink interface {
-		Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error)
+	Sink struct {
+		Sink func(in signal.Float64) error
+		Hooks
+	}
+
+	Hook  func() error
+	Hooks struct {
+		Flush     Hook
+		Interrupt Hook
+		Reset     Hook
 	}
 )
 
@@ -41,19 +54,19 @@ type (
 	// Resetter is a component that must be resetted before new run.
 	// Reset hook is executed when Run happens.
 	Resetter interface {
-		Reset(string) error
+		Reset() error
 	}
 
 	// Interrupter is a component that has custom interruption logic.
 	// Interrupt hook is executed when Cancel happens.
 	Interrupter interface {
-		Interrupt(string) error
+		Interrupt() error
 	}
 
 	// Flusher is a component that must be flushed in the end of execution.
 	// Flush hook is executed in the end of the run. It will be skipped if Reset hook has failed.
 	Flusher interface {
-		Flush(string) error
+		Flush() error
 	}
 )
 
@@ -68,18 +81,18 @@ func newUID() string {
 // It has a single pump, zero or many processors executed sequentially
 // and one or many sinks executed in parallel.
 type Line struct {
-	Pump
-	Processors []Processor
-	Sinks      []Sink
+	Pump       PumpFunc
+	Processors []ProcessorFunc
+	Sinks      []SinkFunc
 }
 
 // Processors is a helper function to use in line constructors.
-func Processors(processors ...Processor) []Processor {
+func Processors(processors ...ProcessorFunc) []ProcessorFunc {
 	return processors
 }
 
 // Sinks is a helper function to use in line constructors.
-func Sinks(sinks ...Sink) []Sink {
+func Sinks(sinks ...SinkFunc) []SinkFunc {
 	return sinks
 }
 

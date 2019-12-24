@@ -27,13 +27,13 @@ type Message struct {
 
 type (
 	// PumpFunc is closure of pipe.Pump that emits new messages.
-	PumpFunc func(signal.Float64) error
+	PumpFunc func(out signal.Float64) error
 
 	// ProcessFunc is closure of pipe.Processor that processes messages.
-	ProcessFunc func(signal.Float64) error
+	ProcessFunc func(in, out signal.Float64) error
 
 	// SinkFunc is closure of pipe.Sink that sinks messages.
-	SinkFunc func(signal.Float64) error
+	SinkFunc func(in signal.Float64) error
 
 	// Pump executes pipe.Pump components.
 	Pump struct {
@@ -41,6 +41,7 @@ type (
 		Fn    PumpFunc
 		Meter metric.ResetFunc
 		Hooks
+		outputPool Pool
 	}
 
 	// Processor executes pipe.Processor components.
@@ -49,6 +50,8 @@ type (
 		Fn    ProcessFunc
 		Meter metric.ResetFunc
 		Hooks
+		inputPool  Pool
+		outputPool Pool
 	}
 
 	// Sink executes pipe.Sink components.
@@ -57,12 +60,13 @@ type (
 		Fn    SinkFunc
 		Meter metric.ResetFunc
 		Hooks
+		inputPool Pool
 	}
 )
 
 type (
 	// Hook represents optional functions for components lyfecycle.
-	Hook func(string) error
+	Hook func() error
 
 	// Hooks is the set of components Hooks for runners.
 	Hooks struct {
@@ -184,7 +188,7 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 			}
 
 			m.Params.ApplyTo(componentID) // apply params
-			err = r.Fn(m.Buffer)          // process new buffer
+			// err = r.Fn(m.Buffer)          // process new buffer
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
 				return
@@ -299,7 +303,7 @@ func Broadcast(p Pool, pipeID string, sinks []Sink, cancel <-chan struct{}, in <
 
 func call(h Hook, pipeID string) error {
 	if h != nil {
-		return h(pipeID)
+		return h()
 	}
 	return nil
 }

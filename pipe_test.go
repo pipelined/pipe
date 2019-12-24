@@ -20,14 +20,14 @@ func TestMain(m *testing.M) {
 }
 
 func TestPipe(t *testing.T) {
-	pump := &mock.Pump{
-		Limit:       100 * bufferSize,
-		NumChannels: 1,
-	}
-	proc1 := &mock.Processor{}
-	proc2 := &mock.Processor{}
-	sink1 := &mock.Sink{}
-	sink2 := &mock.Sink{}
+	pump := mock.Pump(&mock.PumpOptions{
+		Limit:       862 * bufferSize,
+		NumChannels: 2,
+	})
+	proc1 := mock.Processor(&mock.ProcessorOptions{})
+	proc2 := mock.Processor(&mock.ProcessorOptions{})
+	sink1 := mock.Sink(&mock.SinkOptions{Discard: true})
+	sink2 := mock.Sink(&mock.SinkOptions{Discard: true})
 
 	l, err := pipe.New(
 		&pipe.Line{
@@ -42,15 +42,6 @@ func TestPipe(t *testing.T) {
 	runc := l.Run(context.Background(), bufferSize)
 	assert.NotNil(t, runc)
 	assert.Nil(t, err)
-
-	// test params push
-	pumpID, ok := l.ComponentID(pump)
-	assert.True(t, ok)
-	assert.NotEmpty(t, pumpID)
-	// push new limit for pump
-	newLimit := 200
-	paramFn := pump.LimitParam(newLimit)
-	l.Push(pumpID, paramFn)
 
 	// pause
 	err = pipe.Wait(l.Pause())
@@ -70,24 +61,22 @@ func TestPipe(t *testing.T) {
 // 1 Pump, 2 Processors, 2 Sinks, 1000 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		pump := &mock.Pump{
-			Limit:       862 * bufferSize,
-			NumChannels: 2,
-		}
-		proc1 := &mock.Processor{}
-		proc2 := &mock.Processor{}
-		sink1 := &mock.Sink{
-			Discard: true,
-		}
-		sink2 := &mock.Sink{
-			Discard: true,
-		}
-
 		l, _ := pipe.New(
 			&pipe.Line{
-				Pump:       pump,
-				Processors: pipe.Processors(proc1, proc2),
-				Sinks:      pipe.Sinks(sink1, sink2),
+				Pump: mock.Pump(
+					&mock.PumpOptions{
+						Limit:       862 * bufferSize,
+						NumChannels: 2,
+					},
+				),
+				Processors: pipe.Processors(
+					mock.Processor(&mock.ProcessorOptions{}),
+					mock.Processor(&mock.ProcessorOptions{}),
+				),
+				Sinks: pipe.Sinks(
+					mock.Sink(&mock.SinkOptions{Discard: true}),
+					mock.Sink(&mock.SinkOptions{Discard: true}),
+				),
 			},
 		)
 		pipe.Wait(l.Run(context.Background(), bufferSize))
