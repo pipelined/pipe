@@ -6,10 +6,10 @@ import (
 
 	"pipelined.dev/signal"
 
-	"pipelined.dev/pipe/internal/pool"
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/internal/state"
 	"pipelined.dev/pipe/metric"
+	"pipelined.dev/signal/pool"
 )
 
 // Pipe controls the execution of multiple chained lines. Lines might be chained
@@ -30,7 +30,6 @@ type chain struct {
 	pump        runner.Pump
 	processors  []runner.Processor
 	sinks       []runner.Sink
-	components  map[interface{}]string
 	take        chan runner.Message // emission of messages
 	params      state.Params
 }
@@ -51,9 +50,6 @@ func New(ls ...*Line) (*Pipe, error) {
 		lines[p] = c.uid
 		// map chains
 		chains[c.uid] = c
-		for _, componentID := range c.components {
-			chainByComponent[componentID] = c.uid
-		}
 	}
 
 	p := &Pipe{
@@ -67,53 +63,49 @@ func New(ls ...*Line) (*Pipe, error) {
 }
 
 func bindLine(p *Line) (chain, error) {
-	components := make(map[interface{}]string)
 	pipeID := newUID()
 	// bind pump
-	pumpFn, sampleRate, numChannels, err := p.Pump.Pump(pipeID)
+	pump, sampleRate, numChannels, err := p.Pump()
 	if err != nil {
 		return chain{}, fmt.Errorf("pump: %w", err)
 	}
 	pumpRunner := runner.Pump{
 		ID:    newUID(),
-		Fn:    runner.PumpFunc(pumpFn),
+		Fn:    runner.PumpFunc(pump.Pump),
 		Meter: metric.Meter(p.Pump, signal.SampleRate(sampleRate)),
 		Hooks: BindHooks(p.Pump),
 	}
-	components[p.Pump] = pumpRunner.ID
 
 	// bind processors
 	processorRunners := make([]runner.Processor, 0, len(p.Processors))
-	for _, proc := range p.Processors {
-		processFn, err := proc.Process(pipeID, sampleRate, numChannels)
+	for _, processorFn := range p.Processors {
+		processor, sampleRate, _, err := processorFn(sampleRate, numChannels)
 		if err != nil {
 			return chain{}, fmt.Errorf("processor: %w", err)
 		}
 		processorRunner := runner.Processor{
 			ID:    newUID(),
-			Fn:    runner.ProcessFunc(processFn),
-			Meter: metric.Meter(proc, signal.SampleRate(sampleRate)),
-			Hooks: BindHooks(proc),
+			Fn:    runner.ProcessFunc(processor.Process),
+			Meter: metric.Meter(processor, signal.SampleRate(sampleRate)),
+			Hooks: BindHooks(processor),
 		}
 		processorRunners = append(processorRunners, processorRunner)
-		components[proc] = processorRunner.ID
 	}
 
 	// bind sinks
 	sinkRunners := make([]runner.Sink, 0, len(p.Sinks))
-	for _, sink := range p.Sinks {
-		sinkFn, err := sink.Sink(pipeID, sampleRate, numChannels)
+	for _, sinkFn := range p.Sinks {
+		sink, err := sinkFn(sampleRate, numChannels)
 		if err != nil {
 			return chain{}, fmt.Errorf("sink: %w", err)
 		}
 		sinkRunner := runner.Sink{
 			ID:    newUID(),
-			Fn:    runner.SinkFunc(sinkFn),
+			Fn:    runner.SinkFunc(sink.Sink),
 			Meter: metric.Meter(sink, signal.SampleRate(sampleRate)),
 			Hooks: BindHooks(sink),
 		}
 		sinkRunners = append(sinkRunners, sinkRunner)
-		components[sink] = sinkRunner.ID
 	}
 	return chain{
 		uid:         pipeID,
@@ -123,20 +115,19 @@ func bindLine(p *Line) (chain, error) {
 		processors:  processorRunners,
 		sinks:       sinkRunners,
 		take:        make(chan runner.Message),
-		components:  components,
 		params:      make(map[string][]func()),
 	}, nil
 }
 
 // ComponentID finds id of the component within network.
-func (p *Pipe) ComponentID(component interface{}) (id string, ok bool) {
-	for _, c := range p.chains {
-		if id, ok = c.components[component]; ok {
-			break
-		}
-	}
-	return id, ok
-}
+// func (p *Pipe) ComponentID(component interface{}) (id string, ok bool) {
+// 	for _, c := range p.chains {
+// 		if id, ok = c.components[component]; ok {
+// 			break
+// 		}
+// 	}
+// 	return id, ok
+// }
 
 // start starts the execution of pipe.
 func start(p *Pipe) state.StartFunc {
