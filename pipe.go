@@ -16,64 +16,50 @@ import (
 // through components, mixer for example.  If lines are not chained, they must be
 // controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 type Pipe struct {
-	h      *state.Handle
-	lines  map[*Line]string             // map pipe to chain id
-	chains map[chan runner.Params]chain // map chain id to chain
-}
-
-// chain is a runtime chain of the pipeline.
-type chain struct {
-	params      chan runner.Params
-	sampleRate  signal.SampleRate
-	numChannels int
-	pump        runner.Pump
-	processors  []runner.Processor
-	sinks       []runner.Sink
+	h     *state.Handle
+	lines map[chan runner.Params]*Line // map chain id to chain
 }
 
 // New creates a new pipeline.
 // Returned pipeline is in Ready state.
 func New(ls ...*Line) (*Pipe, error) {
-	lines := make(map[*Line]string)
-	chains := make(map[chan runner.Params]chain)
-	// chainByComponent := make(map[string]string)
-	for _, p := range ls {
+	lines := make(map[chan runner.Params]*Line)
+	for _, l := range ls {
 		// bind all lines
-		c, err := bindLine(p)
+		err := bindLine(l)
 		if err != nil {
 			return nil, fmt.Errorf("error binding line: %w", err)
 		}
 		// map chains
-		chains[c.params] = c
+		lines[l.params] = l
 	}
 
 	p := &Pipe{
-		lines:  lines,
-		chains: chains,
+		lines: lines,
 	}
 	p.h = state.NewHandle(start(p))
 	go state.Loop(p.h)
 	return p, nil
 }
 
-func bindLine(p *Line) (chain, error) {
+func bindLine(l *Line) error {
 	// bind pump
-	pump, sampleRate, numChannels, err := p.Pump()
+	pump, sampleRate, numChannels, err := l.Pump()
 	if err != nil {
-		return chain{}, fmt.Errorf("pump: %w", err)
+		return fmt.Errorf("error binding pump: %w", err)
 	}
 	pumpRunner := runner.Pump{
 		Fn:    runner.PumpFunc(pump.Pump),
-		Meter: metric.Meter(p.Pump, signal.SampleRate(sampleRate)),
-		Hooks: BindHooks(p.Pump),
+		Meter: metric.Meter(l.Pump, signal.SampleRate(sampleRate)),
+		Hooks: BindHooks(l.Pump),
 	}
 
 	// bind processors
-	processorRunners := make([]runner.Processor, 0, len(p.Processors))
-	for _, processorFn := range p.Processors {
-		processor, sampleRate, _, err := processorFn(sampleRate, numChannels)
+	processorRunners := make([]runner.Processor, 0, len(l.Processors))
+	for _, processorFn := range l.Processors {
+		processor, _, _, err := processorFn(sampleRate, numChannels)
 		if err != nil {
-			return chain{}, fmt.Errorf("processor: %w", err)
+			return fmt.Errorf("error binding processor: %w", err)
 		}
 		processorRunner := runner.Processor{
 			Fn:    runner.ProcessFunc(processor.Process),
@@ -84,11 +70,11 @@ func bindLine(p *Line) (chain, error) {
 	}
 
 	// bind sinks
-	sinkRunners := make([]runner.Sink, 0, len(p.Sinks))
-	for _, sinkFn := range p.Sinks {
+	sinkRunners := make([]runner.Sink, 0, len(l.Sinks))
+	for _, sinkFn := range l.Sinks {
 		sink, err := sinkFn(sampleRate, numChannels)
 		if err != nil {
-			return chain{}, fmt.Errorf("sink: %w", err)
+			return fmt.Errorf("sink: %w", err)
 		}
 		sinkRunner := runner.Sink{
 			Fn:    runner.SinkFunc(sink.Sink),
@@ -97,14 +83,12 @@ func bindLine(p *Line) (chain, error) {
 		}
 		sinkRunners = append(sinkRunners, sinkRunner)
 	}
-	return chain{
-		sampleRate:  sampleRate,
-		numChannels: numChannels,
-		pump:        pumpRunner,
-		processors:  processorRunners,
-		sinks:       sinkRunners,
-		params:      make(chan runner.Params),
-	}, nil
+	l.numChannels = numChannels
+	l.pump = pumpRunner
+	l.processors = processorRunners
+	l.sinks = sinkRunners
+	l.params = make(chan runner.Params)
+	return nil
 }
 
 // start starts the execution of pipe.
@@ -112,7 +96,7 @@ func start(p *Pipe) state.StartFunc {
 	return func(bufferSize int, cancel <-chan struct{}, give chan<- chan runner.Params) []<-chan error {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
-		for _, c := range p.chains {
+		for _, c := range p.lines {
 			p := pool.New(c.numChannels, bufferSize)
 			// start pump
 			out, errs := c.pump.Run(p, cancel, give, c.params)

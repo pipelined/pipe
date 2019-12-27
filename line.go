@@ -84,6 +84,12 @@ type Line struct {
 	Pump       PumpFunc
 	Processors []ProcessorFunc
 	Sinks      []SinkFunc
+
+	numChannels int //TODO: replace with runners data
+	params      chan runner.Params
+	pump        runner.Pump
+	processors  []runner.Processor
+	sinks       []runner.Sink
 }
 
 // Processors is a helper function to use in line constructors.
