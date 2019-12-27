@@ -1,4 +1,4 @@
-package state
+package runner
 
 // Params represent a set of parameters mapped to ID of their receivers.
 type Params map[string][]func()

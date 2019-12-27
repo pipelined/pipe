@@ -98,8 +98,8 @@ func (h *Handle) Interrupt() chan error {
 
 // Push new params into handle.
 // Calling this method after Interrupt, will cause panic.
-func (h *Handle) Push(params Params) {
-	h.params <- params
+func (h *Handle) Push(params map[string][]func()) {
+	h.pushParams <- params
 }
 
 // idle state of the Run event is Ready.
