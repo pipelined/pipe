@@ -109,13 +109,12 @@ func New(ls ...*Line) (*Pipe, error) {
 		// map lines
 		lines[l.params] = l
 	}
-
-	p := &Pipe{
-		lines: lines,
-	}
-	p.handle = state.NewHandle(start(p))
-	go state.Loop(p.handle)
-	return p, nil
+	handle := state.NewHandle(startFunc(lines))
+	go state.Loop(handle)
+	return &Pipe{
+		lines:  lines,
+		handle: handle,
+	}, nil
 }
 
 func bindLine(l *Line) error {
@@ -168,23 +167,23 @@ func bindLine(l *Line) error {
 }
 
 // start starts the execution of pipe.
-func start(p *Pipe) state.StartFunc {
+func startFunc(lines map[chan runner.Params]*Line) state.StartFunc {
 	return func(bufferSize int, cancel <-chan struct{}, give chan<- chan runner.Params) []<-chan error {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
-		for _, c := range p.lines {
-			p := pool.New(c.numChannels, bufferSize)
+		for params, l := range lines {
+			p := pool.New(l.numChannels, bufferSize)
 			// start pump
-			out, errs := c.pump.Run(p, cancel, give, c.params)
+			out, errs := l.pump.Run(p, cancel, give, params)
 			errcList = append(errcList, errs)
 
 			// start chained processesing
-			for _, proc := range c.processors {
+			for _, proc := range l.processors {
 				out, errs = proc.Run(cancel, out)
 				errcList = append(errcList, errs)
 			}
 
-			sinkErrcList := runner.Broadcast(p, c.sinks, cancel, out)
+			sinkErrcList := runner.Broadcast(p, l.sinks, cancel, out)
 			errcList = append(errcList, sinkErrcList...)
 		}
 		return errcList
@@ -220,9 +219,9 @@ func (p *Pipe) Close() chan error {
 
 // Push new params into pipe.
 // Calling this method after pipe is closed causes a panic.
-func (p *Pipe) Push(id string, paramFuncs ...func()) {
-	p.handle.Push(runner.Params{id: paramFuncs})
-}
+// func (p *Pipe) Push(id string, paramFuncs ...func()) {
+// 	p.handle.Push(runner.Params{id: paramFuncs})
+// }
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorFunc) []ProcessorFunc {
