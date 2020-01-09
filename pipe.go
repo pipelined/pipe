@@ -82,7 +82,7 @@ type Line struct {
 	Sinks      []SinkFunc
 
 	numChannels int //TODO: replace with runners data
-	params      chan runner.Params
+	params      chan state.Params
 	pump        runner.Pump
 	processors  []runner.Processor
 	sinks       []runner.Sink
@@ -93,13 +93,13 @@ type Line struct {
 // controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 type Pipe struct {
 	handle *state.Handle
-	lines  map[chan runner.Params]*Line // map chain id to chain
+	lines  map[chan state.Params]*Line // map chain id to chain
 }
 
 // New creates a new pipeline.
 // Returned pipeline is in Ready state.
 func New(ls ...*Line) (*Pipe, error) {
-	lines := make(map[chan runner.Params]*Line)
+	lines := make(map[chan state.Params]*Line)
 	for _, l := range ls {
 		// bind all lines
 		err := bindLine(l)
@@ -162,13 +162,13 @@ func bindLine(l *Line) error {
 	l.pump = pumpRunner
 	l.processors = processorRunners
 	l.sinks = sinkRunners
-	l.params = make(chan runner.Params)
+	l.params = make(chan state.Params)
 	return nil
 }
 
 // start starts the execution of pipe.
-func startFunc(lines map[chan runner.Params]*Line) state.StartFunc {
-	return func(bufferSize int, cancel <-chan struct{}, give chan<- chan runner.Params) []<-chan error {
+func startFunc(lines map[chan state.Params]*Line) state.StartFunc {
+	return func(bufferSize int, cancel <-chan struct{}, give chan<- chan state.Params) []<-chan error {
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
 		for params, l := range lines {
@@ -220,7 +220,7 @@ func (p *Pipe) Close() chan error {
 // Push new params into pipe.
 // Calling this method after pipe is closed causes a panic.
 // func (p *Pipe) Push(id string, paramFuncs ...func()) {
-// 	p.handle.Push(runner.Params{id: paramFuncs})
+// 	p.handle.Push(state.Params{id: paramFuncs})
 // }
 
 // Processors is a helper function to use in line constructors.

@@ -1,10 +1,10 @@
-package runner_test
+package state_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"pipelined.dev/pipe/internal/runner"
+	"pipelined.dev/pipe/internal/state"
 )
 
 // paramMock used to set up test cases for params
@@ -15,8 +15,8 @@ type paramMock struct {
 	expected   int
 }
 
-func (m *paramMock) params() runner.Params {
-	var p runner.Params
+func (m *paramMock) params() state.Params {
+	var p state.Params
 	return p.Add(m.uid, m.param())
 }
 
@@ -76,7 +76,7 @@ func TestAddParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var params runner.Params
+		var params state.Params
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				params = params.Add(m.uid, m.param())
@@ -128,7 +128,7 @@ func TestAppendParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var params runner.Params
+		var params state.Params
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				params = params.Append(m.params())
@@ -194,7 +194,7 @@ func TestDetachParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var params runner.Params
+		var params state.Params
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				params = params.Add(m.uid, m.param())

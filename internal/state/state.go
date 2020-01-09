@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-
-	"pipelined.dev/pipe/internal/runner"
 )
 
 var (
@@ -19,9 +17,6 @@ type (
 		// event channel used to handle new events for state machine.
 		// created in constructor, closed when Handle is closed.
 		events chan event
-		// ask for new message request for the chain.
-		// created in constructor, never closed.
-		pullParams chan chan runner.Params
 		// errors used to fan-in errors from components.
 		// created in run event, closed when all components are done.
 		merger
@@ -32,10 +27,13 @@ type (
 		// newMessageFn NewMessageFunc
 		// pushParamsFn PushParamsFunc
 		// take         chan runner.Message // emission of messages
+		// ask for new message request for the chain.
+		// created in constructor, never closed.
+		pullParams chan chan Params
 		// Params channel used to recieve new parameters.
 		// created in constructor, closed when Handle is closed.
 		pushParams chan map[string][]func()
-		params     map[chan runner.Params]runner.Params
+		params     map[chan Params]Params
 	}
 
 	// merger fans-in error channels.
@@ -45,10 +43,10 @@ type (
 	}
 
 	// StartFunc is the closure to trigger the start of a pipe.
-	StartFunc func(bufferSize int, cancel <-chan struct{}, messages chan<- chan runner.Params) []<-chan error
+	StartFunc func(bufferSize int, cancel <-chan struct{}, messages chan<- chan Params) []<-chan error
 
 	// NewMessageFunc is the closure to send a message into a pipe.
-	NewMessageFunc func(chan runner.Params)
+	NewMessageFunc func(chan Params)
 
 	// PushParamsFunc is the closure to push new params into pipe.
 	PushParamsFunc func(params map[string][]func())
@@ -61,8 +59,8 @@ type (
 		stateType
 		events <-chan event
 		errors <-chan error
-		pull   <-chan chan runner.Params
-		params <-chan map[string][]func()
+		pull   <-chan chan Params
+		push   <-chan map[string][]func()
 	}
 
 	// stateType
@@ -116,7 +114,7 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 	)
 	for {
 		select {
-		case _ = <-s.params:
+		case _ = <-s.push:
 			panic("push params not implemented")
 		case puller := <-s.pull:
 			params := h.params[puller]
@@ -172,7 +170,7 @@ func (h *Handle) transition(s state, e event) (state, error) {
 			close(h.events)
 			return h.closed(), nil
 		case run:
-			h.pullParams = make(chan chan runner.Params)
+			h.pullParams = make(chan chan Params)
 			ctx, cancelFn := context.WithCancel(ev.Context)
 			h.cancelFn = cancelFn
 			h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.pullParams))
@@ -211,7 +209,7 @@ func (h *Handle) ready() state {
 	return state{
 		stateType: ready,
 		events:    h.events,
-		params:    h.pushParams,
+		push:      h.pushParams,
 	}
 }
 
@@ -221,7 +219,7 @@ func (h *Handle) running() state {
 	return state{
 		stateType: running,
 		events:    h.events,
-		params:    h.pushParams,
+		push:      h.pushParams,
 		pull:      h.pullParams,
 		errors:    h.merger.errors,
 	}
@@ -233,7 +231,7 @@ func (h *Handle) paused() state {
 	return state{
 		stateType: paused,
 		events:    h.events,
-		params:    h.pushParams,
+		push:      h.pushParams,
 		errors:    h.merger.errors,
 	}
 }
@@ -300,14 +298,6 @@ func (m merger) done(ec <-chan error) {
 	}
 	m.wg.Done()
 }
-
-// newMessage creates a new message with cached Params.
-// if new Params are pushed into pipe - next message will contain them.
-// func newMessage(h *Handle)func(take chan runner.Params) {
-// 		params := h.params[take]
-// 		take <- params
-// 	}
-// }
 
 func pushParams(h *Handle) PushParamsFunc {
 	return func(params map[string][]func()) {

@@ -7,6 +7,7 @@ import (
 
 	"pipelined.dev/signal"
 
+	"pipelined.dev/pipe/internal/state"
 	"pipelined.dev/pipe/metric"
 )
 
@@ -21,7 +22,7 @@ type Message struct {
 	SinkRefs int32 // number of sinks referencing buffer in this message.
 	// PipeID   string         // ID of pipe which spawned this message.
 	Buffer signal.Float64 // Buffer of message.
-	Params Params         // params for pipe.
+	Params state.Params   // params for pipe.
 }
 
 type (
@@ -73,7 +74,7 @@ type (
 )
 
 // Run starts the Pump runner.
-func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan Params, take chan Params) (<-chan Message, <-chan error) {
+func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan state.Params, take chan state.Params) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
 	meter := r.Meter()
@@ -92,7 +93,7 @@ func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan Params, take 
 			}
 		}()
 		var err error
-		var params Params
+		var params state.Params
 		for {
 			// request new message
 			select {
@@ -114,7 +115,7 @@ func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan Params, take 
 				return
 			}
 			m := Message{Params: params}
-			// m.Params.ApplyTo(componentID) // apply params
+			// m.state.Params.ApplyTo(componentID) // apply params
 
 			// POOL: Allocate buffer here.
 			// allocate new buffer
@@ -183,7 +184,7 @@ func (r Processor) Run(cancel <-chan struct{}, in <-chan Message) (<-chan Messag
 				return
 			}
 
-			// m.Params.ApplyTo(componentID) // apply params
+			// m.state.Params.ApplyTo(componentID) // apply params
 			// err = r.Fn(m.Buffer)          // process new buffer
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
@@ -239,7 +240,7 @@ func (r Sink) Run(p Pool, cancel <-chan struct{}, in <-chan Message) <-chan erro
 				return
 			}
 
-			// m.Params.ApplyTo(componentID) // apply params
+			// m.state.Params.ApplyTo(componentID) // apply params
 			err := r.Fn(m.Buffer) // sink a buffer
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)
@@ -283,7 +284,7 @@ func Broadcast(p Pool, sinks []Sink, cancel <-chan struct{}, in <-chan Message) 
 					SinkRefs: int32(len(broadcasts)),
 					// PipeID:   pipeID,
 					Buffer: msg.Buffer,
-					// Params:   msg.Params.Detach(sinks[i].ID),
+					// state.Params:   msg.state.Params.Detach(sinks[i].ID),
 				}
 				select {
 				case broadcasts[i] <- m:
