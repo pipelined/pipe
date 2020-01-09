@@ -53,7 +53,7 @@ type newMessageFuncMock struct {
 }
 
 func (m *newMessageFuncMock) fn() state.NewMessageFunc {
-	return func(pipeID string) {
+	return func() {
 		m.sent++
 	}
 }
