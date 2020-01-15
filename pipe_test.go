@@ -29,22 +29,20 @@ func TestPipe(t *testing.T) {
 	sink1 := mock.Sink(&mock.SinkOptions{Discard: true})
 	sink2 := mock.Sink(&mock.SinkOptions{Discard: true})
 
-	l, err := pipe.New(
+	l := pipe.New(
 		&pipe.Line{
 			Pump:       pump,
 			Processors: pipe.Processors(proc1, proc2),
 			Sinks:      pipe.Sinks(sink1, sink2),
 		},
 	)
-	assert.Nil(t, err)
 
 	// start
 	runc := l.Run(context.Background(), bufferSize)
 	assert.NotNil(t, runc)
-	assert.Nil(t, err)
 
 	// pause
-	err = pipe.Wait(l.Pause())
+	err := pipe.Wait(l.Pause())
 	assert.Nil(t, err)
 	// runc must be cancelled by now
 	err = pipe.Wait(runc)
@@ -61,7 +59,7 @@ func TestPipe(t *testing.T) {
 // 1 Pump, 2 Processors, 2 Sinks, 1000 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		l, _ := pipe.New(
+		l := pipe.New(
 			&pipe.Line{
 				Pump: mock.Pump(
 					&mock.PumpOptions{

@@ -43,7 +43,7 @@ type (
 	}
 
 	// StartFunc is the closure to trigger the start of a pipe.
-	StartFunc func(bufferSize int, cancel <-chan struct{}, messages chan<- chan Params) []<-chan error
+	StartFunc func(bufferSize int, cancel <-chan struct{}, messages chan<- chan Params) ([]<-chan error, error)
 
 	// NewMessageFunc is the closure to send a message into a pipe.
 	NewMessageFunc func(chan Params)
@@ -173,7 +173,11 @@ func (h *Handle) transition(s state, e event) (state, error) {
 			h.pullParams = make(chan chan Params)
 			ctx, cancelFn := context.WithCancel(ev.Context)
 			h.cancelFn = cancelFn
-			h.merger = mergeErrors(h.startFn(ev.BufferSize, ctx.Done(), h.pullParams))
+			errChans, err := h.startFn(ev.BufferSize, ctx.Done(), h.pullParams)
+			if err != nil {
+
+			}
+			h.merger = mergeErrors(errChans)
 			return h.running(), nil
 		}
 	case running:
