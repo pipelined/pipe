@@ -82,13 +82,13 @@ func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan state.Params,
 		defer close(out)
 		defer close(errs)
 		// Reset hook
-		if err := call(r.Reset); err != nil {
+		if err := r.Reset.Call(); err != nil {
 			errs <- fmt.Errorf("error resetting pump: %w", err)
 			return
 		}
 		// Flush hook on return
 		defer func() {
-			if err := call(r.Flush); err != nil {
+			if err := r.Flush.Call(); err != nil {
 				errs <- fmt.Errorf("error flushing pump: %w", err)
 			}
 		}()
@@ -99,7 +99,7 @@ func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan state.Params,
 			select {
 			case give <- take:
 			case <-cancel:
-				if err := call(r.Interrupt); err != nil {
+				if err := r.Interrupt.Call(); err != nil {
 					errs <- fmt.Errorf("error interrupting pump: %w", err)
 				}
 				return
@@ -109,7 +109,7 @@ func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan state.Params,
 			select {
 			case params = <-take:
 			case <-cancel:
-				if err := call(r.Interrupt); err != nil {
+				if err := r.Interrupt.Call(); err != nil {
 					errs <- fmt.Errorf("error interrupting pump: %w", err)
 				}
 				return
@@ -138,7 +138,7 @@ func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan state.Params,
 			select {
 			case out <- m:
 			case <-cancel:
-				if err := call(r.Interrupt); err != nil {
+				if err := r.Interrupt.Call(); err != nil {
 					errs <- fmt.Errorf("error interrupting pump: %w", err)
 				}
 				return
@@ -157,13 +157,13 @@ func (r Processor) Run(cancel <-chan struct{}, in <-chan Message) (<-chan Messag
 		defer close(out)
 		defer close(errs)
 		// Reset hook
-		if err := call(r.Reset); err != nil {
+		if err := r.Reset.Call(); err != nil {
 			errs <- fmt.Errorf("error resetting processor: %w", err)
 			return
 		}
 		// Flush hook on return
 		defer func() {
-			if err := call(r.Flush); err != nil {
+			if err := r.Flush.Call(); err != nil {
 				errs <- fmt.Errorf("error flushing processor: %w", err)
 			}
 		}()
@@ -178,7 +178,7 @@ func (r Processor) Run(cancel <-chan struct{}, in <-chan Message) (<-chan Messag
 					return
 				}
 			case <-cancel:
-				if err := call(r.Interrupt); err != nil {
+				if err := r.Interrupt.Call(); err != nil {
 					errs <- fmt.Errorf("error interrupting processor: %w", err)
 				}
 				return
@@ -197,7 +197,7 @@ func (r Processor) Run(cancel <-chan struct{}, in <-chan Message) (<-chan Messag
 			select {
 			case out <- m:
 			case <-cancel:
-				if err := call(r.Interrupt); err != nil {
+				if err := r.Interrupt.Call(); err != nil {
 					errs <- fmt.Errorf("error interrupting pump: %w", err)
 				}
 				return
@@ -214,13 +214,13 @@ func (r Sink) Run(p Pool, cancel <-chan struct{}, in <-chan Message) <-chan erro
 	go func() {
 		defer close(errs)
 		// Reset hook
-		if err := call(r.Reset); err != nil {
+		if err := r.Reset.Call(); err != nil {
 			errs <- fmt.Errorf("error resetting sink: %w", err)
 			return
 		}
 		// Flush hook on return
 		defer func() {
-			if err := call(r.Flush); err != nil {
+			if err := r.Flush.Call(); err != nil {
 				errs <- fmt.Errorf("error flushing sink: %w", err)
 			}
 		}()
@@ -234,7 +234,7 @@ func (r Sink) Run(p Pool, cancel <-chan struct{}, in <-chan Message) <-chan erro
 					return
 				}
 			case <-cancel:
-				if err := call(r.Interrupt); err != nil {
+				if err := r.Interrupt.Call(); err != nil {
 					errs <- fmt.Errorf("error interrupting sink: %w", err)
 				}
 				return
@@ -298,7 +298,7 @@ func Broadcast(p Pool, sinks []Sink, cancel <-chan struct{}, in <-chan Message) 
 	return errs
 }
 
-func call(h Hook) error {
+func (h Hook) Call() error {
 	if h != nil {
 		return h()
 	}
