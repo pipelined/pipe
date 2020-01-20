@@ -55,8 +55,6 @@ func TestPump(t *testing.T) {
 					numChannels: numChannels,
 					bufferSize:  bufferSize,
 				},
-				pipeID,
-				componentID,
 				cancel,
 				give,
 				take,
@@ -64,9 +62,7 @@ func TestPump(t *testing.T) {
 			// test message exchange
 			for i := 0; i <= options.Limit/bufferSize; i++ {
 				<-give
-				take <- runner.Message{
-					PipeID: pipeID,
-				}
+				take <- runner.Message{}
 				<-out
 			}
 

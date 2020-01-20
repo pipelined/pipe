@@ -18,7 +18,8 @@ type startFuncMock struct{}
 
 // send channel is closed ONLY when any messages were sent
 func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) state.StartFunc {
-	return func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error {
+	params := make(chan state.Params)
+	return func(bufferSize int, cancel <-chan struct{}, puller chan<- chan state.Params) ([]<-chan error, error) {
 		errs := make(chan error)
 		go func() {
 			defer close(errs)
@@ -33,7 +34,8 @@ func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) 
 					if errorOnSend != nil {
 						errs <- errorOnSend
 					} else {
-						give <- "test"
+						puller <- params
+						<-params
 					}
 				case <-cancel: // block until cancelled
 					// send error on close if provided
@@ -44,27 +46,7 @@ func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) 
 				}
 			}
 		}()
-		return []<-chan error{errs}
-	}
-}
-
-type newMessageFuncMock struct {
-	sent int
-}
-
-func (m *newMessageFuncMock) fn() state.NewMessageFunc {
-	return func() {
-		m.sent++
-	}
-}
-
-type pushParamsFuncMock struct {
-	state.Params
-}
-
-func (m *pushParamsFuncMock) fn() state.PushParamsFunc {
-	return func(params state.Params) {
-		m.Params = m.Params.Append(params)
+		return []<-chan error{errs}, nil
 	}
 }
 
@@ -157,14 +139,10 @@ func TestStates(t *testing.T) {
 			messages = 1
 		}
 		startMock := &startFuncMock{}
-		newMessageMock := &newMessageFuncMock{}
-		pushParamsMock := &pushParamsFuncMock{}
-		p := &paramMock{uid: "params"}
+
 		send := make(chan struct{})
 		h := state.NewHandle(
 			startMock.fn(send, c.errorOnSend, c.errorOnClose),
-			newMessageMock.fn(),
-			pushParamsMock.fn(),
 		)
 		go state.Loop(h)
 
@@ -174,8 +152,6 @@ func TestStates(t *testing.T) {
 			errs = transition(h)
 		}
 
-		// push params
-		h.Push(p.params())
 		// test events
 		for _, transition := range c.events {
 			err := pipe.Wait(transition(h))
@@ -199,10 +175,6 @@ func TestStates(t *testing.T) {
 		// close
 		err := pipe.Wait(h.Interrupt())
 		assert.Equal(t, c.errorOnClose, errors.Unwrap(err))
-
-		_, ok := pushParamsMock.Params[p.uid]
-		assert.True(t, ok)
-		assert.Equal(t, c.messages, newMessageMock.sent)
 	}
 	goleak.VerifyNoLeaks(t)
 }
