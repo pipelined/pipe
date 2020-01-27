@@ -3,6 +3,8 @@ package state
 import (
 	"context"
 	"fmt"
+
+	"pipelined.dev/pipe/mutator"
 )
 
 type (
@@ -98,8 +100,8 @@ func (h *Handle) Interrupt() chan error {
 
 // Push new params into handle.
 // Calling this method after Interrupt, will cause panic.
-func (h *Handle) Push(params map[string][]func()) {
-	h.pushParams <- params
+func (h *Handle) Push(mutators mutator.Mutators) {
+	h.push <- mutators
 }
 
 // idle state of the Run event is Ready.

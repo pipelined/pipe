@@ -7,8 +7,8 @@ import (
 
 	"pipelined.dev/signal"
 
-	"pipelined.dev/pipe/internal/state"
 	"pipelined.dev/pipe/metric"
+	"pipelined.dev/pipe/mutator"
 )
 
 // Pool provides pooling of signal.Float64 buffers.
@@ -19,25 +19,16 @@ type Pool interface {
 
 // Message is a main structure for pipe transport
 type Message struct {
-	SinkRefs int32 // number of sinks referencing buffer in this message.
-	// PipeID   string         // ID of pipe which spawned this message.
-	Buffer signal.Float64 // Buffer of message.
-	Params state.Params   // params for pipe.
+	SinkRefs int32            // number of sinks referencing buffer in this message.
+	Buffer   signal.Float64   // Buffer of message.
+	Mutators mutator.Mutators // Mutators for pipe.
 }
 
 type (
-	// PumpFunc is closure of pipe.Pump that emits new messages.
-	PumpFunc func(out signal.Float64) error
-
-	// ProcessFunc is closure of pipe.Processor that processes messages.
-	ProcessFunc func(in, out signal.Float64) error
-
-	// SinkFunc is closure of pipe.Sink that sinks messages.
-	SinkFunc func(in signal.Float64) error
-
 	// Pump executes pipe.Pump components.
 	Pump struct {
-		Fn    PumpFunc
+		mutator.Receiver
+		Fn    func(out signal.Float64) error
 		Meter metric.ResetFunc
 		Hooks
 		outputPool Pool
@@ -45,7 +36,8 @@ type (
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
-		Fn    ProcessFunc
+		mutator.Receiver
+		Fn    func(in, out signal.Float64) error
 		Meter metric.ResetFunc
 		Hooks
 		inputPool  Pool
@@ -54,7 +46,8 @@ type (
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
-		Fn    SinkFunc
+		mutator.Receiver
+		Fn    func(in signal.Float64) error
 		Meter metric.ResetFunc
 		Hooks
 		inputPool Pool
@@ -74,7 +67,7 @@ type (
 )
 
 // Run starts the Pump runner.
-func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan state.Params, take chan state.Params) (<-chan Message, <-chan error) {
+func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan mutator.Mutators, take chan mutator.Mutators) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
 	meter := r.Meter()
@@ -93,7 +86,7 @@ func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan state.Params,
 			}
 		}()
 		var err error
-		var params state.Params
+		var Mutators mutator.Mutators
 		for {
 			// request new message
 			select {
@@ -107,17 +100,16 @@ func (r Pump) Run(p Pool, cancel <-chan struct{}, give chan<- chan state.Params,
 
 			// receive new message
 			select {
-			case params = <-take:
+			case Mutators = <-take:
 			case <-cancel:
 				if err := r.Interrupt.Call(); err != nil {
 					errs <- fmt.Errorf("error interrupting pump: %w", err)
 				}
 				return
 			}
-			m := Message{Params: params}
-			// m.state.Params.ApplyTo(componentID) // apply params
+			m := Message{Mutators: Mutators}
+			m.Mutators.ApplyTo(&r.Receiver) // apply Mutators
 
-			// POOL: Allocate buffer here.
 			// allocate new buffer
 			m.Buffer = p.Alloc()
 
@@ -184,8 +176,8 @@ func (r Processor) Run(cancel <-chan struct{}, in <-chan Message) (<-chan Messag
 				return
 			}
 
-			// m.state.Params.ApplyTo(componentID) // apply params
-			// err = r.Fn(m.Buffer)          // process new buffer
+			m.Mutators.ApplyTo(&r.Receiver) // apply Mutators
+			// err = r.Fn(m.Buffer)        // process new buffer
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
 				return
@@ -240,8 +232,8 @@ func (r Sink) Run(p Pool, cancel <-chan struct{}, in <-chan Message) <-chan erro
 				return
 			}
 
-			// m.state.Params.ApplyTo(componentID) // apply params
-			err := r.Fn(m.Buffer) // sink a buffer
+			m.Mutators.ApplyTo(&r.Receiver) // apply Mutators
+			err := r.Fn(m.Buffer)           // sink a buffer
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)
 				return
@@ -282,9 +274,8 @@ func Broadcast(p Pool, sinks []Sink, cancel <-chan struct{}, in <-chan Message) 
 			for i := range broadcasts {
 				m := Message{
 					SinkRefs: int32(len(broadcasts)),
-					// PipeID:   pipeID,
-					Buffer: msg.Buffer,
-					// state.Params:   msg.state.Params.Detach(sinks[i].ID),
+					Buffer:   msg.Buffer,
+					Mutators: msg.Mutators.Detach(&sinks[i].Receiver),
 				}
 				select {
 				case broadcasts[i] <- m:

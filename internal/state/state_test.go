@@ -10,6 +10,7 @@ import (
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/state"
+	"pipelined.dev/pipe/mutator"
 )
 
 var testError = errors.New("test error")
@@ -18,8 +19,8 @@ type startFuncMock struct{}
 
 // send channel is closed ONLY when any messages were sent
 func (m *startFuncMock) fn(send chan struct{}, errorOnSend, errorOnClose error) state.StartFunc {
-	params := make(chan state.Params)
-	return func(bufferSize int, cancel <-chan struct{}, puller chan<- chan state.Params) ([]<-chan error, error) {
+	params := make(chan mutator.Mutators)
+	return func(bufferSize int, cancel <-chan struct{}, puller chan<- chan mutator.Mutators) ([]<-chan error, error) {
 		errs := make(chan error)
 		go func() {
 			defer close(errs)

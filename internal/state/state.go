@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"pipelined.dev/pipe/mutator"
 )
 
 var (
@@ -24,16 +26,9 @@ type (
 		// created in run event, closed on cancel event or when error is recieved.
 		cancelFn context.CancelFunc
 		startFn  StartFunc
-		// newMessageFn NewMessageFunc
-		// pushParamsFn PushParamsFunc
-		// take         chan runner.Message // emission of messages
-		// ask for new message request for the chain.
-		// created in constructor, never closed.
-		pullParams chan chan Params
-		// Params channel used to recieve new parameters.
-		// created in constructor, closed when Handle is closed.
-		pushParams chan map[string][]func()
-		params     map[chan Params]Params
+		push     chan mutator.Mutators
+		pull     chan chan mutator.Mutators
+		mutators map[chan mutator.Mutators]mutator.Mutators
 	}
 
 	// merger fans-in error channels.
@@ -43,13 +38,13 @@ type (
 	}
 
 	// StartFunc is the closure to trigger the start of a pipe.
-	StartFunc func(bufferSize int, cancel <-chan struct{}, puller chan<- chan Params) ([]<-chan error, error)
+	StartFunc func(bufferSize int, cancel <-chan struct{}, puller chan<- chan mutator.Mutators) ([]<-chan error, error)
 
 	// NewMessageFunc is the closure to send a message into a pipe.
-	NewMessageFunc func(chan Params)
+	NewMessageFunc func(chan mutator.Mutators)
 
-	// PushParamsFunc is the closure to push new params into pipe.
-	PushParamsFunc func(params map[string][]func())
+	// PushParamsFunc is the closure to push new mutators into pipe.
+	PushParamsFunc func(mutators mutator.Mutators)
 )
 
 type (
@@ -59,8 +54,8 @@ type (
 		stateType
 		events <-chan event
 		errors <-chan error
-		pull   <-chan chan Params
-		push   <-chan map[string][]func()
+		pull   <-chan chan mutator.Mutators
+		push   <-chan mutator.Mutators
 	}
 
 	// stateType
@@ -79,9 +74,9 @@ const (
 // NewHandle returns new initalized handle that can be used to manage lifecycle.
 func NewHandle(start StartFunc) *Handle {
 	h := Handle{
-		startFn:    start,
-		events:     make(chan event, 1),
-		pushParams: make(chan map[string][]func(), 1),
+		startFn: start,
+		events:  make(chan event, 1),
+		push:    make(chan mutator.Mutators, 1),
 	}
 	return &h
 }
@@ -115,10 +110,10 @@ func (h *Handle) listen(s state, idle stateType, f errors) (state, stateType, er
 	for {
 		select {
 		case _ = <-s.push:
-			panic("push params not implemented")
+			panic("push mutators not implemented")
 		case puller := <-s.pull:
-			params := h.params[puller]
-			puller <- params
+			mutators := h.mutators[puller]
+			puller <- mutators
 			continue
 		case e := <-s.events:
 			s, err = h.transition(s, e)
@@ -166,14 +161,14 @@ func (h *Handle) transition(s state, e event) (state, error) {
 		case interrupt:
 			// this is a special case as ready
 			// state doesn't need an interruption.
-			close(h.pushParams)
+			close(h.push)
 			close(h.events)
 			return h.closed(), nil
 		case run:
-			h.pullParams = make(chan chan Params)
+			h.pull = make(chan chan mutator.Mutators)
 			ctx, cancelFn := context.WithCancel(ev.Context)
 			h.cancelFn = cancelFn
-			errChans, err := h.startFn(ev.BufferSize, ctx.Done(), h.pullParams)
+			errChans, err := h.startFn(ev.BufferSize, ctx.Done(), h.pull)
 			if err != nil {
 				return h.closed(), nil
 			}
@@ -208,34 +203,34 @@ func (h *Handle) transition(s state, e event) (state, error) {
 }
 
 // ready states that the handle is ready and user
-// can start it, send params or interrupt it.
+// can start it, send mutators or interrupt it.
 func (h *Handle) ready() state {
 	return state{
 		stateType: ready,
 		events:    h.events,
-		push:      h.pushParams,
+		push:      h.push,
 	}
 }
 
 // running states that the handle is running and user
-// can pause it, send params or interrupt it.
+// can pause it, send mutators or interrupt it.
 func (h *Handle) running() state {
 	return state{
 		stateType: running,
 		events:    h.events,
-		push:      h.pushParams,
-		pull:      h.pullParams,
+		push:      h.push,
+		pull:      h.pull,
 		errors:    h.merger.errors,
 	}
 }
 
 // paused states that the handle is paused and
-// user can resume it, send params or interrupt it.
+// user can resume it, send mutators or interrupt it.
 func (h *Handle) paused() state {
 	return state{
 		stateType: paused,
 		events:    h.events,
-		push:      h.pushParams,
+		push:      h.push,
 		errors:    h.merger.errors,
 	}
 }
@@ -244,7 +239,7 @@ func (h *Handle) paused() state {
 // user cannot do anything whith it anymore.
 func (h *Handle) interrupting() state {
 	h.cancelFn()
-	close(h.pushParams)
+	close(h.push)
 	close(h.events)
 	return state{
 		stateType: interrupting,
@@ -303,12 +298,8 @@ func (m merger) done(ec <-chan error) {
 	m.wg.Done()
 }
 
-func pushParams(h *Handle) PushParamsFunc {
-	return func(params map[string][]func()) {
-		// for id, param := range params {
-		// 	chainID := p.chainByComponent[id]
-		// 	chain := p.chains[chainID]
-		// 	chain.params = chain.params.Append(map[string][]func(){id: param})
-		// }
+func push(h *Handle) PushParamsFunc {
+	return func(mutators mutator.Mutators) {
+		// h.mutators = h.mutators.Append(mutators)
 	}
 }
