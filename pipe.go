@@ -5,11 +5,12 @@ import (
 	"fmt"
 
 	"pipelined.dev/signal"
+	"pipelined.dev/signal/pool"
 
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/internal/state"
 	"pipelined.dev/pipe/metric"
-	"pipelined.dev/signal/pool"
+	"pipelined.dev/pipe/mutator"
 )
 
 // pipeline components
@@ -83,7 +84,7 @@ type Line struct {
 	Sinks      []SinkFunc
 
 	numChannels int
-	params      chan state.Params
+	mutators    chan mutator.Mutators
 	pump        runner.Pump
 	processors  []runner.Processor
 	sinks       []runner.Sink
@@ -94,16 +95,16 @@ type Line struct {
 // controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 type Pipe struct {
 	handle *state.Handle
-	lines  map[chan state.Params]*Line // map chain id to chain
+	lines  map[chan mutator.Mutators]*Line // map chain id to chain
 }
 
 // New creates a new pipeline.
 // Returned pipeline is in Ready state.
 func New(ls ...*Line) *Pipe {
-	lines := make(map[chan state.Params]*Line)
+	lines := make(map[chan mutator.Mutators]*Line)
 	for _, l := range ls {
-		l.params = make(chan state.Params)
-		lines[l.params] = l
+		l.mutators = make(chan mutator.Mutators)
+		lines[l.mutators] = l
 	}
 	handle := state.NewHandle(startFunc(lines))
 	go state.Loop(handle)
@@ -178,9 +179,8 @@ func (l *Line) interrupt() []error {
 }
 
 // start starts the execution of pipe.
-func startFunc(lines map[chan state.Params]*Line) state.StartFunc {
-	return func(bufferSize int, cancel <-chan struct{}, give chan<- chan state.Params) ([]<-chan error, error) {
-
+func startFunc(lines map[chan mutator.Mutators]*Line) state.StartFunc {
+	return func(bufferSize int, cancel <-chan struct{}, give chan<- chan mutator.Mutators) ([]<-chan error, error) {
 		var errBind error
 		// try to bind all lines
 		for _, l := range lines {
@@ -205,10 +205,10 @@ func startFunc(lines map[chan state.Params]*Line) state.StartFunc {
 		// start all runners
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
-		for params, l := range lines {
+		for mutators, l := range lines {
 			p := pool.New(l.numChannels, bufferSize)
 			// start pump
-			out, errs := l.pump.Run(p, cancel, give, params)
+			out, errs := l.pump.Run(p, cancel, give, mutators)
 			errcList = append(errcList, errs)
 
 			// start chained processesing
@@ -251,11 +251,12 @@ func (p *Pipe) Close() chan error {
 	return p.handle.Interrupt()
 }
 
-// Push new params into pipe.
+// Push new mutators into pipe.
 // Calling this method after pipe is closed causes a panic.
-// func (p *Pipe) Push(id string, paramFuncs ...func()) {
-// 	p.handle.Push(state.Params{id: paramFuncs})
-// }
+// TODO: figure how to expose receivers.
+func (p *Pipe) push(r *mutator.Receiver, paramFuncs ...func()) {
+	p.handle.Push(mutator.Mutators{r: paramFuncs})
+}
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorFunc) []ProcessorFunc {

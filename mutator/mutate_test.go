@@ -1,26 +1,27 @@
-package state_test
+package mutator_test
 
 import (
 	"testing"
 
+	"pipelined.dev/pipe/mutator"
+
 	"github.com/stretchr/testify/assert"
-	"pipelined.dev/pipe/internal/state"
 )
 
-// paramMock used to set up test cases for params
+// paramMock used to set up test cases for mutators
 type paramMock struct {
-	uid        string
+	mutator.Receiver
 	value      int
 	operations int
 	expected   int
 }
 
-func (m *paramMock) params() state.Params {
-	var p state.Params
-	return p.Add(m.uid, m.param())
+func (m *paramMock) mutators() mutator.Mutators {
+	var p mutator.Mutators
+	return p.Add(&m.Receiver, m.param())
 }
 
-// params closure to mutate value
+// mutators closure to mutate value
 func (m *paramMock) param() func() {
 	return func() {
 		m.value += 10
@@ -35,7 +36,6 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 0,
 					expected:   0,
 				},
@@ -44,7 +44,6 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 1,
 					expected:   10,
 				},
@@ -53,7 +52,6 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 2,
 					expected:   20,
 				},
@@ -62,12 +60,10 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 3,
 					expected:   30,
 				},
 				&paramMock{
-					uid:        "2",
 					operations: 4,
 					expected:   40,
 				},
@@ -76,14 +72,14 @@ func TestAddParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var params state.Params
+		var mutators mutator.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				params = params.Add(m.uid, m.param())
+				mutators = mutators.Add(&m.Receiver, m.param())
 			}
 		}
 		for _, m := range c.mocks {
-			params.ApplyTo(m.uid)
+			mutators.ApplyTo(&m.Receiver)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
@@ -96,7 +92,6 @@ func TestAppendParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 0,
 					expected:   0,
 				},
@@ -105,7 +100,6 @@ func TestAppendParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 1,
 					expected:   10,
 				},
@@ -114,12 +108,10 @@ func TestAppendParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
-					uid:        "2",
 					operations: 3,
 					expected:   30,
 				},
@@ -128,14 +120,14 @@ func TestAppendParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var params state.Params
+		var mutators mutator.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				params = params.Append(m.params())
+				mutators = mutators.Append(m.mutators())
 			}
 		}
 		for _, m := range c.mocks {
-			params.ApplyTo(m.uid)
+			mutators.ApplyTo(&m.Receiver)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
@@ -148,7 +140,6 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 0,
 					expected:   0,
 				},
@@ -157,7 +148,6 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 1,
 					expected:   10,
 				},
@@ -166,12 +156,10 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
-					uid:        "2",
 					operations: 3,
 					expected:   30,
 				},
@@ -180,12 +168,10 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					uid:        "1",
 					operations: 4,
 					expected:   40,
 				},
 				&paramMock{
-					uid:        "2",
 					operations: 0,
 					expected:   0,
 				},
@@ -194,17 +180,17 @@ func TestDetachParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var params state.Params
+		var mutators mutator.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				params = params.Add(m.uid, m.param())
+				mutators = mutators.Add(&m.Receiver, m.param())
 			}
 		}
 		for _, m := range c.mocks {
-			d := params.Detach(m.uid)
-			params.ApplyTo(m.uid)
+			d := mutators.Detach(&m.Receiver)
+			mutators.ApplyTo(&m.Receiver)
 			assert.Equal(t, 0, m.value)
-			d.ApplyTo(m.uid)
+			d.ApplyTo(&m.Receiver)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
