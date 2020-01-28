@@ -28,8 +28,10 @@ type (
 	// Pump executes pipe.Pump components.
 	Pump struct {
 		mutator.Receiver
-		Fn    func(out signal.Float64) error
-		Meter metric.ResetFunc
+		signal.SampleRate
+		NumChannels int
+		Fn          func(out signal.Float64) error
+		Meter       metric.ResetFunc
 		Hooks
 		outputPool Pool
 	}
@@ -37,8 +39,10 @@ type (
 	// Processor executes pipe.Processor components.
 	Processor struct {
 		mutator.Receiver
-		Fn    func(in, out signal.Float64) error
-		Meter metric.ResetFunc
+		signal.SampleRate
+		NumChannels int
+		Fn          func(in, out signal.Float64) error
+		Meter       metric.ResetFunc
 		Hooks
 		inputPool  Pool
 		outputPool Pool
@@ -47,8 +51,10 @@ type (
 	// Sink executes pipe.Sink components.
 	Sink struct {
 		mutator.Receiver
-		Fn    func(in signal.Float64) error
-		Meter metric.ResetFunc
+		signal.SampleRate
+		NumChannels int
+		Fn          func(in signal.Float64) error
+		Meter       metric.ResetFunc
 		Hooks
 		inputPool Pool
 	}

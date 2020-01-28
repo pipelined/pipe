@@ -38,7 +38,7 @@ type (
 
 	SinkFunc func(signal.SampleRate, int) (Sink, error)
 	// Sink is an interface for final stage in audio pipeline.
-	// This components must not change buffer content. Line can have
+	// This components must not change buffer content. L can have
 	// multiple sinks and this will cause race condition.
 	Sink struct {
 		Sink func(in signal.Float64) error
@@ -75,14 +75,8 @@ type (
 	}
 )
 
-// Line is a sound processing sequence of components.
-// It has a single pump, zero or many processors executed sequentially
-// and one or many sinks executed in parallel.
-type Line struct {
-	Pump       PumpFunc
-	Processors []ProcessorFunc
-	Sinks      []SinkFunc
-
+// L (Line) is a sequence of DSP components.
+type L struct {
 	numChannels int
 	mutators    chan mutator.Mutators
 	pump        runner.Pump
@@ -90,18 +84,46 @@ type Line struct {
 	sinks       []runner.Sink
 }
 
+// Routing defines sequence of components closures.
+// It has a single pump, zero or many processors, executed
+// sequentially and one or many sinks executed in parallel.
+type Routing struct {
+	Pump       PumpFunc
+	Processors []ProcessorFunc
+	Sinks      []SinkFunc
+}
+
 // Pipe controls the execution of multiple chained lines. Lines might be chained
 // through components, mixer for example.  If lines are not chained, they must be
 // controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 type Pipe struct {
 	handle *state.Handle
-	lines  map[chan mutator.Mutators]*Line // map chain id to chain
+	lines  map[chan mutator.Mutators]*L // map chain id to chain
+}
+
+func Line(r Routing) (*L, error) {
+	var errBind error
+	// try to bind all lines
+	line, err := r.bind()
+	if err != nil {
+		errBind = fmt.Errorf("error binding %w", err)
+	}
+
+	// interrupt if error has happened
+	if errBind != nil {
+		var errsInterrupt []error
+		if errs := line.interrupt(); errs != nil {
+			errsInterrupt = append(errsInterrupt, errs...)
+		}
+		return nil, fmt.Errorf("%w\n%w", errBind, flatenErrors(errsInterrupt))
+	}
+	return line, nil
 }
 
 // New creates a new pipeline.
 // Returned pipeline is in Ready state.
-func New(ls ...*Line) *Pipe {
-	lines := make(map[chan mutator.Mutators]*Line)
+func New(ls ...*L) *Pipe {
+	lines := make(map[chan mutator.Mutators]*L)
 	for _, l := range ls {
 		l.mutators = make(chan mutator.Mutators)
 		lines[l.mutators] = l
@@ -114,51 +136,66 @@ func New(ls ...*Line) *Pipe {
 	}
 }
 
-func (l *Line) bind() error {
-	pump, sampleRate, numChannels, err := l.Pump()
+func (r Routing) bind() (*L, error) {
+	var (
+		line        L
+		pump        Pump
+		processor   Processor
+		sink        Sink
+		numChannels int
+		sampleRate  signal.SampleRate
+		err         error
+	)
+	pump, sampleRate, numChannels, err = r.Pump()
 	if err != nil {
-		return fmt.Errorf("pump: %w", err)
+		return &line, fmt.Errorf("pump: %w", err)
 	}
-	l.numChannels = numChannels
-	l.pump = runner.Pump{
-		Fn:    pump.Pump,
-		Meter: metric.Meter(l.Pump, signal.SampleRate(sampleRate)),
-		Hooks: bindHooks(pump.Hooks),
+
+	line.pump = runner.Pump{
+		SampleRate:  sampleRate,
+		NumChannels: numChannels,
+		Fn:          pump.Pump,
+		Meter:       metric.Meter(pump, signal.SampleRate(sampleRate)),
+		Hooks:       bindHooks(pump.Hooks),
 	}
 
 	// bind processors
-	for _, processorFn := range l.Processors {
-		processor, sampleRate, _, err := processorFn(sampleRate, numChannels)
+	for _, fn := range r.Processors {
+		processor, sampleRate, numChannels, err = fn(sampleRate, numChannels)
 		if err != nil {
-			return fmt.Errorf("processor: %w", err)
+			return &line, fmt.Errorf("processor: %w", err)
 		}
-		l.processors = append(l.processors,
+		line.processors = append(line.processors,
 			runner.Processor{
-				Fn:    processor.Process,
-				Meter: metric.Meter(processor, signal.SampleRate(sampleRate)),
-				Hooks: bindHooks(processor.Hooks),
+				SampleRate:  sampleRate,
+				NumChannels: numChannels,
+				Fn:          processor.Process,
+				Meter:       metric.Meter(processor, signal.SampleRate(sampleRate)),
+				Hooks:       bindHooks(processor.Hooks),
 			},
 		)
 	}
 
 	// bind sinks
-	for _, sinkFn := range l.Sinks {
-		sink, err := sinkFn(sampleRate, numChannels)
+	for _, sinkFn := range r.Sinks {
+		sink, err = sinkFn(sampleRate, numChannels)
 		if err != nil {
-			return fmt.Errorf("sink: %w", err)
+			return &line, fmt.Errorf("sink: %w", err)
 		}
-		l.sinks = append(l.sinks,
+		line.sinks = append(line.sinks,
 			runner.Sink{
-				Fn:    sink.Sink,
-				Meter: metric.Meter(sink, signal.SampleRate(sampleRate)),
-				Hooks: bindHooks(sink.Hooks),
+				SampleRate:  sampleRate,
+				NumChannels: numChannels,
+				Fn:          sink.Sink,
+				Meter:       metric.Meter(sink, signal.SampleRate(sampleRate)),
+				Hooks:       bindHooks(sink.Hooks),
 			},
 		)
 	}
-	return nil
+	return &line, nil
 }
 
-func (l *Line) interrupt() []error {
+func (l *L) interrupt() []error {
 	var errs []error
 	if err := l.pump.Hooks.Interrupt.Call(); err != nil {
 		errs = append(errs, err)
@@ -179,29 +216,8 @@ func (l *Line) interrupt() []error {
 }
 
 // start starts the execution of pipe.
-func startFunc(lines map[chan mutator.Mutators]*Line) state.StartFunc {
+func startFunc(lines map[chan mutator.Mutators]*L) state.StartFunc {
 	return func(bufferSize int, cancel <-chan struct{}, give chan<- chan mutator.Mutators) ([]<-chan error, error) {
-		var errBind error
-		// try to bind all lines
-		for _, l := range lines {
-			err := l.bind()
-			if err != nil {
-				errBind = fmt.Errorf("error binding %w", err)
-				break
-			}
-		}
-
-		// interrupt if error has happened
-		if errBind != nil {
-			var errsInterrupt []error
-			for _, l := range lines {
-				if errs := l.interrupt(); errs != nil {
-					errsInterrupt = append(errsInterrupt, errs...)
-				}
-			}
-			return nil, fmt.Errorf("%w\n%w", errBind, flatenErrors(errsInterrupt))
-		}
-
 		// start all runners
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
