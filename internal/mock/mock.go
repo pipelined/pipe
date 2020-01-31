@@ -2,6 +2,7 @@
 package mock
 
 import (
+	"context"
 	"io"
 	"time"
 
@@ -23,39 +24,22 @@ func (c *Counter) advance(size int) {
 	c.Samples = c.Samples + size
 }
 
-// Hooks allows to mock components hooks.
-type Hooks struct {
-	Resetted    bool
-	Flushed     bool
-	Interrupted bool
-
-	ErrorOnReset     error
-	ErrorOnFlush     error
-	ErrorOnInterrupt error
-}
-
-// Reset implements pipe.Resetter.
-func (h *Hooks) Reset() error {
-	h.Resetted = true
-	return h.ErrorOnReset
-}
-
-// Interrupt implements pipe.Interrupter.
-func (h *Hooks) Interrupt() error {
-	h.Interrupted = true
-	return h.ErrorOnInterrupt
+// Flusher allows to mock components hooks.
+type Flusher struct {
+	Flushed      bool
+	ErrorOnFlush error
 }
 
 // Flush implements pipe.Flusher.
-func (h *Hooks) Flush() error {
-	h.Flushed = true
-	return h.ErrorOnFlush
+func (f *Flusher) Flush(ctx context.Context) error {
+	f.Flushed = true
+	return f.ErrorOnFlush
 }
 
 // PumpOptions are settings for pipe.Pump mock.
 type PumpOptions struct {
 	Counter
-	Hooks
+	Flusher
 	Interval    time.Duration
 	Limit       int
 	Value       float64
@@ -68,11 +52,7 @@ type PumpOptions struct {
 func Pump(options *PumpOptions) pipe.PumpFunc {
 	return func() (pipe.Pump, signal.SampleRate, int, error) {
 		return pipe.Pump{
-			Hooks: pipe.Hooks{
-				Reset:     options.Hooks.Reset,
-				Interrupt: options.Hooks.Interrupt,
-				Flush:     options.Hooks.Flush,
-			},
+			Flush: options.Flusher.Flush,
 			Pump: func(b signal.Float64) error {
 				if options.ErrorOnCall != nil {
 					return options.ErrorOnCall
@@ -106,7 +86,7 @@ func Pump(options *PumpOptions) pipe.PumpFunc {
 // ProcessorOptions are settings for pipe.Processor mock.
 type ProcessorOptions struct {
 	Counter
-	Hooks
+	Flusher
 	ErrorOnCall error
 }
 
@@ -114,11 +94,7 @@ type ProcessorOptions struct {
 func Processor(options *ProcessorOptions) pipe.ProcessorFunc {
 	return func(sampleRate signal.SampleRate, numChannels int) (pipe.Processor, signal.SampleRate, int, error) {
 		return pipe.Processor{
-			Hooks: pipe.Hooks{
-				Reset:     options.Hooks.Reset,
-				Interrupt: options.Hooks.Interrupt,
-				Flush:     options.Hooks.Flush,
-			},
+			Flush: options.Flusher.Flush,
 			Process: func(in, out signal.Float64) error {
 				if options.ErrorOnCall != nil {
 					return options.ErrorOnCall
@@ -136,7 +112,7 @@ func Processor(options *ProcessorOptions) pipe.ProcessorFunc {
 // SinkOptions are settings for pipe.Processor mock.
 type SinkOptions struct {
 	Counter
-	Hooks
+	Flusher
 	Discard     bool
 	ErrorOnCall error
 }
@@ -145,11 +121,7 @@ type SinkOptions struct {
 func Sink(options *SinkOptions) pipe.SinkFunc {
 	return func(sampleRate signal.SampleRate, numChannels int) (pipe.Sink, error) {
 		return pipe.Sink{
-			Hooks: pipe.Hooks{
-				Reset:     options.Hooks.Reset,
-				Interrupt: options.Hooks.Interrupt,
-				Flush:     options.Hooks.Flush,
-			},
+			Flush: options.Flusher.Flush,
 			Sink: func(in signal.Float64) error {
 				if options.ErrorOnCall != nil {
 					return options.ErrorOnCall

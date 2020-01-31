@@ -1,6 +1,7 @@
 package mock_test
 
 import (
+	"context"
 	"errors"
 	"io"
 	"testing"
@@ -166,32 +167,15 @@ func TestSink(t *testing.T) {
 }
 
 func TestHooks(t *testing.T) {
-	testReset := func(h *mock.Hooks, expected error) func(*testing.T) {
+	testFlush := func(f *mock.Flusher, expected error) func(*testing.T) {
 		return func(t *testing.T) {
-			err := h.Reset()
-			assertError(t, expected, err)
-		}
-	}
-	testFlush := func(h *mock.Hooks, expected error) func(*testing.T) {
-		return func(t *testing.T) {
-			err := h.Flush()
-			assertError(t, expected, err)
-		}
-	}
-	testInterrupt := func(h *mock.Hooks, expected error) func(*testing.T) {
-		return func(t *testing.T) {
-			err := h.Interrupt()
+			err := f.Flush(context.Background())
 			assertError(t, expected, err)
 		}
 	}
 
-	t.Run("flush nil", testFlush(&mock.Hooks{}, nil))
-	t.Run("reset nil", testReset(&mock.Hooks{}, nil))
-	t.Run("interrupt nil", testInterrupt(&mock.Hooks{}, nil))
-
-	t.Run("flush", testFlush(&mock.Hooks{ErrorOnFlush: errTest}, errTest))
-	t.Run("reset", testReset(&mock.Hooks{ErrorOnReset: errTest}, errTest))
-	t.Run("interrupt", testInterrupt(&mock.Hooks{ErrorOnInterrupt: errTest}, errTest))
+	t.Run("flush nil", testFlush(&mock.Flusher{}, nil))
+	t.Run("flush err", testFlush(&mock.Flusher{ErrorOnFlush: errTest}, errTest))
 }
 
 func assertError(t *testing.T, expected, err error) {
