@@ -22,7 +22,7 @@ type (
 	// Buffer size can only be decreased.
 	Pump struct {
 		Pump func(out signal.Float64) error
-		Hooks
+		Flush
 	}
 
 	ProcessorFunc func(signal.SampleRate, int) (Processor, signal.SampleRate, int, error)
@@ -33,7 +33,7 @@ type (
 	// Number of channels cannot be changed.
 	Processor struct {
 		Process func(in, out signal.Float64) error
-		Hooks
+		Flush
 	}
 
 	SinkFunc func(signal.SampleRate, int) (Sink, error)
@@ -42,37 +42,10 @@ type (
 	// multiple sinks and this will cause race condition.
 	Sink struct {
 		Sink func(in signal.Float64) error
-		Hooks
+		Flush
 	}
 
-	Hook func() error
-
-	Hooks struct {
-		Flush     Hook
-		Interrupt Hook
-		Reset     Hook
-	}
-)
-
-// optional interfaces
-type (
-	// Resetter is a component that must be resetted before new run.
-	// Reset hook is executed when Run happens.
-	Resetter interface {
-		Reset() error
-	}
-
-	// Interrupter is a component that has custom interruption logic.
-	// Interrupt hook is triggered when pipe run is cancelled.
-	Interrupter interface {
-		Interrupt() error
-	}
-
-	// Flusher is a component that must be flushed in the end of execution.
-	// Flush hook is executed in the end of the run. It will be skipped if Reset hook has failed.
-	Flusher interface {
-		Flush() error
-	}
+	Flush func(context.Context) error
 )
 
 // L (Line) is a sequence of DSP components.
@@ -102,20 +75,10 @@ type Pipe struct {
 }
 
 func Line(r Routing) (*L, error) {
-	var errBind error
 	// try to bind all lines
 	line, err := r.bind()
 	if err != nil {
-		errBind = fmt.Errorf("error binding %w", err)
-	}
-
-	// interrupt if error has happened
-	if errBind != nil {
-		var errsInterrupt []error
-		if errs := line.interrupt(); errs != nil {
-			errsInterrupt = append(errsInterrupt, errs...)
-		}
-		return nil, fmt.Errorf("%w\n%w", errBind, flatenErrors(errsInterrupt))
+		return nil, fmt.Errorf("error binding %w", err)
 	}
 	return line, nil
 }
@@ -148,30 +111,29 @@ func (r Routing) bind() (*L, error) {
 	)
 	pump, sampleRate, numChannels, err = r.Pump()
 	if err != nil {
-		return &line, fmt.Errorf("pump: %w", err)
+		return nil, fmt.Errorf("pump: %w", err)
 	}
-
 	line.pump = runner.Pump{
 		SampleRate:  sampleRate,
 		NumChannels: numChannels,
 		Fn:          pump.Pump,
+		Flush:       pump.Flush,
 		Meter:       metric.Meter(pump, signal.SampleRate(sampleRate)),
-		Hooks:       bindHooks(pump.Hooks),
 	}
 
 	// bind processors
 	for _, fn := range r.Processors {
 		processor, sampleRate, numChannels, err = fn(sampleRate, numChannels)
 		if err != nil {
-			return &line, fmt.Errorf("processor: %w", err)
+			return nil, fmt.Errorf("processor: %w", err)
 		}
 		line.processors = append(line.processors,
 			runner.Processor{
 				SampleRate:  sampleRate,
 				NumChannels: numChannels,
 				Fn:          processor.Process,
+				Flush:       processor.Flush,
 				Meter:       metric.Meter(processor, signal.SampleRate(sampleRate)),
-				Hooks:       bindHooks(processor.Hooks),
 			},
 		)
 	}
@@ -180,60 +142,40 @@ func (r Routing) bind() (*L, error) {
 	for _, sinkFn := range r.Sinks {
 		sink, err = sinkFn(sampleRate, numChannels)
 		if err != nil {
-			return &line, fmt.Errorf("sink: %w", err)
+			return nil, fmt.Errorf("sink: %w", err)
 		}
 		line.sinks = append(line.sinks,
 			runner.Sink{
 				SampleRate:  sampleRate,
 				NumChannels: numChannels,
 				Fn:          sink.Sink,
+				Flush:       sink.Flush,
 				Meter:       metric.Meter(sink, signal.SampleRate(sampleRate)),
-				Hooks:       bindHooks(sink.Hooks),
 			},
 		)
 	}
 	return &line, nil
 }
 
-func (l *L) interrupt() []error {
-	var errs []error
-	if err := l.pump.Hooks.Interrupt.Call(); err != nil {
-		errs = append(errs, err)
-	}
-
-	for _, proc := range l.processors {
-		if err := proc.Hooks.Interrupt.Call(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	for _, sink := range l.sinks {
-		if err := sink.Hooks.Interrupt.Call(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return errs
-}
-
 // start starts the execution of pipe.
 func startFunc(lines map[chan mutator.Mutators]*L) state.StartFunc {
-	return func(bufferSize int, cancel <-chan struct{}, give chan<- chan mutator.Mutators) ([]<-chan error, error) {
+	return func(ctx context.Context, bufferSize int, give chan<- chan mutator.Mutators) ([]<-chan error, error) {
 		// start all runners
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
 		for mutators, l := range lines {
 			p := pool.New(l.numChannels, bufferSize)
 			// start pump
-			out, errs := l.pump.Run(p, cancel, give, mutators)
+			out, errs := l.pump.Run(ctx, p, give, mutators)
 			errcList = append(errcList, errs)
 
 			// start chained processesing
 			for _, proc := range l.processors {
-				out, errs = proc.Run(cancel, out)
+				out, errs = proc.Run(ctx, out)
 				errcList = append(errcList, errs)
 			}
 
-			sinkErrcList := runner.Broadcast(p, l.sinks, cancel, out)
+			sinkErrcList := runner.Broadcast(ctx, p, l.sinks, out)
 			errcList = append(errcList, sinkErrcList...)
 		}
 		return errcList, nil
@@ -292,15 +234,6 @@ func Wait(d <-chan error) error {
 		}
 	}
 	return nil
-}
-
-// bindHooks of component.
-func bindHooks(h Hooks) runner.Hooks {
-	return runner.Hooks{
-		Flush:     runner.Hook(h.Flush),
-		Interrupt: runner.Hook(h.Interrupt),
-		Reset:     runner.Hook(h.Reset),
-	}
 }
 
 func flatenErrors(errs []error) error {
