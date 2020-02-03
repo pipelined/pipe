@@ -29,16 +29,14 @@ func TestPipe(t *testing.T) {
 	sink1 := mock.Sink(&mock.SinkOptions{Discard: true})
 	sink2 := mock.Sink(&mock.SinkOptions{Discard: true})
 
-	line, err := pipe.Line(
-		pipe.Routing{
-			Pump:       pump,
-			Processors: pipe.Processors(proc1, proc2),
-			Sinks:      pipe.Sinks(sink1, sink2),
-		},
-	)
+	route, err := pipe.Line{
+		Pump:       pump,
+		Processors: pipe.Processors(proc1, proc2),
+		Sinks:      pipe.Sinks(sink1, sink2),
+	}.Route()
 	assert.Nil(t, err)
 
-	p := pipe.New(line)
+	p := pipe.New(route)
 
 	// start
 	runc := p.Run(context.Background(), bufferSize)
@@ -62,25 +60,23 @@ func TestPipe(t *testing.T) {
 // 1 Pump, 2 Processors, 2 Sinks, 1000 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		line, _ := pipe.Line(
-			pipe.Routing{
-				Pump: mock.Pump(
-					&mock.PumpOptions{
-						Limit:       862 * bufferSize,
-						NumChannels: 2,
-					},
-				),
-				Processors: pipe.Processors(
-					mock.Processor(&mock.ProcessorOptions{}),
-					mock.Processor(&mock.ProcessorOptions{}),
-				),
-				Sinks: pipe.Sinks(
-					mock.Sink(&mock.SinkOptions{Discard: true}),
-					mock.Sink(&mock.SinkOptions{Discard: true}),
-				),
-			},
-		)
-		l := pipe.New(line)
+		route, _ := pipe.Line{
+			Pump: mock.Pump(
+				&mock.PumpOptions{
+					Limit:       862 * bufferSize,
+					NumChannels: 2,
+				},
+			),
+			Processors: pipe.Processors(
+				mock.Processor(&mock.ProcessorOptions{}),
+				mock.Processor(&mock.ProcessorOptions{}),
+			),
+			Sinks: pipe.Sinks(
+				mock.Sink(&mock.SinkOptions{Discard: true}),
+				mock.Sink(&mock.SinkOptions{Discard: true}),
+			),
+		}.Route()
+		l := pipe.New(route)
 		pipe.Wait(l.Run(context.Background(), bufferSize))
 		pipe.Wait(l.Close())
 	}
