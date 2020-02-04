@@ -25,39 +25,40 @@ type Message struct {
 	Mutators mutator.Mutators // Mutators for pipe.
 }
 
+type Output struct {
+	signal.SampleRate
+	NumChannels int
+}
+
 type (
 	// Pump executes pipe.Pump components.
 	Pump struct {
 		mutator.Receiver
-		signal.SampleRate
-		NumChannels int
-		Fn          func(out signal.Float64) error
-		Flush       func(context.Context) error
-		Meter       metric.ResetFunc
-		outputPool  Pool
+		Output
+		Fn         func(out signal.Float64) error
+		Flush      func(context.Context) error
+		Meter      metric.ResetFunc
+		outputPool Pool
 	}
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
 		mutator.Receiver
-		signal.SampleRate
-		NumChannels int
-		Fn          func(in, out signal.Float64) error
-		Flush       func(context.Context) error
-		Meter       metric.ResetFunc
-		inputPool   Pool
-		outputPool  Pool
+		Output
+		Fn         func(in, out signal.Float64) error
+		Flush      func(context.Context) error
+		Meter      metric.ResetFunc
+		inputPool  Pool
+		outputPool Pool
 	}
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
 		mutator.Receiver
-		signal.SampleRate
-		NumChannels int
-		Fn          func(in signal.Float64) error
-		Flush       func(context.Context) error
-		Meter       metric.ResetFunc
-		inputPool   Pool
+		Fn        func(in signal.Float64) error
+		Flush     func(context.Context) error
+		Meter     metric.ResetFunc
+		inputPool Pool
 	}
 )
 
