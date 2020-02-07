@@ -38,7 +38,7 @@ type (
 	}
 
 	// StartFunc is the closure to trigger the start of a pipe.
-	StartFunc func(ctx context.Context, bufferSize int, puller chan<- chan mutator.Mutators) ([]<-chan error, error)
+	StartFunc func(ctx context.Context, puller chan<- chan mutator.Mutators) ([]<-chan error, error)
 
 	// NewMessageFunc is the closure to send a message into a pipe.
 	NewMessageFunc func(chan mutator.Mutators)
@@ -168,7 +168,7 @@ func (h *Handle) transition(s state, e event) (state, error) {
 			h.pull = make(chan chan mutator.Mutators)
 			ctx, cancelFn := context.WithCancel(ev.Context)
 			h.cancelFn = cancelFn
-			errChans, err := h.startFn(ctx, ev.BufferSize, h.pull)
+			errChans, err := h.startFn(ctx, h.pull)
 			if err != nil {
 				return h.closed(), nil
 			}

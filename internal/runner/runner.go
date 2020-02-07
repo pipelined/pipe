@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync/atomic"
 
 	"pipelined.dev/signal"
 
@@ -20,50 +19,57 @@ type Pool interface {
 
 // Message is a main structure for pipe transport
 type Message struct {
-	SinkRefs int32            // number of sinks referencing buffer in this message.
 	Buffer   signal.Float64   // Buffer of message.
 	Mutators mutator.Mutators // Mutators for pipe.
 }
 
-type Output struct {
+type Bus struct {
 	signal.SampleRate
 	NumChannels int
+	Pool
 }
 
 type (
 	// Pump executes pipe.Pump components.
 	Pump struct {
 		mutator.Receiver
-		Output
-		Fn         func(out signal.Float64) error
-		Flush      func(context.Context) error
-		Meter      metric.ResetFunc
-		outputPool Pool
+		Flush
+		Output Bus
+		Fn     func(out signal.Float64) error
+		Meter  metric.ResetFunc
 	}
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
 		mutator.Receiver
-		Output
-		Fn         func(in, out signal.Float64) error
-		Flush      func(context.Context) error
-		Meter      metric.ResetFunc
-		inputPool  Pool
-		outputPool Pool
+		Flush
+		Input  Bus
+		Output Bus
+		Fn     func(in, out signal.Float64) error
+		Meter  metric.ResetFunc
 	}
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
 		mutator.Receiver
-		Fn        func(in signal.Float64) error
-		Flush     func(context.Context) error
-		Meter     metric.ResetFunc
-		inputPool Pool
+		Flush
+		Input Bus
+		Fn    func(in signal.Float64) error
+		Meter metric.ResetFunc
 	}
 )
 
+type Flush func(context.Context) error
+
+func (fn Flush) call(ctx context.Context) error {
+	if fn == nil {
+		return nil
+	}
+	return fn(ctx)
+}
+
 // Run starts the Pump runner.
-func (r Pump) Run(ctx context.Context, p Pool, give chan<- chan mutator.Mutators, take chan mutator.Mutators) (<-chan Message, <-chan error) {
+func (r Pump) Run(ctx context.Context, give chan<- chan mutator.Mutators, take chan mutator.Mutators) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
 	meter := r.Meter()
@@ -72,12 +78,15 @@ func (r Pump) Run(ctx context.Context, p Pool, give chan<- chan mutator.Mutators
 		defer close(errs)
 		// Flush hook on return
 		defer func() {
-			if err := r.Flush(ctx); err != nil {
+			if err := r.Flush.call(ctx); err != nil {
 				errs <- fmt.Errorf("error flushing pump: %w", err)
 			}
 		}()
-		var err error
-		var Mutators mutator.Mutators
+		var (
+			err      error
+			mutators mutator.Mutators
+			output   signal.Float64
+		)
 		for {
 			// request new message
 			select {
@@ -88,18 +97,16 @@ func (r Pump) Run(ctx context.Context, p Pool, give chan<- chan mutator.Mutators
 
 			// receive new message
 			select {
-			case Mutators = <-take:
+			case mutators = <-take:
 			case <-ctx.Done():
 				return
 			}
-			m := Message{Mutators: Mutators}
-			m.Mutators.ApplyTo(&r.Receiver) // apply Mutators
+			mutators.ApplyTo(&r.Receiver) // apply Mutators
 
 			// allocate new buffer
-			m.Buffer = p.Alloc()
-
-			err = r.Fn(m.Buffer)   // pump new buffer
-			meter(m.Buffer.Size()) // capture metrics
+			output = r.Output.Alloc()
+			err = r.Fn(output)   // pump new buffer
+			meter(output.Size()) // capture metrics
 			// handle error
 			if err != nil {
 				if err != io.EOF {
@@ -110,7 +117,7 @@ func (r Pump) Run(ctx context.Context, p Pool, give chan<- chan mutator.Mutators
 
 			// push message further
 			select {
-			case out <- m:
+			case out <- Message{Mutators: mutators, Buffer: output}:
 			case <-ctx.Done():
 				return
 			}
@@ -129,13 +136,16 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 		defer close(errs)
 		// Flush hook on return
 		defer func() {
-			if err := r.Flush(ctx); err != nil {
+			if err := r.Flush.call(ctx); err != nil {
 				errs <- fmt.Errorf("error flushing processor: %w", err)
 			}
 		}()
-		var err error
-		var m Message
-		var ok bool
+		var (
+			err    error
+			m      Message
+			ok     bool
+			output signal.Float64
+		)
 		for {
 			// retrieve new message
 			select {
@@ -148,17 +158,18 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 			}
 
 			m.Mutators.ApplyTo(&r.Receiver) // apply Mutators
-			// err = r.Fn(m.Buffer)        // process new buffer
+			output = r.Output.Alloc()
+			err = r.Fn(m.Buffer, output) // process new buffer
+			meter(output.Size())         // capture metrics
+			r.Input.Free(m.Buffer)       // put buffer back to the input pool
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
 				return
 			}
 
-			meter(m.Buffer.Size()) // capture metrics
-
 			// send message further
 			select {
-			case out <- m:
+			case out <- Message{Mutators: m.Mutators, Buffer: output}:
 			case <-ctx.Done():
 				return
 			}
@@ -168,14 +179,14 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 }
 
 // Run starts the sink runner.
-func (r Sink) Run(ctx context.Context, p Pool, in <-chan Message) <-chan error {
+func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 	errs := make(chan error, 1)
 	meter := r.Meter()
 	go func() {
 		defer close(errs)
 		// Flush hook on return
 		defer func() {
-			if err := r.Flush(ctx); err != nil {
+			if err := r.Flush.call(ctx); err != nil {
 				errs <- fmt.Errorf("error flushing sink: %w", err)
 			}
 		}()
@@ -194,54 +205,11 @@ func (r Sink) Run(ctx context.Context, p Pool, in <-chan Message) <-chan error {
 
 			m.Mutators.ApplyTo(&r.Receiver) // apply Mutators
 			err := r.Fn(m.Buffer)           // sink a buffer
+			meter(m.Buffer.Size())          // capture metrics
+			r.Input.Free(m.Buffer)
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)
 				return
-			}
-			meter(m.Buffer.Size()) // capture metrics
-			if atomic.AddInt32(&m.SinkRefs, -1) == 0 {
-				p.Free(m.Buffer)
-			}
-		}
-	}()
-
-	return errs
-}
-
-// Broadcast passes messages to all sinks.
-func Broadcast(ctx context.Context, p Pool, sinks []Sink, in <-chan Message) []<-chan error {
-	//init errs for sinks error channels
-	errs := make([]<-chan error, 0, len(sinks))
-	//list of channels for broadcast
-	broadcasts := make([]chan Message, len(sinks))
-	for i := range broadcasts {
-		broadcasts[i] = make(chan Message, 1)
-	}
-
-	//start broadcast
-	for i, s := range sinks {
-		errs = append(errs, s.Run(ctx, p, broadcasts[i]))
-	}
-
-	go func() {
-		//close broadcasts on return
-		defer func() {
-			for i := range broadcasts {
-				close(broadcasts[i])
-			}
-		}()
-		for msg := range in {
-			for i := range broadcasts {
-				m := Message{
-					SinkRefs: int32(len(broadcasts)),
-					Buffer:   msg.Buffer,
-					Mutators: msg.Mutators.Detach(&sinks[i].Receiver),
-				}
-				select {
-				case broadcasts[i] <- m:
-				case <-ctx.Done():
-					return
-				}
 			}
 		}
 	}()
