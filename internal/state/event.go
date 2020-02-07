@@ -28,7 +28,6 @@ type (
 	// run event is sent to start the run.
 	run struct {
 		context.Context
-		BufferSize int
 		errors
 	}
 
@@ -59,12 +58,11 @@ func (f errors) feedback() chan error {
 
 // Run sends a run event into handle.
 // Calling this method after Interrupt, will cause panic.
-func (h *Handle) Run(ctx context.Context, bufferSize int) chan error {
+func (h *Handle) Run(ctx context.Context) chan error {
 	errors := make(chan error, 1)
 	h.events <- run{
-		Context:    ctx,
-		BufferSize: bufferSize,
-		errors:     errors,
+		Context: ctx,
+		errors:  errors,
 	}
 	return errors
 }
