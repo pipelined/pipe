@@ -50,7 +50,7 @@ type PumpOptions struct {
 
 // Pump returns closure with mocked pump.
 func Pump(options *PumpOptions) pipe.PumpFunc {
-	return func() (pipe.Pump, signal.SampleRate, int, error) {
+	return func(bufferSize int) (pipe.Pump, signal.SampleRate, int, error) {
 		return pipe.Pump{
 			Flush: options.Flusher.Flush,
 			Pump: func(b signal.Float64) error {
@@ -92,7 +92,7 @@ type ProcessorOptions struct {
 
 // Processor returns closure with mocked processor.
 func Processor(options *ProcessorOptions) pipe.ProcessorFunc {
-	return func(sampleRate signal.SampleRate, numChannels int) (pipe.Processor, signal.SampleRate, int, error) {
+	return func(bufferSize int, sampleRate signal.SampleRate, numChannels int) (pipe.Processor, signal.SampleRate, int, error) {
 		return pipe.Processor{
 			Flush: options.Flusher.Flush,
 			Process: func(in, out signal.Float64) error {
@@ -119,7 +119,7 @@ type SinkOptions struct {
 
 // Sink returns closure with mocked processor.
 func Sink(options *SinkOptions) pipe.SinkFunc {
-	return func(sampleRate signal.SampleRate, numChannels int) (pipe.Sink, error) {
+	return func(bufferSize int, sampleRate signal.SampleRate, numChannels int) (pipe.Sink, error) {
 		return pipe.Sink{
 			Flush: options.Flusher.Flush,
 			Sink: func(in signal.Float64) error {
