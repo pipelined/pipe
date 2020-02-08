@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"pipelined.dev/signal"
-	"pipelined.dev/signal/pool"
 
+	"pipelined.dev/pipe/internal/pool"
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/internal/state"
 	"pipelined.dev/pipe/metric"
@@ -15,7 +15,7 @@ import (
 
 // pipeline components
 type (
-	PumpFunc func() (Pump, signal.SampleRate, int, error)
+	PumpFunc func(bufferSize int) (Pump, signal.SampleRate, int, error)
 	// Pump is a source of samples. Pump method returns a new buffer with signal data.
 	// If no data is available, io.EOF should be returned. If pump cannot provide data
 	// to fulfill buffer, it can trim the size of the buffer to align it with actual data.
@@ -25,7 +25,7 @@ type (
 		Flush
 	}
 
-	ProcessorFunc func(signal.SampleRate, int) (Processor, signal.SampleRate, int, error)
+	ProcessorFunc func(buffersize int, sr signal.SampleRate, numChannels int) (Processor, signal.SampleRate, int, error)
 	// Processor defines interface for pipe processors.
 	// Processor should return output in the same signal buffer as input.
 	// It is encouraged to implement in-place processing algorithms.
@@ -36,7 +36,7 @@ type (
 		Flush
 	}
 
-	SinkFunc func(signal.SampleRate, int) (Sink, error)
+	SinkFunc func(buffersize int, sr signal.SampleRate, numChannels int) (Sink, error)
 	// Sink is an interface for final stage in audio pipeline.
 	// This components must not change buffer content. Route can have
 	// multiple sinks and this will cause race condition.
@@ -54,7 +54,7 @@ type Route struct {
 	mutators    chan mutator.Mutators
 	pump        runner.Pump
 	processors  []runner.Processor
-	sinks       []runner.Sink
+	sink        runner.Sink
 }
 
 // Line defines sequence of components closures.
@@ -63,7 +63,7 @@ type Route struct {
 type Line struct {
 	Pump       PumpFunc
 	Processors []ProcessorFunc
-	Sinks      []SinkFunc
+	Sink       SinkFunc
 }
 
 // Pipe controls the execution of multiple chained lines. Lines might be chained
@@ -75,8 +75,8 @@ type Pipe struct {
 }
 
 // Route line components. All closures are executed and wrapped into runners.
-func (l Line) Route() (Route, error) {
-	pump, err := l.Pump.runner()
+func (l Line) Route(bufferSize int) (Route, error) {
+	pump, err := l.Pump.runner(bufferSize)
 	if err != nil {
 		return Route{}, fmt.Errorf("error routing %w", err)
 	}
@@ -84,69 +84,70 @@ func (l Line) Route() (Route, error) {
 
 	var processors []runner.Processor
 	for _, fn := range l.Processors {
-		processor, err := fn.runner(input)
+		processor, err := fn.runner(bufferSize, input)
 		if err != nil {
 			return Route{}, fmt.Errorf("error routing %w", err)
 		}
 		processors, input = append(processors, processor), processor.Output
 	}
 
-	var sinks []runner.Sink
-	for _, fn := range l.Sinks {
-		sink, err := fn.runner(input)
-		if err != nil {
-			return Route{}, fmt.Errorf("error routing sink: %w", err)
-		}
-		sinks = append(sinks, sink)
+	sink, err := l.Sink.runner(bufferSize, input)
+	if err != nil {
+		return Route{}, fmt.Errorf("error routing sink: %w", err)
 	}
+
 	return Route{
 		mutators:   make(chan mutator.Mutators),
 		pump:       pump,
 		processors: processors,
-		sinks:      sinks,
+		sink:       sink,
 	}, nil
 }
 
-func (fn PumpFunc) runner() (runner.Pump, error) {
-	pump, sampleRate, numChannels, err := fn()
+func (fn PumpFunc) runner(bufferSize int) (runner.Pump, error) {
+	pump, sampleRate, numChannels, err := fn(bufferSize)
 	if err != nil {
 		return runner.Pump{}, fmt.Errorf("pump: %w", err)
 	}
 	return runner.Pump{
-		Output: runner.Output{
+		Output: runner.Bus{
 			SampleRate:  sampleRate,
 			NumChannels: numChannels,
+			Pool:        pool.Get(bufferSize, numChannels),
 		},
 		Fn:    pump.Pump,
-		Flush: pump.Flush,
+		Flush: runner.Flush(pump.Flush),
 		Meter: metric.Meter(pump, sampleRate),
 	}, nil
 }
 
-func (fn ProcessorFunc) runner(input runner.Output) (runner.Processor, error) {
-	processor, sampleRate, numChannels, err := fn(input.SampleRate, input.NumChannels)
+func (fn ProcessorFunc) runner(bufferSize int, input runner.Bus) (runner.Processor, error) {
+	processor, sampleRate, numChannels, err := fn(bufferSize, input.SampleRate, input.NumChannels)
 	if err != nil {
 		return runner.Processor{}, fmt.Errorf("processor: %w", err)
 	}
 	return runner.Processor{
-		Output: runner.Output{
+		Input: input,
+		Output: runner.Bus{
 			SampleRate:  sampleRate,
 			NumChannels: numChannels,
+			Pool:        pool.Get(bufferSize, numChannels),
 		},
 		Fn:    processor.Process,
-		Flush: processor.Flush,
+		Flush: runner.Flush(processor.Flush),
 		Meter: metric.Meter(processor, sampleRate),
 	}, nil
 }
 
-func (fn SinkFunc) runner(input runner.Output) (runner.Sink, error) {
-	sink, err := fn(input.SampleRate, input.NumChannels)
+func (fn SinkFunc) runner(bufferSize int, input runner.Bus) (runner.Sink, error) {
+	sink, err := fn(bufferSize, input.SampleRate, input.NumChannels)
 	if err != nil {
 		return runner.Sink{}, fmt.Errorf("sink: %w", err)
 	}
 	return runner.Sink{
+		Input: input,
 		Fn:    sink.Sink,
-		Flush: sink.Flush,
+		Flush: runner.Flush(sink.Flush),
 		Meter: metric.Meter(sink, input.SampleRate),
 	}, nil
 }
@@ -168,14 +169,13 @@ func New(rs ...Route) *Pipe {
 
 // start starts the execution of pipe.
 func startFunc(routes map[chan mutator.Mutators]Route) state.StartFunc {
-	return func(ctx context.Context, bufferSize int, give chan<- chan mutator.Mutators) ([]<-chan error, error) {
+	return func(ctx context.Context, give chan<- chan mutator.Mutators) ([]<-chan error, error) {
 		// start all runners
 		// error channel for each component
 		errcList := make([]<-chan error, 0)
 		for mutators, r := range routes {
-			p := pool.New(r.numChannels, bufferSize)
 			// start pump
-			out, errs := r.pump.Run(ctx, p, give, mutators)
+			out, errs := r.pump.Run(ctx, give, mutators)
 			errcList = append(errcList, errs)
 
 			// start chained processesing
@@ -184,8 +184,8 @@ func startFunc(routes map[chan mutator.Mutators]Route) state.StartFunc {
 				errcList = append(errcList, errs)
 			}
 
-			sinkErrcList := runner.Broadcast(ctx, p, r.sinks, out)
-			errcList = append(errcList, sinkErrcList...)
+			errs = r.sink.Run(ctx, out)
+			errcList = append(errcList, errs)
 		}
 		return errcList, nil
 	}
@@ -194,8 +194,8 @@ func startFunc(routes map[chan mutator.Mutators]Route) state.StartFunc {
 // Run sends a run event into handle.
 // Calling this method after handle is closed causes a panic.
 // Feedback channel is closed when Ready state is reached or context is cancelled.
-func (p *Pipe) Run(ctx context.Context, bufferSize int) chan error {
-	return p.handle.Run(ctx, bufferSize)
+func (p *Pipe) Run(ctx context.Context) chan error {
+	return p.handle.Run(ctx)
 }
 
 // Pause sends a pause event into handle.
@@ -228,11 +228,6 @@ func (p *Pipe) push(r *mutator.Receiver, paramFuncs ...func()) {
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorFunc) []ProcessorFunc {
 	return processors
-}
-
-// Sinks is a helper function to use in line constructors.
-func Sinks(sinks ...SinkFunc) []SinkFunc {
-	return sinks
 }
 
 // Wait for state transition or first error to occur.
