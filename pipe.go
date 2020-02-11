@@ -47,35 +47,77 @@ type (
 	Flush func(context.Context) error
 )
 
-// Route is a sequence of DSP components.
-type Route struct {
-	numChannels int
-	mutators    chan mutator.Mutators
-	pump        runner.Pump
-	processors  []runner.Processor
-	sink        runner.Sink
+type (
+	// Route is a sequence of DSP components.
+	Route struct {
+		numChannels int
+		mutators    chan mutator.Mutators
+		pump        runner.Pump
+		processors  []runner.Processor
+		sink        runner.Sink
+	}
+
+	// Line defines sequence of components closures.
+	// It has a single pump, zero or many processors, executed
+	// sequentially and one or many sinks executed in parallel.
+	Line struct {
+		Pump       PumpFunc
+		Processors []ProcessorFunc
+		Sink       SinkFunc
+	}
+
+	// Pipe controls the execution of multiple chained lines. Lines might be chained
+	// through components, mixer for example.  If lines are not chained, they must be
+	// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
+	Pipe struct {
+		ctx      context.Context
+		cancelFn context.CancelFunc
+		merger   *merger
+		routes   map[chan mutator.Mutators]Route
+		mutators map[chan mutator.Mutators]mutator.Mutators
+		pull     chan chan mutator.Mutators
+		push     chan []Mutation
+		errors   chan error
+	}
+)
+
+type Handle struct {
+	puller   chan mutator.Mutators
+	receiver *mutator.Receiver
 }
 
-// Line defines sequence of components closures.
-// It has a single pump, zero or many processors, executed
-// sequentially and one or many sinks executed in parallel.
-type Line struct {
-	Pump       PumpFunc
-	Processors []ProcessorFunc
-	Sink       SinkFunc
+type Mutation struct {
+	Handle
+	Mutators []func()
 }
 
-// Pipe controls the execution of multiple chained lines. Lines might be chained
-// through components, mixer for example.  If lines are not chained, they must be
-// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
-type Pipe struct {
-	ctx      context.Context
-	cancelFn context.CancelFunc
-	merger   *merger
-	routes   map[chan mutator.Mutators]Route
-	mutators map[chan mutator.Mutators]mutator.Mutators
-	pull     chan chan mutator.Mutators
-	errors   chan error
+func (r Route) Pump() Handle {
+	return Handle{
+		puller:   r.mutators,
+		receiver: &r.pump.Receiver,
+	}
+}
+
+func (r Route) Processors() []Handle {
+	if len(r.processors) == 0 {
+		return nil
+	}
+	handles := make([]Handle, 0, len(r.processors))
+	for _, p := range r.processors {
+		handles = append(handles,
+			Handle{
+				puller:   r.mutators,
+				receiver: &p.Receiver,
+			})
+	}
+	return handles
+}
+
+func (r Route) Sink() Handle {
+	return Handle{
+		puller:   r.mutators,
+		receiver: &r.sink.Receiver,
+	}
 }
 
 // Route line components. All closures are executed and wrapped into runners.
@@ -180,8 +222,10 @@ func New(ctx context.Context, rs ...Route) Pipe {
 		defer close(p.errors)
 		for {
 			select {
-			// case _ = <-s.push:
-			// 	panic("push mutators not implemented")
+			case mutators := <-p.push:
+				for _, m := range mutators {
+					p.mutators[m.Handle.puller] = p.mutators[m.Handle.puller].Add(m.Handle.receiver, m.Mutators...)
+				}
 			case puller := <-p.pull:
 				mutators := p.mutators[puller]
 				puller <- mutators
@@ -230,11 +274,10 @@ func start(ctx context.Context, give chan<- chan mutator.Mutators, routes map[ch
 }
 
 // Push new mutators into pipe.
-// Calling this method after pipe is closed causes a panic.
-// TODO: figure how to expose receivers.
-// func (p *Pipe) push(r *mutator.Receiver, paramFuncs ...func()) {
-// 	p.handle.Push(mutator.Mutators{r: paramFuncs})
-// }
+// Calling this method after pipe is done will cause a panic.
+func (p Pipe) Push(mutations ...Mutation) {
+	p.push <- mutations
+}
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorFunc) []ProcessorFunc {
