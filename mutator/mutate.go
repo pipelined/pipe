@@ -6,6 +6,8 @@ type Mutators map[*Receiver][]func()
 // Receiver allows to identify the component mutator belongs to.
 type Receiver struct{}
 
+type Handler chan Mutators
+
 // Add appends a slice of Mutators.
 func (m Mutators) Add(r *Receiver, fns ...func()) Mutators {
 	if m == nil {

@@ -49,13 +49,11 @@ func TestPipe(t *testing.T) {
 	}.Route(bufferSize)
 	assert.Nil(t, err)
 
-	p := pipe.New(in, out1, out2)
+	p := pipe.New(context.Background(), in, out1, out2)
 	// start
-	err = pipe.Wait(p.Run(context.Background()))
+	err = p.Wait()
 	assert.Nil(t, err)
 
-	err = pipe.Wait(p.Close())
-	assert.Nil(t, err)
 	assert.Equal(t, 862, pumpOptions.Counter.Messages)
 	assert.Equal(t, 862*bufferSize, pumpOptions.Counter.Samples)
 }
@@ -76,13 +74,11 @@ func TestSimplePipe(t *testing.T) {
 	}.Route(bufferSize)
 	assert.Nil(t, err)
 
-	p := pipe.New(in)
+	p := pipe.New(context.Background(), in)
 	// start
-	err = pipe.Wait(p.Run(context.Background()))
+	err = p.Wait()
 	assert.Nil(t, err)
 
-	err = pipe.Wait(p.Close())
-	assert.Nil(t, err)
 	assert.Equal(t, 862, pumpOptions.Counter.Messages)
 	assert.Equal(t, 862*bufferSize, pumpOptions.Counter.Samples)
 }
@@ -104,8 +100,7 @@ func BenchmarkSingleLine(b *testing.B) {
 			),
 			Sink: mock.Sink(&mock.SinkOptions{Discard: true}),
 		}.Route(bufferSize)
-		l := pipe.New(route)
-		pipe.Wait(l.Run(context.Background()))
-		pipe.Wait(l.Close())
+		p := pipe.New(context.Background(), route)
+		p.Wait()
 	}
 }

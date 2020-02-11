@@ -8,7 +8,6 @@ import (
 
 	"pipelined.dev/pipe/internal/pool"
 	"pipelined.dev/pipe/internal/runner"
-	"pipelined.dev/pipe/internal/state"
 	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mutator"
 )
@@ -70,8 +69,13 @@ type Line struct {
 // through components, mixer for example.  If lines are not chained, they must be
 // controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 type Pipe struct {
-	handle *state.Handle
-	routes map[chan mutator.Mutators]Route // map chain id to chain
+	ctx      context.Context
+	cancelFn context.CancelFunc
+	merger   *merger
+	routes   map[chan mutator.Mutators]Route
+	mutators map[chan mutator.Mutators]mutator.Mutators
+	pull     chan chan mutator.Mutators
+	errors   chan error
 }
 
 // Route line components. All closures are executed and wrapped into runners.
@@ -154,76 +158,83 @@ func (fn SinkFunc) runner(bufferSize int, input runner.Bus) (runner.Sink, error)
 
 // New creates a new pipeline.
 // Returned pipeline is in Ready state.
-func New(rs ...Route) *Pipe {
-	routes := make(map[chan mutator.Mutators]Route)
+func New(ctx context.Context, rs ...Route) Pipe {
+	ctx, cancelFn := context.WithCancel(ctx)
+	p := Pipe{
+		merger: &merger{
+			errors: make(chan error, 1),
+		},
+		ctx:      ctx,
+		cancelFn: cancelFn,
+		mutators: make(map[chan mutator.Mutators]mutator.Mutators),
+		routes:   make(map[chan mutator.Mutators]Route),
+		pull:     make(chan chan mutator.Mutators),
+		errors:   make(chan error, 1),
+	}
 	for _, r := range rs {
-		routes[r.mutators] = r
+		p.routes[r.mutators] = r
 	}
-	handle := state.NewHandle(startFunc(routes))
-	go state.Loop(handle)
-	return &Pipe{
-		routes: routes,
-		handle: handle,
-	}
+	p.merger.merge(start(p.ctx, p.pull, p.routes))
+
+	go func() {
+		defer close(p.errors)
+		for {
+			select {
+			// case _ = <-s.push:
+			// 	panic("push mutators not implemented")
+			case puller := <-p.pull:
+				mutators := p.mutators[puller]
+				puller <- mutators
+				continue
+			case err, ok := <-p.merger.errors:
+				// merger has buffer of one error,
+				// if more errors happen, they will be ignored.
+				if ok {
+					p.cancelFn()
+					// wait until all groutines stop.
+					for {
+						if _, ok = <-p.merger.errors; !ok {
+							break
+						}
+					}
+					p.errors <- fmt.Errorf("pipe error: %w", err)
+				}
+				return
+			}
+		}
+	}()
+
+	return p
 }
 
 // start starts the execution of pipe.
-func startFunc(routes map[chan mutator.Mutators]Route) state.StartFunc {
-	return func(ctx context.Context, give chan<- chan mutator.Mutators) ([]<-chan error, error) {
-		// start all runners
-		// error channel for each component
-		errcList := make([]<-chan error, 0)
-		for mutators, r := range routes {
-			// start pump
-			out, errs := r.pump.Run(ctx, give, mutators)
-			errcList = append(errcList, errs)
+func start(ctx context.Context, give chan<- chan mutator.Mutators, routes map[chan mutator.Mutators]Route) []<-chan error {
+	// start all runners
+	// error channel for each component
+	errcList := make([]<-chan error, 0)
+	for mutators, r := range routes {
+		// start pump
+		out, errs := r.pump.Run(ctx, give, mutators)
+		errcList = append(errcList, errs)
 
-			// start chained processesing
-			for _, proc := range r.processors {
-				out, errs = proc.Run(ctx, out)
-				errcList = append(errcList, errs)
-			}
-
-			errs = r.sink.Run(ctx, out)
+		// start chained processesing
+		for _, proc := range r.processors {
+			out, errs = proc.Run(ctx, out)
 			errcList = append(errcList, errs)
 		}
-		return errcList, nil
+
+		errs = r.sink.Run(ctx, out)
+		errcList = append(errcList, errs)
 	}
-}
-
-// Run sends a run event into handle.
-// Calling this method after handle is closed causes a panic.
-// Feedback channel is closed when Ready state is reached or context is cancelled.
-func (p *Pipe) Run(ctx context.Context) chan error {
-	return p.handle.Run(ctx)
-}
-
-// Pause sends a pause event into handle.
-// Calling this method after handle is closed causes a panic.
-// Feedback is closed when Paused state is reached.
-func (p *Pipe) Pause() chan error {
-	return p.handle.Pause()
-}
-
-// Resume sends a resume event into handle.
-// Calling this method after handle is closed causes a panic.
-// Feedback is closed when Ready state is reached.
-func (p *Pipe) Resume() chan error {
-	return p.handle.Resume()
-}
-
-// Close must be called to clean up handle's resources.
-// Feedback is closed when line is done.
-func (p *Pipe) Close() chan error {
-	return p.handle.Interrupt()
+	return errcList
 }
 
 // Push new mutators into pipe.
 // Calling this method after pipe is closed causes a panic.
 // TODO: figure how to expose receivers.
-func (p *Pipe) push(r *mutator.Receiver, paramFuncs ...func()) {
-	p.handle.Push(mutator.Mutators{r: paramFuncs})
-}
+// func (p *Pipe) push(r *mutator.Receiver, paramFuncs ...func()) {
+// 	p.handle.Push(mutator.Mutators{r: paramFuncs})
+// }
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorFunc) []ProcessorFunc {
@@ -231,8 +242,8 @@ func Processors(processors ...ProcessorFunc) []ProcessorFunc {
 }
 
 // Wait for state transition or first error to occur.
-func Wait(d <-chan error) error {
-	for err := range d {
+func (p Pipe) Wait() error {
+	for err := range p.errors {
 		if err != nil {
 			return err
 		}

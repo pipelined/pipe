@@ -20,7 +20,7 @@ func TestPump(t *testing.T) {
 	}
 	testPump := func(options mock.PumpOptions, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			pump, _, numChannels, err := mock.Pump(&options)()
+			pump, _, numChannels, err := mock.Pump(&options)(p.bufferSize)
 			assertError(t, nil, err)
 
 			buf := signal.Float64Buffer(numChannels, p.bufferSize)
@@ -76,12 +76,13 @@ func TestPump(t *testing.T) {
 
 func TestProcessor(t *testing.T) {
 	type params struct {
-		in       signal.Float64
-		expected signal.Float64
+		in         signal.Float64
+		expected   signal.Float64
+		bufferSize int
 	}
 	testProcessor := func(options mock.ProcessorOptions, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, _, err := mock.Processor(&options)(0, 0)
+			processor, _, _, err := mock.Processor(&options)(p.bufferSize, 0, 0)
 			assertError(t, nil, err)
 
 			out := signal.Float64Buffer(p.expected.NumChannels(), p.expected.Size())
@@ -120,12 +121,13 @@ func TestProcessor(t *testing.T) {
 
 func TestSink(t *testing.T) {
 	type params struct {
-		in       signal.Float64
-		expected signal.Float64
+		in         signal.Float64
+		expected   signal.Float64
+		bufferSize int
 	}
 	testSink := func(options mock.SinkOptions, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, err := mock.Sink(&options)(0, 0)
+			sink, err := mock.Sink(&options)(p.bufferSize, 0, 0)
 			assertError(t, nil, err)
 
 			err = sink.Sink(p.in)
