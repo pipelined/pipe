@@ -200,6 +200,7 @@ func (fn SinkFunc) runner(bufferSize int, input runner.Bus) (runner.Sink, error)
 
 // New creates a new pipeline.
 // Returned pipeline is in Ready state.
+// TODO: consider options
 func New(ctx context.Context, rs ...Route) Pipe {
 	ctx, cancelFn := context.WithCancel(ctx)
 	p := Pipe{
@@ -216,6 +217,7 @@ func New(ctx context.Context, rs ...Route) Pipe {
 	for _, r := range rs {
 		p.routes[r.mutators] = r
 	}
+	// options are before this step
 	p.merger.merge(start(p.ctx, p.pull, p.routes))
 
 	go func() {
@@ -252,13 +254,13 @@ func New(ctx context.Context, rs ...Route) Pipe {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, give chan<- chan mutator.Mutators, routes map[chan mutator.Mutators]Route) []<-chan error {
+func start(ctx context.Context, pull chan<- chan mutator.Mutators, routes map[chan mutator.Mutators]Route) []<-chan error {
 	// start all runners
 	// error channel for each component
 	errcList := make([]<-chan error, 0)
 	for mutators, r := range routes {
 		// start pump
-		out, errs := r.pump.Run(ctx, give, mutators)
+		out, errs := r.pump.Run(ctx, pull, mutators)
 		errcList = append(errcList, errs)
 
 		// start chained processesing
