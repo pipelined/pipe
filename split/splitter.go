@@ -18,7 +18,7 @@ type Splitter struct {
 }
 
 type message struct {
-	buffer signal.Float64
+	buffer *signal.Float64
 	pumps  int32
 }
 
@@ -28,11 +28,11 @@ func (s *Splitter) Sink() pipe.SinkFunc {
 		s.sampleRate = sr
 		s.numChannels = nc
 		s.pool = pool.New(s.numChannels, bufferSize)
-		var buffer signal.Float64
+		var buffer *signal.Float64
 		return pipe.Sink{
 			Sink: func(b signal.Float64) error {
 				buffer = s.pool.Alloc()
-				copyFloat64(buffer, b)
+				copyFloat64(*buffer, b)
 				for _, pump := range s.pumps {
 					pump <- message{
 						pumps:  int32(len(s.pumps)),
@@ -66,7 +66,7 @@ func (s *Splitter) Pump() pipe.PumpFunc {
 				if !ok {
 					return io.EOF
 				}
-				copyFloat64(b, message.buffer)
+				copyFloat64(b, *message.buffer)
 				if atomic.AddInt32(&message.pumps, -1) == 0 {
 					s.pool.Free(message.buffer)
 				}

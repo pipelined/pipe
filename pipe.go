@@ -94,7 +94,7 @@ type Mutation struct {
 func (r Route) Pump() Handle {
 	return Handle{
 		puller:   r.mutators,
-		receiver: &r.pump.Receiver,
+		receiver: r.pump.Receiver,
 	}
 }
 
@@ -107,7 +107,7 @@ func (r Route) Processors() []Handle {
 		handles = append(handles,
 			Handle{
 				puller:   r.mutators,
-				receiver: &p.Receiver,
+				receiver: p.Receiver,
 			})
 	}
 	return handles
@@ -116,7 +116,7 @@ func (r Route) Processors() []Handle {
 func (r Route) Sink() Handle {
 	return Handle{
 		puller:   r.mutators,
-		receiver: &r.sink.Receiver,
+		receiver: r.sink.Receiver,
 	}
 }
 
@@ -156,6 +156,7 @@ func (fn PumpFunc) runner(bufferSize int) (runner.Pump, error) {
 		return runner.Pump{}, fmt.Errorf("pump: %w", err)
 	}
 	return runner.Pump{
+		Receiver: &mutator.Receiver{},
 		Output: runner.Bus{
 			SampleRate:  sampleRate,
 			NumChannels: numChannels,
@@ -173,7 +174,8 @@ func (fn ProcessorFunc) runner(bufferSize int, input runner.Bus) (runner.Process
 		return runner.Processor{}, fmt.Errorf("processor: %w", err)
 	}
 	return runner.Processor{
-		Input: input,
+		Receiver: &mutator.Receiver{},
+		Input:    input,
 		Output: runner.Bus{
 			SampleRate:  sampleRate,
 			NumChannels: numChannels,
@@ -191,17 +193,18 @@ func (fn SinkFunc) runner(bufferSize int, input runner.Bus) (runner.Sink, error)
 		return runner.Sink{}, fmt.Errorf("sink: %w", err)
 	}
 	return runner.Sink{
-		Input: input,
-		Fn:    sink.Sink,
-		Flush: runner.Flush(sink.Flush),
-		Meter: metric.Meter(sink, input.SampleRate),
+		Receiver: &mutator.Receiver{},
+		Input:    input,
+		Fn:       sink.Sink,
+		Flush:    runner.Flush(sink.Flush),
+		Meter:    metric.Meter(sink, input.SampleRate),
 	}, nil
 }
 
 // New creates a new pipeline.
 // Returned pipeline is in Ready state.
 // TODO: consider options
-func New(ctx context.Context, rs ...Route) Pipe {
+func New(ctx context.Context, options ...Option) Pipe {
 	ctx, cancelFn := context.WithCancel(ctx)
 	p := Pipe{
 		merger: &merger{
@@ -214,8 +217,11 @@ func New(ctx context.Context, rs ...Route) Pipe {
 		pull:     make(chan chan mutator.Mutators),
 		errors:   make(chan error, 1),
 	}
-	for _, r := range rs {
-		p.routes[r.mutators] = r
+	for _, option := range options {
+		option(&p)
+	}
+	if len(p.routes) == 0 {
+		panic("pipe without routes")
 	}
 	// options are before this step
 	p.merger.merge(start(p.ctx, p.pull, p.routes))
@@ -230,6 +236,7 @@ func New(ctx context.Context, rs ...Route) Pipe {
 				}
 			case puller := <-p.pull:
 				mutators := p.mutators[puller]
+				delete(p.mutators, puller)
 				puller <- mutators
 				continue
 			case err, ok := <-p.merger.errors:

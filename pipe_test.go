@@ -21,86 +21,128 @@ func TestMain(m *testing.M) {
 }
 
 func TestPipe(t *testing.T) {
-	pumpOptions := &mock.PumpOptions{
+	pump := &mock.Pump{
 		Limit:       862 * bufferSize,
 		NumChannels: 2,
 	}
-	pump := mock.Pump(pumpOptions)
-	proc1 := mock.Processor(&mock.ProcessorOptions{})
-	proc2 := mock.Processor(&mock.ProcessorOptions{})
+	proc1 := &mock.Processor{}
+	proc2 := &mock.Processor{}
 	splitter := &split.Splitter{}
-	sink1 := mock.Sink(&mock.SinkOptions{Discard: true})
-	sink2 := mock.Sink(&mock.SinkOptions{Discard: true})
+	sink1 := &mock.Sink{Discard: true}
+	sink2 := &mock.Sink{Discard: true}
 
 	in, err := pipe.Line{
-		Pump:       pump,
-		Processors: pipe.Processors(proc1, proc2),
+		Pump:       pump.Pump(),
+		Processors: pipe.Processors(proc1.Processor(), proc2.Processor()),
 		Sink:       splitter.Sink(),
 	}.Route(bufferSize)
 	assert.Nil(t, err)
 	out1, err := pipe.Line{
 		Pump: splitter.Pump(),
-		Sink: sink1,
+		Sink: sink1.Sink(),
 	}.Route(bufferSize)
 	assert.Nil(t, err)
 	out2, err := pipe.Line{
 		Pump: splitter.Pump(),
-		Sink: sink2,
+		Sink: sink2.Sink(),
 	}.Route(bufferSize)
 	assert.Nil(t, err)
 
-	p := pipe.New(context.Background(), in, out1, out2)
+	p := pipe.New(context.Background(), pipe.WithRoutes(in, out1, out2))
 	// start
 	err = p.Wait()
 	assert.Nil(t, err)
 
-	assert.Equal(t, 862, pumpOptions.Counter.Messages)
-	assert.Equal(t, 862*bufferSize, pumpOptions.Counter.Samples)
+	assert.Equal(t, 862, pump.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
 }
 
 func TestSimplePipe(t *testing.T) {
-	pumpOptions := &mock.PumpOptions{
+	pump := &mock.Pump{
 		Limit:       862 * bufferSize,
 		NumChannels: 2,
 	}
-	pump := mock.Pump(pumpOptions)
-	proc1 := mock.Processor(&mock.ProcessorOptions{})
-	sink1 := mock.Sink(&mock.SinkOptions{Discard: true})
+
+	proc1 := &mock.Processor{}
+	sink1 := &mock.Sink{Discard: true}
 
 	in, err := pipe.Line{
-		Pump:       pump,
-		Processors: pipe.Processors(proc1),
-		Sink:       sink1,
+		Pump:       pump.Pump(),
+		Processors: pipe.Processors(proc1.Processor()),
+		Sink:       sink1.Sink(),
 	}.Route(bufferSize)
 	assert.Nil(t, err)
 
-	p := pipe.New(context.Background(), in)
+	p := pipe.New(context.Background(), pipe.WithRoutes(in))
 	// start
 	err = p.Wait()
 	assert.Nil(t, err)
 
-	assert.Equal(t, 862, pumpOptions.Counter.Messages)
-	assert.Equal(t, 862*bufferSize, pumpOptions.Counter.Samples)
+	assert.Equal(t, 862, pump.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
+}
+
+func TestSimpleRerun(t *testing.T) {
+	pump := &mock.Pump{
+		Limit:       862 * bufferSize,
+		NumChannels: 2,
+	}
+	sink := &mock.Sink{Discard: true}
+
+	route, err := pipe.Line{
+		Pump: pump.Pump(),
+		Sink: sink.Sink(),
+	}.Route(bufferSize)
+	assert.Nil(t, err)
+	pumpHandle := route.Pump()
+	p := pipe.New(context.Background(), pipe.WithRoutes(route))
+	// start
+	err = p.Wait()
+	assert.Nil(t, err)
+	assert.Equal(t, 862, pump.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
+
+	p = pipe.New(
+		context.Background(),
+		pipe.WithRoutes(route),
+		pipe.WithMutators(pipe.Mutation{
+			Handle:   pumpHandle,
+			Mutators: []func(){pump.Reset()},
+		}),
+	)
+	_ = p.Wait()
+	assert.Nil(t, err)
+	assert.Equal(t, 2*862, sink.Counter.Messages)
+	assert.Equal(t, 2*862*bufferSize, sink.Counter.Samples)
 }
 
 // This benchmark runs next line:
-// 1 Pump, 2 Processors, 2 Sinks, 1000 buffers of 512 samples with 2 channels.
+// 1 Pump, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		route, _ := pipe.Line{
-			Pump: mock.Pump(
-				&mock.PumpOptions{
-					Limit:       862 * bufferSize,
-					NumChannels: 2,
-				},
-			),
-			Processors: pipe.Processors(
-				mock.Processor(&mock.ProcessorOptions{}),
-				mock.Processor(&mock.ProcessorOptions{}),
-			),
-			Sink: mock.Sink(&mock.SinkOptions{Discard: true}),
-		}.Route(bufferSize)
-		p := pipe.New(context.Background(), route)
-		p.Wait()
+	pump := &mock.Pump{
+		Limit:       862 * bufferSize,
+		NumChannels: 2,
 	}
+	sink := &mock.Sink{Discard: true}
+	route, _ := pipe.Line{
+		Pump: pump.Pump(),
+		Processors: pipe.Processors(
+			(&mock.Processor{}).Processor(),
+			(&mock.Processor{}).Processor(),
+		),
+		Sink: sink.Sink(),
+	}.Route(bufferSize)
+	pumpHandle := route.Pump()
+	for i := 0; i < b.N; i++ {
+		p := pipe.New(
+			context.Background(),
+			pipe.WithRoutes(route),
+			pipe.WithMutators(pipe.Mutation{
+				Handle:   pumpHandle,
+				Mutators: []func(){pump.Reset()},
+			}),
+		)
+		_ = p.Wait()
+	}
+	b.Logf("recieved messages: %d samples: %d", sink.Messages, sink.Samples)
 }
