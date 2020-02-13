@@ -36,8 +36,8 @@ func (f *Flusher) Flush(ctx context.Context) error {
 	return f.ErrorOnFlush
 }
 
-// PumpOptions are settings for pipe.Pump mock.
-type PumpOptions struct {
+// Pump are settings for pipe.Pump mock.
+type Pump struct {
 	Counter
 	Flusher
 	Interval    time.Duration
@@ -49,57 +49,63 @@ type PumpOptions struct {
 }
 
 // Pump returns closure with mocked pump.
-func Pump(options *PumpOptions) pipe.PumpFunc {
+func (p *Pump) Pump() pipe.PumpFunc {
 	return func(bufferSize int) (pipe.Pump, signal.SampleRate, int, error) {
 		return pipe.Pump{
-			Flush: options.Flusher.Flush,
+			Flush: p.Flusher.Flush,
 			Pump: func(b signal.Float64) error {
-				if options.ErrorOnCall != nil {
-					return options.ErrorOnCall
+				if p.ErrorOnCall != nil {
+					return p.ErrorOnCall
 				}
 
-				if options.Counter.Samples >= options.Limit {
+				if p.Counter.Samples >= p.Limit {
 					return io.EOF
 				}
-				time.Sleep(options.Interval)
+				time.Sleep(p.Interval)
 
 				// calculate buffer size.
 				bs := b.Size()
 				// check if we need a shorter.
-				if left := options.Limit - options.Counter.Samples; left < bs {
+				if left := p.Limit - p.Counter.Samples; left < bs {
 					bs = left
 				}
 				for i := range b {
 					// resize buffer
 					b[i] = b[i][:bs]
 					for j := range b[i] {
-						b[i][j] = options.Value
+						b[i][j] = p.Value
 					}
 				}
-				options.Counter.advance(bs)
+				p.Counter.advance(bs)
 				return nil
 			},
-		}, options.SampleRate, options.NumChannels, nil
+		}, p.SampleRate, p.NumChannels, nil
 	}
 }
 
-// ProcessorOptions are settings for pipe.Processor mock.
-type ProcessorOptions struct {
+func (p *Pump) Reset() func() {
+	return func() {
+		p.Counter = Counter{}
+	}
+}
+
+// Processor are settings for pipe.Processor mock.
+type Processor struct {
 	Counter
 	Flusher
 	ErrorOnCall error
 }
 
 // Processor returns closure with mocked processor.
-func Processor(options *ProcessorOptions) pipe.ProcessorFunc {
+func (processor *Processor) Processor() pipe.ProcessorFunc {
 	return func(bufferSize int, sampleRate signal.SampleRate, numChannels int) (pipe.Processor, signal.SampleRate, int, error) {
 		return pipe.Processor{
-			Flush: options.Flusher.Flush,
+			Flush: processor.Flusher.Flush,
 			Process: func(in, out signal.Float64) error {
-				if options.ErrorOnCall != nil {
-					return options.ErrorOnCall
+				if processor.ErrorOnCall != nil {
+					return processor.ErrorOnCall
 				}
-				options.Counter.advance(in.Size())
+				processor.Counter.advance(in.Size())
 				for i := range in {
 					copy(out[i], in[i])
 				}
@@ -109,8 +115,8 @@ func Processor(options *ProcessorOptions) pipe.ProcessorFunc {
 	}
 }
 
-// SinkOptions are settings for pipe.Processor mock.
-type SinkOptions struct {
+// Sink are settings for pipe.Processor mock.
+type Sink struct {
 	Counter
 	Flusher
 	Discard     bool
@@ -118,18 +124,18 @@ type SinkOptions struct {
 }
 
 // Sink returns closure with mocked processor.
-func Sink(options *SinkOptions) pipe.SinkFunc {
+func (sink *Sink) Sink() pipe.SinkFunc {
 	return func(bufferSize int, sampleRate signal.SampleRate, numChannels int) (pipe.Sink, error) {
 		return pipe.Sink{
-			Flush: options.Flusher.Flush,
+			Flush: sink.Flusher.Flush,
 			Sink: func(in signal.Float64) error {
-				if options.ErrorOnCall != nil {
-					return options.ErrorOnCall
+				if sink.ErrorOnCall != nil {
+					return sink.ErrorOnCall
 				}
-				if !options.Discard {
-					options.Counter.Values = options.Counter.Values.Append(in)
+				if !sink.Discard {
+					sink.Counter.Values = sink.Counter.Values.Append(in)
 				}
-				options.Counter.advance(in.Size())
+				sink.Counter.advance(in.Size())
 				return nil
 			},
 		}, nil

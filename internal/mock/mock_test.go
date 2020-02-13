@@ -18,32 +18,32 @@ func TestPump(t *testing.T) {
 		bufferSize int
 		calls      int
 	}
-	testPump := func(options mock.PumpOptions, p params) func(*testing.T) {
+	testPump := func(pump mock.Pump, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			pump, _, numChannels, err := mock.Pump(&options)(p.bufferSize)
+			fn, _, numChannels, err := pump.Pump()(p.bufferSize)
 			assertError(t, nil, err)
 
 			buf := signal.Float64Buffer(numChannels, p.bufferSize)
 			for {
-				if err := pump.Pump(buf); err != nil {
+				if err := fn.Pump(buf); err != nil {
 					if err != io.EOF {
-						assertError(t, options.ErrorOnCall, err)
+						assertError(t, pump.ErrorOnCall, err)
 					}
 					break
 				}
 			}
 
-			if p.calls != options.Messages {
-				t.Fatalf("Invalid number of calls: %d expected: %d", options.Messages, p.calls)
+			if p.calls != pump.Messages {
+				t.Fatalf("Invalid number of calls: %d expected: %d", pump.Messages, p.calls)
 			}
-			if options.Limit != options.Samples {
-				t.Fatalf("Invalid number of samples: %d expected: %d", options.Samples, options.Limit)
+			if pump.Limit != pump.Samples {
+				t.Fatalf("Invalid number of samples: %d expected: %d", pump.Samples, pump.Limit)
 			}
 		}
 	}
 
 	t.Run("3 calls", testPump(
-		mock.PumpOptions{
+		mock.Pump{
 			SampleRate:  44100,
 			NumChannels: 2,
 			Limit:       11,
@@ -55,7 +55,7 @@ func TestPump(t *testing.T) {
 		},
 	))
 	t.Run("500 calls", testPump(
-		mock.PumpOptions{
+		mock.Pump{
 			SampleRate:  44100,
 			NumChannels: 2,
 			Limit:       2500,
@@ -67,7 +67,7 @@ func TestPump(t *testing.T) {
 		},
 	))
 	t.Run("error on call", testPump(
-		mock.PumpOptions{
+		mock.Pump{
 			ErrorOnCall: errTest,
 		},
 		params{},
@@ -80,14 +80,14 @@ func TestProcessor(t *testing.T) {
 		expected   signal.Float64
 		bufferSize int
 	}
-	testProcessor := func(options mock.ProcessorOptions, p params) func(*testing.T) {
+	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, _, err := mock.Processor(&options)(p.bufferSize, 0, 0)
+			processor, _, _, err := processorMock.Processor()(p.bufferSize, 0, 0)
 			assertError(t, nil, err)
 
 			out := signal.Float64Buffer(p.expected.NumChannels(), p.expected.Size())
 			err = processor.Process(p.in, out)
-			assertError(t, options.ErrorOnCall, err)
+			assertError(t, processorMock.ErrorOnCall, err)
 			if p.expected.NumChannels() != out.NumChannels() {
 				t.Fatalf("Invalid number of channels: %d expected: %d", out.NumChannels(), p.expected.NumChannels())
 			}
@@ -98,21 +98,21 @@ func TestProcessor(t *testing.T) {
 	}
 
 	t.Run("1 channel", testProcessor(
-		mock.ProcessorOptions{},
+		mock.Processor{},
 		params{
 			in:       [][]float64{{1, 1, 1, 1}},
 			expected: [][]float64{{1, 1, 1, 1}},
 		},
 	))
 	t.Run("2 channels", testProcessor(
-		mock.ProcessorOptions{},
+		mock.Processor{},
 		params{
 			in:       [][]float64{{1, 1, 1, 1}, {2, 2, 2, 2}},
 			expected: [][]float64{{1, 1, 1, 1}, {2, 2, 2, 2}},
 		},
 	))
 	t.Run("error on call", testProcessor(
-		mock.ProcessorOptions{
+		mock.Processor{
 			ErrorOnCall: errTest,
 		},
 		params{},
@@ -125,25 +125,25 @@ func TestSink(t *testing.T) {
 		expected   signal.Float64
 		bufferSize int
 	}
-	testSink := func(options mock.SinkOptions, p params) func(*testing.T) {
+	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, err := mock.Sink(&options)(p.bufferSize, 0, 0)
+			sink, err := sinkMock.Sink()(p.bufferSize, 0, 0)
 			assertError(t, nil, err)
 
 			err = sink.Sink(p.in)
-			assertError(t, options.ErrorOnCall, err)
+			assertError(t, sinkMock.ErrorOnCall, err)
 
-			if p.expected.NumChannels() != options.Counter.Values.NumChannels() {
-				t.Fatalf("Invalid number of channels: %d expected: %d", options.Counter.Values.NumChannels(), p.expected.NumChannels())
+			if p.expected.NumChannels() != sinkMock.Counter.Values.NumChannels() {
+				t.Fatalf("Invalid number of channels: %d expected: %d", sinkMock.Counter.Values.NumChannels(), p.expected.NumChannels())
 			}
-			if p.expected.Size() != options.Counter.Values.Size() {
-				t.Fatalf("Invalid buffer size: %d expected: %d", options.Counter.Values.Size(), p.expected.Size())
+			if p.expected.Size() != sinkMock.Counter.Values.Size() {
+				t.Fatalf("Invalid buffer size: %d expected: %d", sinkMock.Counter.Values.Size(), p.expected.Size())
 			}
 		}
 	}
 
 	t.Run("1 channel", testSink(
-		mock.SinkOptions{
+		mock.Sink{
 			Discard: false,
 		},
 		params{
@@ -152,7 +152,7 @@ func TestSink(t *testing.T) {
 		},
 	))
 	t.Run("2 channel", testSink(
-		mock.SinkOptions{
+		mock.Sink{
 			Discard: false,
 		},
 		params{
@@ -161,7 +161,7 @@ func TestSink(t *testing.T) {
 		},
 	))
 	t.Run("error on call", testSink(
-		mock.SinkOptions{
+		mock.Sink{
 			ErrorOnCall: errTest,
 		},
 		params{},
