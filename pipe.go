@@ -88,7 +88,7 @@ type Handle struct {
 
 type Mutation struct {
 	Handle
-	Mutators []func()
+	Mutators []func() error
 }
 
 func (r Route) Pump() Handle {
@@ -215,6 +215,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 		mutators: make(map[chan mutator.Mutators]mutator.Mutators),
 		routes:   make(map[chan mutator.Mutators]Route),
 		pull:     make(chan chan mutator.Mutators),
+		push:     make(chan []Mutation),
 		errors:   make(chan error, 1),
 	}
 	for _, option := range options {
@@ -224,7 +225,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 		panic("pipe without routes")
 	}
 	// options are before this step
-	p.merger.merge(start(p.ctx, p.pull, p.routes))
+	p.merger.merge(start(p.ctx, p.pull, p.routes)...)
 
 	go func() {
 		defer close(p.errors)

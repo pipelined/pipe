@@ -5,13 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"pipelined.dev/pipe"
-	"pipelined.dev/signal"
-
-	"pipelined.dev/pipe/internal/mock"
-	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/metric"
+	"pipelined.dev/signal"
 )
 
 const (
