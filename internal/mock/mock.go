@@ -83,9 +83,10 @@ func (p *Pump) Pump() pipe.PumpFunc {
 	}
 }
 
-func (p *Pump) Reset() func() {
-	return func() {
+func (p *Pump) Reset() func() error {
+	return func() error {
 		p.Counter = Counter{}
+		return nil
 	}
 }
 

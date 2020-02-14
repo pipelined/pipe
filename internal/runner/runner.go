@@ -101,19 +101,22 @@ func (r Pump) Run(ctx context.Context, give chan<- chan mutator.Mutators, take c
 			case <-ctx.Done():
 				return
 			}
-			mutators.ApplyTo(r.Receiver) // apply Mutators
+			// apply Mutators
+			if err = mutators.ApplyTo(r.Receiver); err != nil {
+				errs <- fmt.Errorf("error mutating pump: %w", err)
+				return
+			}
 
 			// allocate new buffer
 			output = r.Output.Alloc()
-			err = r.Fn(*output)  // pump new buffer
-			meter(output.Size()) // capture metrics
-			// handle error
-			if err != nil {
+			// pump new buffer
+			if err = r.Fn(*output); err != nil {
 				if err != io.EOF {
 					errs <- fmt.Errorf("error running pump: %w", err)
 				}
 				return
 			}
+			meter(output.Size()) // capture metrics
 
 			// push message further
 			select {
@@ -157,15 +160,20 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 				return
 			}
 
-			m.Mutators.ApplyTo(r.Receiver) // apply Mutators
+			// apply Mutators
+			if err = m.Mutators.ApplyTo(r.Receiver); err != nil {
+				errs <- fmt.Errorf("error mutating processor: %w", err)
+				r.Input.Free(m.Buffer) // need to free
+				return
+			}
 			output = r.Output.Alloc()
 			err = r.Fn(*m.Buffer, *output) // process new buffer
-			meter(output.Size())           // capture metrics
 			r.Input.Free(m.Buffer)         // put buffer back to the input pool
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
 				return
 			}
+			meter(output.Size()) // capture metrics
 
 			// send message further
 			select {
@@ -190,8 +198,11 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 				errs <- fmt.Errorf("error flushing sink: %w", err)
 			}
 		}()
-		var m Message
-		var ok bool
+		var (
+			err error
+			m   Message
+			ok  bool
+		)
 		for {
 			// receive new message
 			select {
@@ -203,9 +214,14 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 				return
 			}
 
-			m.Mutators.ApplyTo(r.Receiver) // apply Mutators
-			err := r.Fn(*m.Buffer)         // sink a buffer
-			meter(m.Buffer.Size())         // capture metrics
+			// apply Mutators
+			if err = m.Mutators.ApplyTo(r.Receiver); err != nil {
+				errs <- fmt.Errorf("error mutating sink: %w", err)
+				r.Input.Free(m.Buffer) // need to free
+				return
+			}
+			err = r.Fn(*m.Buffer)  // sink a buffer
+			meter(m.Buffer.Size()) // capture metrics
 			r.Input.Free(m.Buffer)
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)

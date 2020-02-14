@@ -22,9 +22,10 @@ func (m *paramMock) mutators() mutator.Mutators {
 }
 
 // mutators closure to mutate value
-func (m *paramMock) param() func() {
-	return func() {
+func (m *paramMock) param() func() error {
+	return func() error {
 		m.value += 10
+		return nil
 	}
 }
 

@@ -107,7 +107,7 @@ func TestSimpleRerun(t *testing.T) {
 		pipe.WithRoutes(route),
 		pipe.WithMutators(pipe.Mutation{
 			Handle:   pumpHandle,
-			Mutators: []func(){pump.Reset()},
+			Mutators: []func() error{pump.Reset()},
 		}),
 	)
 	_ = p.Wait()
@@ -139,7 +139,7 @@ func BenchmarkSingleLine(b *testing.B) {
 			pipe.WithRoutes(route),
 			pipe.WithMutators(pipe.Mutation{
 				Handle:   pumpHandle,
-				Mutators: []func(){pump.Reset()},
+				Mutators: []func() error{pump.Reset()},
 			}),
 		)
 		_ = p.Wait()
