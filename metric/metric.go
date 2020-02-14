@@ -79,12 +79,12 @@ func Meter(component interface{}, sampleRate signal.SampleRate) ResetFunc {
 	t := getType(component)
 	metric := components.get(t)
 	metric.components.Add(1)
+	calledAt := time.Now()
+	var (
+		bufferSize     int
+		bufferDuration time.Duration
+	)
 	return func() MeasureFunc {
-		calledAt := time.Now()
-		var (
-			bufferSize     int
-			bufferDuration time.Duration
-		)
 		return func(s int) {
 			metric.latency.set(time.Since(calledAt))
 			metric.messages.Add(1)
