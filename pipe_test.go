@@ -9,7 +9,7 @@ import (
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
-	"pipelined.dev/pipe/mutator"
+	"pipelined.dev/pipe/mutate"
 	"pipelined.dev/pipe/repeat"
 )
 
@@ -108,7 +108,7 @@ func TestSimpleRerun(t *testing.T) {
 		pipe.WithRoutes(route),
 		pipe.WithMutators(pipe.Mutation{
 			Handle:   pumpHandle,
-			Mutators: []mutator.Mutator{pump.Reset()},
+			Mutators: []mutate.Mutator{pump.Reset()},
 		}),
 	)
 	_ = p.Wait()
@@ -140,7 +140,7 @@ func BenchmarkSingleLine(b *testing.B) {
 			pipe.WithRoutes(route),
 			pipe.WithMutators(pipe.Mutation{
 				Handle:   pumpHandle,
-				Mutators: []mutator.Mutator{pump.Reset()},
+				Mutators: []mutate.Mutator{pump.Reset()},
 			}),
 		)
 		_ = p.Wait()
