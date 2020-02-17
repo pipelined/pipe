@@ -9,7 +9,7 @@ import (
 	"pipelined.dev/pipe/internal/pool"
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/metric"
-	"pipelined.dev/pipe/mutator"
+	"pipelined.dev/pipe/mutate"
 )
 
 // pipeline components
@@ -51,7 +51,7 @@ type (
 	// Route is a sequence of DSP components.
 	Route struct {
 		numChannels int
-		mutators    chan mutator.Mutators
+		mutators    chan mutate.Mutators
 		pump        runner.Pump
 		processors  []runner.Processor
 		sink        runner.Sink
@@ -70,26 +70,33 @@ type (
 	// through components, mixer for example.  If lines are not chained, they must be
 	// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 	Pipe struct {
+		receiver *mutate.Receiver
 		ctx      context.Context
 		cancelFn context.CancelFunc
 		merger   *merger
-		routes   map[chan mutator.Mutators]Route
-		mutators map[chan mutator.Mutators]mutator.Mutators
-		pull     chan chan mutator.Mutators
+		routes   map[chan mutate.Mutators]Route
+		mutators map[chan mutate.Mutators]mutate.Mutators
+		pull     chan chan mutate.Mutators
 		push     chan []Mutation
 		errors   chan error
 	}
 )
 
 type Handle struct {
-	puller   chan mutator.Mutators
-	receiver *mutator.Receiver
+	puller   chan mutate.Mutators
+	receiver *mutate.Receiver
 }
 
-type Mutation struct {
-	Handle
-	Mutators []mutator.Mutator
-}
+type (
+	Mutable interface {
+		Mutate([]mutate.Mutator) Mutation
+	}
+
+	Mutation struct {
+		Handle
+		Mutators []mutate.Mutator
+	}
+)
 
 func (r Route) Pump() Handle {
 	return Handle{
@@ -143,7 +150,7 @@ func (l Line) Route(bufferSize int) (Route, error) {
 	}
 
 	return Route{
-		mutators:   make(chan mutator.Mutators),
+		mutators:   make(chan mutate.Mutators),
 		pump:       pump,
 		processors: processors,
 		sink:       sink,
@@ -156,7 +163,7 @@ func (fn PumpFunc) runner(bufferSize int) (runner.Pump, error) {
 		return runner.Pump{}, fmt.Errorf("pump: %w", err)
 	}
 	return runner.Pump{
-		Receiver: &mutator.Receiver{},
+		Receiver: &mutate.Receiver{},
 		Output: runner.Bus{
 			SampleRate:  sampleRate,
 			NumChannels: numChannels,
@@ -174,7 +181,7 @@ func (fn ProcessorFunc) runner(bufferSize int, input runner.Bus) (runner.Process
 		return runner.Processor{}, fmt.Errorf("processor: %w", err)
 	}
 	return runner.Processor{
-		Receiver: &mutator.Receiver{},
+		Receiver: &mutate.Receiver{},
 		Input:    input,
 		Output: runner.Bus{
 			SampleRate:  sampleRate,
@@ -193,7 +200,7 @@ func (fn SinkFunc) runner(bufferSize int, input runner.Bus) (runner.Sink, error)
 		return runner.Sink{}, fmt.Errorf("sink: %w", err)
 	}
 	return runner.Sink{
-		Receiver: &mutator.Receiver{},
+		Receiver: &mutate.Receiver{},
 		Input:    input,
 		Fn:       sink.Sink,
 		Flush:    runner.Flush(sink.Flush),
@@ -203,18 +210,18 @@ func (fn SinkFunc) runner(bufferSize int, input runner.Bus) (runner.Sink, error)
 
 // New creates a new pipeline.
 // Returned pipeline is in Ready state.
-// TODO: consider options
 func New(ctx context.Context, options ...Option) Pipe {
 	ctx, cancelFn := context.WithCancel(ctx)
 	p := Pipe{
+		receiver: &mutate.Receiver{},
 		merger: &merger{
 			errors: make(chan error, 1),
 		},
 		ctx:      ctx,
 		cancelFn: cancelFn,
-		mutators: make(map[chan mutator.Mutators]mutator.Mutators),
-		routes:   make(map[chan mutator.Mutators]Route),
-		pull:     make(chan chan mutator.Mutators),
+		mutators: make(map[chan mutate.Mutators]mutate.Mutators),
+		routes:   make(map[chan mutate.Mutators]Route),
+		pull:     make(chan chan mutate.Mutators),
 		push:     make(chan []Mutation),
 		errors:   make(chan error, 1),
 	}
@@ -262,7 +269,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, pull chan<- chan mutator.Mutators, routes map[chan mutator.Mutators]Route) []<-chan error {
+func start(ctx context.Context, pull chan<- chan mutate.Mutators, routes map[chan mutate.Mutators]Route) []<-chan error {
 	// start all runners
 	// error channel for each component
 	errcList := make([]<-chan error, 0)

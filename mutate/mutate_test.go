@@ -1,23 +1,22 @@
-package mutator_test
+package mutate_test
 
 import (
 	"testing"
 
-	"pipelined.dev/pipe/mutator"
-
 	"github.com/stretchr/testify/assert"
+	"pipelined.dev/pipe/mutate"
 )
 
 // paramMock used to set up test cases for mutators
 type paramMock struct {
-	mutator.Receiver
+	mutate.Receiver
 	value      int
 	operations int
 	expected   int
 }
 
-func (m *paramMock) mutators() mutator.Mutators {
-	var p mutator.Mutators
+func (m *paramMock) mutators() mutate.Mutators {
+	var p mutate.Mutators
 	return p.Add(&m.Receiver, m.param())
 }
 
@@ -73,7 +72,7 @@ func TestAddParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutator.Mutators
+		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Add(&m.Receiver, m.param())
@@ -121,7 +120,7 @@ func TestAppendParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutator.Mutators
+		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Append(m.mutators())
@@ -181,7 +180,7 @@ func TestDetachParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutator.Mutators
+		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Add(&m.Receiver, m.param())

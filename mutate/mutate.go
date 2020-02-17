@@ -1,4 +1,4 @@
-package mutator
+package mutate
 
 // Mutators is a set of mutators mapped to Receiver of their receivers.
 // TODO: maybe this should not be exported
