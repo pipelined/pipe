@@ -88,7 +88,7 @@ type Handle struct {
 
 type Mutation struct {
 	Handle
-	Mutators []func() error
+	Mutators []mutator.Mutator
 }
 
 func (r Route) Pump() Handle {

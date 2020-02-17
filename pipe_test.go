@@ -9,7 +9,8 @@ import (
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
-	"pipelined.dev/pipe/split"
+	"pipelined.dev/pipe/mutator"
+	"pipelined.dev/pipe/repeat"
 )
 
 const (
@@ -27,23 +28,23 @@ func TestPipe(t *testing.T) {
 	}
 	proc1 := &mock.Processor{}
 	proc2 := &mock.Processor{}
-	splitter := &split.Splitter{}
+	repeater := &repeat.Repeater{}
 	sink1 := &mock.Sink{Discard: true}
 	sink2 := &mock.Sink{Discard: true}
 
 	in, err := pipe.Line{
 		Pump:       pump.Pump(),
 		Processors: pipe.Processors(proc1.Processor(), proc2.Processor()),
-		Sink:       splitter.Sink(),
+		Sink:       repeater.Sink(),
 	}.Route(bufferSize)
 	assert.Nil(t, err)
 	out1, err := pipe.Line{
-		Pump: splitter.Pump(),
+		Pump: repeater.Pump(),
 		Sink: sink1.Sink(),
 	}.Route(bufferSize)
 	assert.Nil(t, err)
 	out2, err := pipe.Line{
-		Pump: splitter.Pump(),
+		Pump: repeater.Pump(),
 		Sink: sink2.Sink(),
 	}.Route(bufferSize)
 	assert.Nil(t, err)
@@ -107,7 +108,7 @@ func TestSimpleRerun(t *testing.T) {
 		pipe.WithRoutes(route),
 		pipe.WithMutators(pipe.Mutation{
 			Handle:   pumpHandle,
-			Mutators: []func() error{pump.Reset()},
+			Mutators: []mutator.Mutator{pump.Reset()},
 		}),
 	)
 	_ = p.Wait()
@@ -139,7 +140,7 @@ func BenchmarkSingleLine(b *testing.B) {
 			pipe.WithRoutes(route),
 			pipe.WithMutators(pipe.Mutation{
 				Handle:   pumpHandle,
-				Mutators: []func() error{pump.Reset()},
+				Mutators: []mutator.Mutator{pump.Reset()},
 			}),
 		)
 		_ = p.Wait()

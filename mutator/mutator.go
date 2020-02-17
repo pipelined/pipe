@@ -1,19 +1,22 @@
 package mutator
 
 // Mutators is a set of mutators mapped to Receiver of their receivers.
-type Mutators map[*Receiver][]func() error
+// TODO: maybe this should not be exported
+type Mutators map[*Receiver][]Mutator
+
+type Mutator func() error
 
 // Receiver allows to identify the component mutator belongs to.
 type Receiver struct{}
 
 // Add appends a slice of Mutators.
-func (m Mutators) Add(r *Receiver, fns ...func() error) Mutators {
+func (m Mutators) Add(r *Receiver, fns ...Mutator) Mutators {
 	if m == nil {
-		return map[*Receiver][]func() error{r: fns}
+		return map[*Receiver][]Mutator{r: fns}
 	}
 
 	if _, ok := m[r]; !ok {
-		m[r] = make([]func() error, 0, len(fns))
+		m[r] = make([]Mutator, 0, len(fns))
 	}
 	m[r] = append(m[r], fns...)
 
@@ -39,7 +42,7 @@ func (m Mutators) ApplyTo(r *Receiver) error {
 // Append param set to another set.
 func (m Mutators) Append(source Mutators) Mutators {
 	if m == nil {
-		m = make(map[*Receiver][]func() error)
+		m = make(map[*Receiver][]Mutator)
 	}
 	for id, fns := range source {
 		if _, ok := m[id]; ok {
@@ -57,7 +60,7 @@ func (m Mutators) Detach(r *Receiver) Mutators {
 		return nil
 	}
 	if v, ok := m[r]; ok {
-		d := map[*Receiver][]func() error{r: v}
+		d := map[*Receiver][]Mutator{r: v}
 		delete(m, r)
 		return d
 	}
