@@ -4,8 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"pipelined.dev/pipe/metric"
 	"pipelined.dev/signal"
 )
 
@@ -28,55 +26,55 @@ func (p noOpPool) Free(signal.Float64) {}
 var testError = errors.New("test runner error")
 
 func TestPump(t *testing.T) {
-	bufferSize := 1024
-	testGood := func(options mock.PumpOptions) func(*testing.T) {
-		return func(t *testing.T) {
-			pump, sampleRate, numChannels, err := mock.Pump(&options)()
-			assert.NoError(t, err)
-			r := runner.Pump{
-				Fn:    pump.Pump,
-				Meter: metric.Meter(pump, sampleRate),
-				Hooks: runner.Hooks{
-					Reset:     runner.Hook(pump.Reset),
-					Flush:     runner.Hook(pump.Flush),
-					Interrupt: runner.Hook(pump.Interrupt),
-				},
-			}
-			cancel := make(chan struct{})
-			give := make(chan string)
-			take := make(chan runner.Message)
-			out, errs := r.Run(
-				noOpPool{
-					numChannels: numChannels,
-					bufferSize:  bufferSize,
-				},
-				cancel,
-				give,
-				take,
-			)
-			// test message exchange
-			for i := 0; i <= options.Limit/bufferSize; i++ {
-				<-give
-				take <- runner.Message{}
-				<-out
-			}
+	// bufferSize := 1024
+	// testGood := func(options mock.PumpOptions) func(*testing.T) {
+	// 	return func(t *testing.T) {
+	// 		pump, sampleRate, numChannels, err := mock.Pump(&options)()
+	// 		assert.NoError(t, err)
+	// 		r := runner.Pump{
+	// 			Fn:    pump.Pump,
+	// 			Meter: metric.Meter(pump, sampleRate),
+	// 			Hooks: runner.Hooks{
+	// 				Reset:     runner.Hook(pump.Reset),
+	// 				Flush:     runner.Hook(pump.Flush),
+	// 				Interrupt: runner.Hook(pump.Interrupt),
+	// 			},
+	// 		}
+	// 		cancel := make(chan struct{})
+	// 		give := make(chan string)
+	// 		take := make(chan runner.Message)
+	// 		out, errs := r.Run(
+	// 			noOpPool{
+	// 				numChannels: numChannels,
+	// 				bufferSize:  bufferSize,
+	// 			},
+	// 			cancel,
+	// 			give,
+	// 			take,
+	// 		)
+	// 		// test message exchange
+	// 		for i := 0; i <= options.Limit/bufferSize; i++ {
+	// 			<-give
+	// 			take <- runner.Message{}
+	// 			<-out
+	// 		}
 
-			pipe.Wait(errs)
-			var ok bool
-			_, ok = <-out
-			assert.False(t, ok)
-			_, ok = <-errs
-			assert.False(t, ok)
-			assert.True(t, options.Resetted)
-		}
-	}
+	// 		pipe.Wait(errs)
+	// 		var ok bool
+	// 		_, ok = <-out
+	// 		assert.False(t, ok)
+	// 		_, ok = <-errs
+	// 		assert.False(t, ok)
+	// 		assert.True(t, options.Resetted)
+	// 	}
+	// }
 
-	t.Run("good test", testGood(
-		mock.PumpOptions{
-			NumChannels: 1,
-			Limit:       10 * bufferSize,
-		},
-	))
+	// t.Run("good test", testGood(
+	// 	mock.PumpOptions{
+	// 		NumChannels: 1,
+	// 		Limit:       10 * bufferSize,
+	// 	},
+	// ))
 	// tests := []struct {
 	// 	cancelOnGive bool
 	// 	cancelOnTake bool
