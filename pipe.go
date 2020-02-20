@@ -236,17 +236,23 @@ func New(ctx context.Context, options ...Option) Pipe {
 	}
 	// options are before this step
 	p.merger.merge(start(p.ctx, p.pull, p.routes)...)
+	go p.merger.wait()
 	go func() {
 		defer close(p.errors)
 		for {
 			select {
 			case mutations := <-p.push:
 				for _, m := range mutations {
+					if m.Component.puller == nil {
+						for _, fn := range m.Mutators {
+							fn()
+						}
+					}
 					p.mutators[m.Component.puller] = p.mutators[m.Component.puller].Add(m.Component.receiver, m.Mutators...)
 				}
 			case puller := <-p.pull:
 				mutators := p.mutators[puller]
-				delete(p.mutators, puller)
+				p.mutators[puller] = nil
 				puller <- mutators
 				continue
 			case err, ok := <-p.merger.errors:
@@ -304,19 +310,19 @@ func (p Pipe) Push(mutations ...Mutation) {
 	p.push <- mutations
 }
 
-// func (p Pipe) AddRoute(r Route) Mutation {
-// 	return Mutation{
-// 		Component: Component{
-// 			receiver: p.receiver,
-// 		},
-// 		Mutators: []mutate.Mutator{
-// 			func() error {
-// 				p.merger.merge(r.start(p.ctx, p.pull)...)
-// 				return nil
-// 			},
-// 		},
-// 	}
-// }
+func (p Pipe) AddRoute(r Route) Mutation {
+	return Mutation{
+		Component: Component{
+			receiver: p.receiver,
+		},
+		Mutators: []mutate.Mutator{
+			func() error {
+				p.merger.merge(r.start(p.ctx, p.pull)...)
+				return nil
+			},
+		},
+	}
+}
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorFunc) []ProcessorFunc {
