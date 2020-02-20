@@ -274,22 +274,28 @@ func New(ctx context.Context, options ...Option) Pipe {
 func start(ctx context.Context, pull chan<- chan mutate.Mutators, routes []Route) []<-chan error {
 	// start all runners
 	// error channel for each component
-	errcList := make([]<-chan error, 0, 2*len(routes))
+	errChans := make([]<-chan error, 0, 2*len(routes))
 	for _, r := range routes {
-		// start pump
-		out, errs := r.pump.Run(ctx, pull, r.mutators)
-		errcList = append(errcList, errs)
-
-		// start chained processesing
-		for _, proc := range r.processors {
-			out, errs = proc.Run(ctx, out)
-			errcList = append(errcList, errs)
-		}
-
-		errs = r.sink.Run(ctx, out)
-		errcList = append(errcList, errs)
+		errChans = append(errChans, r.start(ctx, pull)...)
 	}
-	return errcList
+	return errChans
+}
+
+func (r Route) start(ctx context.Context, pull chan<- chan mutate.Mutators) []<-chan error {
+	errChans := make([]<-chan error, 0, 2+len(r.processors))
+	// start pump
+	out, errs := r.pump.Run(ctx, pull, r.mutators)
+	errChans = append(errChans, errs)
+
+	// start chained processesing
+	for _, proc := range r.processors {
+		out, errs = proc.Run(ctx, out)
+		errChans = append(errChans, errs)
+	}
+
+	errs = r.sink.Run(ctx, out)
+	errChans = append(errChans, errs)
+	return errChans
 }
 
 // Push new mutators into pipe.
@@ -298,11 +304,19 @@ func (p Pipe) Push(mutations ...Mutation) {
 	p.push <- mutations
 }
 
-func (p Pipe) AddRoute(r Route) mutate.Mutator {
-	return func() error {
-		return nil
-	}
-}
+// func (p Pipe) AddRoute(r Route) Mutation {
+// 	return Mutation{
+// 		Component: Component{
+// 			receiver: p.receiver,
+// 		},
+// 		Mutators: []mutate.Mutator{
+// 			func() error {
+// 				p.merger.merge(r.start(p.ctx, p.pull)...)
+// 				return nil
+// 			},
+// 		},
+// 	}
+// }
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorFunc) []ProcessorFunc {
