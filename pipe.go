@@ -243,9 +243,12 @@ func New(ctx context.Context, options ...Option) Pipe {
 			select {
 			case mutations := <-p.push:
 				for _, m := range mutations {
-					if m.Component.puller == nil {
+					// mutate pipe itself
+					if m.Component.receiver == p.receiver {
 						for _, fn := range m.Mutators {
-							fn()
+							if err := fn(); err != nil {
+								p.interrupt(err)
+							}
 						}
 					}
 					p.mutators[m.Component.puller] = p.mutators[m.Component.puller].Add(m.Component.receiver, m.Mutators...)
@@ -259,21 +262,25 @@ func New(ctx context.Context, options ...Option) Pipe {
 				// merger has buffer of one error,
 				// if more errors happen, they will be ignored.
 				if ok {
-					p.cancelFn()
-					// wait until all groutines stop.
-					for {
-						if _, ok = <-p.merger.errors; !ok {
-							break
-						}
-					}
-					p.errors <- fmt.Errorf("pipe error: %w", err)
+					p.interrupt(err)
 				}
 				return
 			}
 		}
 	}()
-
 	return p
+}
+
+func (p Pipe) interrupt(err error) {
+	p.cancelFn()
+	// wait until all groutines stop.
+	for {
+		// only the first error is propagated.
+		if _, ok := <-p.merger.errors; !ok {
+			break
+		}
+	}
+	p.errors <- fmt.Errorf("pipe error: %w", err)
 }
 
 // start starts the execution of pipe.
@@ -310,8 +317,8 @@ func (p Pipe) Push(mutations ...Mutation) {
 	p.push <- mutations
 }
 
-func (p Pipe) AddRoute(r Route) Mutation {
-	return Mutation{
+func (p Pipe) AddRoute(r Route) {
+	p.Push(Mutation{
 		Component: Component{
 			receiver: p.receiver,
 		},
@@ -321,7 +328,7 @@ func (p Pipe) AddRoute(r Route) Mutation {
 				return nil
 			},
 		},
-	}
+	})
 }
 
 // Processors is a helper function to use in line constructors.

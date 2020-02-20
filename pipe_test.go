@@ -142,7 +142,7 @@ func TestAddRoute(t *testing.T) {
 		context.Background(),
 		pipe.WithRoutes(route1),
 	)
-	p.Push(p.AddRoute(route2))
+	p.AddRoute(route2)
 
 	// start
 	err = p.Wait()
