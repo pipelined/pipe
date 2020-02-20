@@ -5,7 +5,7 @@ type Option func(*Pipe)
 func WithRoutes(routes ...Route) Option {
 	return func(p *Pipe) {
 		for _, r := range routes {
-			p.routes[r.mutators] = r
+			p.routes = append(p.routes, r)
 		}
 	}
 }

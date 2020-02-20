@@ -74,7 +74,7 @@ type (
 		ctx      context.Context
 		cancelFn context.CancelFunc
 		merger   *merger
-		routes   map[chan mutate.Mutators]Route
+		routes   []Route
 		mutators map[chan mutate.Mutators]mutate.Mutators
 		pull     chan chan mutate.Mutators
 		push     chan []Mutation
@@ -223,7 +223,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 		ctx:      ctx,
 		cancelFn: cancelFn,
 		mutators: make(map[chan mutate.Mutators]mutate.Mutators),
-		routes:   make(map[chan mutate.Mutators]Route),
+		routes:   make([]Route, 0),
 		pull:     make(chan chan mutate.Mutators),
 		push:     make(chan []Mutation),
 		errors:   make(chan error, 1),
@@ -271,13 +271,13 @@ func New(ctx context.Context, options ...Option) Pipe {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, pull chan<- chan mutate.Mutators, routes map[chan mutate.Mutators]Route) []<-chan error {
+func start(ctx context.Context, pull chan<- chan mutate.Mutators, routes []Route) []<-chan error {
 	// start all runners
 	// error channel for each component
 	errcList := make([]<-chan error, 0, 2*len(routes))
-	for mutators, r := range routes {
+	for _, r := range routes {
 		// start pump
-		out, errs := r.pump.Run(ctx, pull, mutators)
+		out, errs := r.pump.Run(ctx, pull, r.mutators)
 		errcList = append(errcList, errs)
 
 		// start chained processesing
@@ -298,11 +298,11 @@ func (p Pipe) Push(mutations ...Mutation) {
 	p.push <- mutations
 }
 
-// func (p Pipe) AddRoute(r Route) mutate.Mutator {
-// 	return func() error {
-// 		return nil
-// 	}
-// }
+func (p Pipe) AddRoute(r Route) mutate.Mutator {
+	return func() error {
+		return nil
+	}
+}
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorFunc) []ProcessorFunc {
