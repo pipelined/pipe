@@ -83,7 +83,7 @@ func TestSimplePipe(t *testing.T) {
 	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
 }
 
-func TestSimpleRerun(t *testing.T) {
+func TestReset(t *testing.T) {
 	pump := &mock.Pump{
 		Limit:       862 * bufferSize,
 		NumChannels: 2,
@@ -96,7 +96,10 @@ func TestSimpleRerun(t *testing.T) {
 	}.Route(bufferSize)
 	assert.Nil(t, err)
 	pumpHandle := route.Pump()
-	p := pipe.New(context.Background(), pipe.WithRoutes(route))
+	p := pipe.New(
+		context.Background(),
+		pipe.WithRoutes(route),
+	)
 	// start
 	err = p.Wait()
 	assert.Nil(t, err)
