@@ -82,46 +82,49 @@ type (
 	}
 )
 
-type Handle struct {
-	puller   chan mutate.Mutators
-	receiver *mutate.Receiver
-}
-
 type (
-	Mutable interface {
-		Mutate([]mutate.Mutator) Mutation
+	Component struct {
+		puller   chan mutate.Mutators
+		receiver *mutate.Receiver
 	}
 
 	Mutation struct {
-		Handle
+		Component
 		Mutators []mutate.Mutator
 	}
 )
 
-func (r Route) Pump() Handle {
-	return Handle{
+func (c Component) Mutate(ms ...mutate.Mutator) Mutation {
+	return Mutation{
+		Component: c,
+		Mutators:  ms,
+	}
+}
+
+func (r Route) Pump() Component {
+	return Component{
 		puller:   r.mutators,
 		receiver: r.pump.Receiver,
 	}
 }
 
-func (r Route) Processors() []Handle {
+func (r Route) Processors() []Component {
 	if len(r.processors) == 0 {
 		return nil
 	}
-	handles := make([]Handle, 0, len(r.processors))
+	components := make([]Component, 0, len(r.processors))
 	for _, p := range r.processors {
-		handles = append(handles,
-			Handle{
+		components = append(components,
+			Component{
 				puller:   r.mutators,
 				receiver: p.Receiver,
 			})
 	}
-	return handles
+	return components
 }
 
-func (r Route) Sink() Handle {
-	return Handle{
+func (r Route) Sink() Component {
+	return Component{
 		puller:   r.mutators,
 		receiver: r.sink.Receiver,
 	}
@@ -233,14 +236,13 @@ func New(ctx context.Context, options ...Option) Pipe {
 	}
 	// options are before this step
 	p.merger.merge(start(p.ctx, p.pull, p.routes)...)
-
 	go func() {
 		defer close(p.errors)
 		for {
 			select {
-			case mutators := <-p.push:
-				for _, m := range mutators {
-					p.mutators[m.Handle.puller] = p.mutators[m.Handle.puller].Add(m.Handle.receiver, m.Mutators...)
+			case mutations := <-p.push:
+				for _, m := range mutations {
+					p.mutators[m.Component.puller] = p.mutators[m.Component.puller].Add(m.Component.receiver, m.Mutators...)
 				}
 			case puller := <-p.pull:
 				mutators := p.mutators[puller]
@@ -272,7 +274,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 func start(ctx context.Context, pull chan<- chan mutate.Mutators, routes map[chan mutate.Mutators]Route) []<-chan error {
 	// start all runners
 	// error channel for each component
-	errcList := make([]<-chan error, 0)
+	errcList := make([]<-chan error, 0, 2*len(routes))
 	for mutators, r := range routes {
 		// start pump
 		out, errs := r.pump.Run(ctx, pull, mutators)
@@ -295,6 +297,12 @@ func start(ctx context.Context, pull chan<- chan mutate.Mutators, routes map[cha
 func (p Pipe) Push(mutations ...Mutation) {
 	p.push <- mutations
 }
+
+// func (p Pipe) AddRoute(r Route) mutate.Mutator {
+// 	return func() error {
+// 		return nil
+// 	}
+// }
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorFunc) []ProcessorFunc {
