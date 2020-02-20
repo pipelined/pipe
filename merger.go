@@ -14,12 +14,12 @@ func (m *merger) merge(errcList ...<-chan error) {
 	for _, ec := range errcList {
 		go m.done(ec)
 	}
+}
 
+func (m *merger) wait() {
 	//wait and close out
-	go func() {
-		m.wg.Wait()
-		close(m.errors)
-	}()
+	m.wg.Wait()
+	close(m.errors)
 }
 
 // done blocks until error is received or channel is closed.

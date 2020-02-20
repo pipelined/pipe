@@ -117,6 +117,41 @@ func TestReset(t *testing.T) {
 	assert.Equal(t, 2*862*bufferSize, sink.Counter.Samples)
 }
 
+func TestAddRoute(t *testing.T) {
+	sink1 := &mock.Sink{Discard: true}
+	route1, err := pipe.Line{
+		Pump: (&mock.Pump{
+			Limit:       862 * bufferSize,
+			NumChannels: 2,
+		}).Pump(),
+		Sink: sink1.Sink(),
+	}.Route(bufferSize)
+	assert.Nil(t, err)
+
+	sink2 := &mock.Sink{Discard: true}
+	route2, err := pipe.Line{
+		Pump: (&mock.Pump{
+			Limit:       862 * bufferSize,
+			NumChannels: 2,
+		}).Pump(),
+		Sink: sink2.Sink(),
+	}.Route(bufferSize)
+	assert.Nil(t, err)
+
+	p := pipe.New(
+		context.Background(),
+		pipe.WithRoutes(route1),
+	)
+	p.Push(p.AddRoute(route2))
+
+	// start
+	err = p.Wait()
+	assert.Equal(t, 862, sink1.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, sink1.Counter.Samples)
+	assert.Equal(t, 862, sink2.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, sink2.Counter.Samples)
+}
+
 // This benchmark runs next line:
 // 1 Pump, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
