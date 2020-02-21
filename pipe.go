@@ -12,30 +12,35 @@ import (
 	"pipelined.dev/pipe/mutate"
 )
 
-// pipeline components
 type (
-	PumpFunc func(bufferSize int) (Pump, signal.SampleRate, int, error)
-	// Pump is a source of samples. Pump method returns a new buffer with signal data.
-	// If no data is available, io.EOF should be returned. If pump cannot provide data
-	// to fulfill buffer, it can trim the size of the buffer to align it with actual data.
+	// PumpMaker creates new pump structure for provided buffer size.
+	// It pre-allocates all necessary buffers and structures.
+	PumpMaker func(bufferSize int) (Pump, signal.SampleRate, int, error)
+	// Pump is a source of samples. Pump method accepts a new buffer and
+	// fills it with signal data. If no data is available, io.EOF should
+	// be returned. If pump cannot provide data to fulfill buffer, it can
+	// trim the size of the buffer to align it with actual data.
 	// Buffer size can only be decreased.
 	Pump struct {
 		Pump func(out signal.Float64) error
 		Flush
 	}
 
-	ProcessorFunc func(buffersize int, sr signal.SampleRate, numChannels int) (Processor, signal.SampleRate, int, error)
-	// Processor defines interface for pipe processors.
-	// Processor should return output in the same signal buffer as input.
-	// It is encouraged to implement in-place processing algorithms.
-	// Buffer size could be changed during execution, but only decrease allowed.
-	// Number of channels cannot be changed.
+	// ProcessorMaker creates new pump structure for provided buffer size.
+	// It pre-allocates all necessary buffers and structures.
+	ProcessorMaker func(buffersize int, sr signal.SampleRate, numChannels int) (Processor, signal.SampleRate, int, error)
+	// Processor defines interface for pipe processors. It receives two
+	// buffers for input and output signal data. Buffer size could be
+	// changed during execution, but only decrease allowed. Number of
+	// channels cannot be changed.
 	Processor struct {
 		Process func(in, out signal.Float64) error
 		Flush
 	}
 
-	SinkFunc func(buffersize int, sr signal.SampleRate, numChannels int) (Sink, error)
+	// SinkMaker creates new pump structure for provided buffer size.
+	// It pre-allocates all necessary buffers and structures.
+	SinkMaker func(buffersize int, sr signal.SampleRate, numChannels int) (Sink, error)
 	// Sink is an interface for final stage in audio pipeline.
 	// This components must not change buffer content. Route can have
 	// multiple sinks and this will cause race condition.
@@ -44,6 +49,7 @@ type (
 		Flush
 	}
 
+	// Flush provides a hook to flush all buffers for the component.
 	Flush func(context.Context) error
 )
 
@@ -61,9 +67,9 @@ type (
 	// It has a single pump, zero or many processors, executed
 	// sequentially and one or many sinks executed in parallel.
 	Line struct {
-		Pump       PumpFunc
-		Processors []ProcessorFunc
-		Sink       SinkFunc
+		Pump       PumpMaker
+		Processors []ProcessorMaker
+		Sink       SinkMaker
 	}
 
 	// Pipe controls the execution of multiple chained lines. Lines might be chained
@@ -83,11 +89,13 @@ type (
 )
 
 type (
+	// Component of the DSP line.
 	Component struct {
 		puller   chan mutate.Mutators
 		receiver *mutate.Receiver
 	}
 
+	// Mutation is a set of mutators attached to a specific component.
 	Mutation struct {
 		Component
 		Mutators []mutate.Mutator
@@ -160,7 +168,7 @@ func (l Line) Route(bufferSize int) (Route, error) {
 	}, nil
 }
 
-func (fn PumpFunc) runner(bufferSize int) (runner.Pump, error) {
+func (fn PumpMaker) runner(bufferSize int) (runner.Pump, error) {
 	pump, sampleRate, numChannels, err := fn(bufferSize)
 	if err != nil {
 		return runner.Pump{}, fmt.Errorf("pump: %w", err)
@@ -178,7 +186,7 @@ func (fn PumpFunc) runner(bufferSize int) (runner.Pump, error) {
 	}, nil
 }
 
-func (fn ProcessorFunc) runner(bufferSize int, input runner.Bus) (runner.Processor, error) {
+func (fn ProcessorMaker) runner(bufferSize int, input runner.Bus) (runner.Processor, error) {
 	processor, sampleRate, numChannels, err := fn(bufferSize, input.SampleRate, input.NumChannels)
 	if err != nil {
 		return runner.Processor{}, fmt.Errorf("processor: %w", err)
@@ -197,7 +205,7 @@ func (fn ProcessorFunc) runner(bufferSize int, input runner.Bus) (runner.Process
 	}, nil
 }
 
-func (fn SinkFunc) runner(bufferSize int, input runner.Bus) (runner.Sink, error) {
+func (fn SinkMaker) runner(bufferSize int, input runner.Bus) (runner.Sink, error) {
 	sink, err := fn(bufferSize, input.SampleRate, input.NumChannels)
 	if err != nil {
 		return runner.Sink{}, fmt.Errorf("sink: %w", err)
@@ -317,8 +325,8 @@ func (p Pipe) Push(mutations ...Mutation) {
 	p.push <- mutations
 }
 
-func (p Pipe) AddRoute(r Route) {
-	p.Push(Mutation{
+func (p Pipe) AddRoute(r Route) Mutation {
+	return Mutation{
 		Component: Component{
 			receiver: p.receiver,
 		},
@@ -328,11 +336,11 @@ func (p Pipe) AddRoute(r Route) {
 				return nil
 			},
 		},
-	})
+	}
 }
 
 // Processors is a helper function to use in line constructors.
-func Processors(processors ...ProcessorFunc) []ProcessorFunc {
+func Processors(processors ...ProcessorMaker) []ProcessorMaker {
 	return processors
 }
 
