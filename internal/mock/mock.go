@@ -49,7 +49,7 @@ type Pump struct {
 }
 
 // Pump returns closure with mocked pump.
-func (p *Pump) Pump() pipe.PumpFunc {
+func (p *Pump) Pump() pipe.PumpMaker {
 	return func(bufferSize int) (pipe.Pump, signal.SampleRate, int, error) {
 		return pipe.Pump{
 			Flush: p.Flusher.Flush,
@@ -83,6 +83,7 @@ func (p *Pump) Pump() pipe.PumpFunc {
 	}
 }
 
+// Reset allows to reset pump.
 func (p *Pump) Reset() func() error {
 	return func() error {
 		p.Counter = Counter{}
@@ -98,7 +99,7 @@ type Processor struct {
 }
 
 // Processor returns closure with mocked processor.
-func (processor *Processor) Processor() pipe.ProcessorFunc {
+func (processor *Processor) Processor() pipe.ProcessorMaker {
 	return func(bufferSize int, sampleRate signal.SampleRate, numChannels int) (pipe.Processor, signal.SampleRate, int, error) {
 		return pipe.Processor{
 			Flush: processor.Flusher.Flush,
@@ -125,7 +126,7 @@ type Sink struct {
 }
 
 // Sink returns closure with mocked processor.
-func (sink *Sink) Sink() pipe.SinkFunc {
+func (sink *Sink) Sink() pipe.SinkMaker {
 	return func(bufferSize int, sampleRate signal.SampleRate, numChannels int) (pipe.Sink, error) {
 		return pipe.Sink{
 			Flush: sink.Flusher.Flush,
