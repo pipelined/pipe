@@ -12,8 +12,9 @@ func WithRoutes(routes ...Route) Option {
 
 func WithMutators(mutations ...Mutation) Option {
 	return func(p *Pipe) {
+		mutations = p.filterMutations(mutations)
 		for _, m := range mutations {
-			p.mutators[m.Component.puller] = p.mutators[m.Component.puller].Add(m.Component.receiver, m.Mutators...)
+			p.mutators[m.puller] = p.mutators[m.puller].Add(m.Component.receiver, m.Mutators...)
 		}
 	}
 }
