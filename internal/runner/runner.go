@@ -32,7 +32,7 @@ type Bus struct {
 type (
 	// Pump executes pipe.Pump components.
 	Pump struct {
-		*mutate.Receiver
+		mutate.Receiver
 		Flush
 		Output Bus
 		Fn     func(out signal.Float64) error
@@ -41,7 +41,7 @@ type (
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
-		*mutate.Receiver
+		mutate.Receiver
 		Flush
 		Input  Bus
 		Output Bus
@@ -51,7 +51,7 @@ type (
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
-		*mutate.Receiver
+		mutate.Receiver
 		Flush
 		Input Bus
 		Fn    func(in signal.Float64) error
