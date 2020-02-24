@@ -2,6 +2,7 @@ package repeat
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync/atomic"
 
@@ -11,6 +12,7 @@ import (
 )
 
 type Repeater struct {
+	bufferSize  int
 	sampleRate  signal.SampleRate
 	numChannels int
 	pumps       []chan message
@@ -23,8 +25,9 @@ type message struct {
 }
 
 // Sink must be called once per broadcast.
-func (r *Repeater) Sink() pipe.SinkFunc {
+func (r *Repeater) Sink() pipe.SinkMaker {
 	return func(bufferSize int, sr signal.SampleRate, nc int) (pipe.Sink, error) {
+		r.bufferSize = bufferSize
 		r.sampleRate = sr
 		r.numChannels = nc
 		r.pool = pool.New(r.numChannels, bufferSize)
@@ -51,8 +54,20 @@ func (r *Repeater) Sink() pipe.SinkFunc {
 	}
 }
 
+func (r *Repeater) AddLine(p pipe.Pipe, line pipe.Line) func() error {
+	return func() error {
+		line.Pump = r.Pump()
+		route, err := line.Route(r.bufferSize)
+		if err != nil {
+			return fmt.Errorf("error binding route: %w", err)
+		}
+		p.Push(p.AddRoute(route))
+		return nil
+	}
+}
+
 // Pump must be called at least once per broadcast.
-func (r *Repeater) Pump() pipe.PumpFunc {
+func (r *Repeater) Pump() pipe.PumpMaker {
 	pump := make(chan message, 1)
 	r.pumps = append(r.pumps, pump)
 	return func(bufferSize int) (pipe.Pump, signal.SampleRate, int, error) {
