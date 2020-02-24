@@ -76,7 +76,7 @@ type (
 	// through components, mixer for example.  If lines are not chained, they must be
 	// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 	Pipe struct {
-		receiver *mutate.Receiver
+		receiver mutate.Receiver
 		ctx      context.Context
 		cancelFn context.CancelFunc
 		merger   *merger
@@ -92,7 +92,7 @@ type (
 	// Component of the DSP line.
 	Component struct {
 		puller   chan mutate.Mutators
-		receiver *mutate.Receiver
+		receiver mutate.Receiver
 	}
 
 	// Mutation is a set of mutators attached to a specific component.
@@ -174,7 +174,7 @@ func (fn PumpMaker) runner(bufferSize int) (runner.Pump, error) {
 		return runner.Pump{}, fmt.Errorf("pump: %w", err)
 	}
 	return runner.Pump{
-		Receiver: &mutate.Receiver{},
+		Receiver: mutate.NewReceiver(),
 		Output: runner.Bus{
 			SampleRate:  sampleRate,
 			NumChannels: numChannels,
@@ -192,7 +192,7 @@ func (fn ProcessorMaker) runner(bufferSize int, input runner.Bus) (runner.Proces
 		return runner.Processor{}, fmt.Errorf("processor: %w", err)
 	}
 	return runner.Processor{
-		Receiver: &mutate.Receiver{},
+		Receiver: mutate.NewReceiver(),
 		Input:    input,
 		Output: runner.Bus{
 			SampleRate:  sampleRate,
@@ -211,7 +211,7 @@ func (fn SinkMaker) runner(bufferSize int, input runner.Bus) (runner.Sink, error
 		return runner.Sink{}, fmt.Errorf("sink: %w", err)
 	}
 	return runner.Sink{
-		Receiver: &mutate.Receiver{},
+		Receiver: mutate.NewReceiver(),
 		Input:    input,
 		Fn:       sink.Sink,
 		Flush:    runner.Flush(sink.Flush),
@@ -224,7 +224,7 @@ func (fn SinkMaker) runner(bufferSize int, input runner.Bus) (runner.Sink, error
 func New(ctx context.Context, options ...Option) Pipe {
 	ctx, cancelFn := context.WithCancel(ctx)
 	p := Pipe{
-		receiver: &mutate.Receiver{},
+		receiver: mutate.NewReceiver(),
 		merger: &merger{
 			errors: make(chan error, 1),
 		},
@@ -233,7 +233,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 		mutators: make(map[chan mutate.Mutators]mutate.Mutators),
 		routes:   make([]Route, 0),
 		pull:     make(chan chan mutate.Mutators),
-		push:     make(chan []Mutation),
+		push:     make(chan []Mutation, 1),
 		errors:   make(chan error, 1),
 	}
 	for _, option := range options {
@@ -258,8 +258,9 @@ func New(ctx context.Context, options ...Option) Pipe {
 								p.interrupt(err)
 							}
 						}
+					} else {
+						p.mutators[m.Component.puller] = p.mutators[m.Component.puller].Add(m.Component.receiver, m.Mutators...)
 					}
-					p.mutators[m.Component.puller] = p.mutators[m.Component.puller].Add(m.Component.receiver, m.Mutators...)
 				}
 			case puller := <-p.pull:
 				mutators := p.mutators[puller]
