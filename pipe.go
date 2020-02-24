@@ -58,6 +58,7 @@ type (
 	Route struct {
 		numChannels int
 		mutators    chan mutate.Mutators
+		receivers   map[mutate.Receiver]struct{}
 		pump        runner.Pump
 		processors  []runner.Processor
 		sink        runner.Sink
@@ -91,12 +92,12 @@ type (
 type (
 	// Component of the DSP line.
 	Component struct {
-		puller   chan mutate.Mutators
 		receiver mutate.Receiver
 	}
 
 	// Mutation is a set of mutators attached to a specific component.
 	Mutation struct {
+		puller chan mutate.Mutators
 		Component
 		Mutators []mutate.Mutator
 	}
@@ -111,7 +112,6 @@ func (c Component) Mutate(ms ...mutate.Mutator) Mutation {
 
 func (r Route) Pump() Component {
 	return Component{
-		puller:   r.mutators,
 		receiver: r.pump.Receiver,
 	}
 }
@@ -124,7 +124,6 @@ func (r Route) Processors() []Component {
 	for _, p := range r.processors {
 		components = append(components,
 			Component{
-				puller:   r.mutators,
 				receiver: p.Receiver,
 			})
 	}
@@ -133,18 +132,19 @@ func (r Route) Processors() []Component {
 
 func (r Route) Sink() Component {
 	return Component{
-		puller:   r.mutators,
 		receiver: r.sink.Receiver,
 	}
 }
 
 // Route line components. All closures are executed and wrapped into runners.
 func (l Line) Route(bufferSize int) (Route, error) {
+	receivers := make(map[mutate.Receiver]struct{})
 	pump, err := l.Pump.runner(bufferSize)
 	if err != nil {
 		return Route{}, fmt.Errorf("error routing %w", err)
 	}
 	input := pump.Output
+	receivers[pump.Receiver] = struct{}{}
 
 	var processors []runner.Processor
 	for _, fn := range l.Processors {
@@ -153,15 +153,18 @@ func (l Line) Route(bufferSize int) (Route, error) {
 			return Route{}, fmt.Errorf("error routing %w", err)
 		}
 		processors, input = append(processors, processor), processor.Output
+		receivers[processor.Receiver] = struct{}{}
 	}
 
 	sink, err := l.Sink.runner(bufferSize, input)
 	if err != nil {
 		return Route{}, fmt.Errorf("error routing sink: %w", err)
 	}
+	receivers[sink.Receiver] = struct{}{}
 
 	return Route{
 		mutators:   make(chan mutate.Mutators),
+		receivers:  receivers,
 		pump:       pump,
 		processors: processors,
 		sink:       sink,
@@ -259,7 +262,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 							}
 						}
 					} else {
-						p.mutators[m.Component.puller] = p.mutators[m.Component.puller].Add(m.Component.receiver, m.Mutators...)
+						p.mutators[m.puller] = p.mutators[m.puller].Add(m.Component.receiver, m.Mutators...)
 					}
 				}
 			case puller := <-p.pull:
@@ -323,7 +326,32 @@ func (r Route) start(ctx context.Context, pull chan<- chan mutate.Mutators) []<-
 // Push new mutators into pipe.
 // Calling this method after pipe is done will cause a panic.
 func (p Pipe) Push(mutations ...Mutation) {
-	p.push <- mutations
+	p.push <- p.filterMutations(mutations)
+}
+
+// Filter mutations that belong to the current pipe.
+func (p Pipe) filterMutations(mutations []Mutation) []Mutation {
+	present := 0
+	for i := range mutations {
+		if mutations[i].receiver == p.receiver {
+			mutations[present] = mutations[i]
+			present++
+		} else if puller := p.getPuller(mutations[i].receiver); puller != nil {
+			mutations[present] = mutations[i]
+			mutations[present].puller = puller
+			present++
+		}
+	}
+	return mutations[:present]
+}
+
+func (p Pipe) getPuller(r mutate.Receiver) chan mutate.Mutators {
+	for _, route := range p.routes {
+		if _, ok := route.receivers[r]; ok {
+			return route.mutators
+		}
+	}
+	return nil
 }
 
 func (p Pipe) AddRoute(r Route) Mutation {
