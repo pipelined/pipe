@@ -28,7 +28,7 @@ func TestPipe(t *testing.T) {
 	}
 	proc1 := &mock.Processor{}
 	proc2 := &mock.Processor{}
-	repeater := &repeat.Repeater{}
+	repeater := repeat.New()
 	sink1 := &mock.Sink{Discard: true}
 	sink2 := &mock.Sink{Discard: true}
 
