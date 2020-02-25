@@ -50,36 +50,42 @@ type Pump struct {
 
 // Pump returns closure with mocked pump.
 func (p *Pump) Pump() pipe.PumpMaker {
-	return func(bufferSize int) (pipe.Pump, signal.SampleRate, int, error) {
+	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
 		return pipe.Pump{
-			Flush: p.Flusher.Flush,
-			Pump: func(b signal.Float64) error {
-				if p.ErrorOnCall != nil {
-					return p.ErrorOnCall
-				}
-
-				if p.Counter.Samples >= p.Limit {
-					return io.EOF
-				}
-				time.Sleep(p.Interval)
-
-				// calculate buffer size.
-				bs := b.Size()
-				// check if we need a shorter.
-				if left := p.Limit - p.Counter.Samples; left < bs {
-					bs = left
-				}
-				for i := range b {
-					// resize buffer
-					b[i] = b[i][:bs]
-					for j := range b[i] {
-						b[i][j] = p.Value
+				Flush: p.Flusher.Flush,
+				Pump: func(b signal.Float64) error {
+					if p.ErrorOnCall != nil {
+						return p.ErrorOnCall
 					}
-				}
-				p.Counter.advance(bs)
-				return nil
+
+					if p.Counter.Samples >= p.Limit {
+						return io.EOF
+					}
+					time.Sleep(p.Interval)
+
+					// calculate buffer size.
+					bs := b.Size()
+					// check if we need a shorter.
+					if left := p.Limit - p.Counter.Samples; left < bs {
+						bs = left
+					}
+					for i := range b {
+						// resize buffer
+						b[i] = b[i][:bs]
+						for j := range b[i] {
+							b[i][j] = p.Value
+						}
+					}
+					p.Counter.advance(bs)
+					return nil
+				},
 			},
-		}, p.SampleRate, p.NumChannels, nil
+			pipe.Bus{
+				BufferSize:  bufferSize,
+				SampleRate:  p.SampleRate,
+				NumChannels: p.NumChannels,
+			},
+			nil
 	}
 }
 
@@ -100,7 +106,7 @@ type Processor struct {
 
 // Processor returns closure with mocked processor.
 func (processor *Processor) Processor() pipe.ProcessorMaker {
-	return func(bufferSize int, sampleRate signal.SampleRate, numChannels int) (pipe.Processor, signal.SampleRate, int, error) {
+	return func(bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
 		return pipe.Processor{
 			Flush: processor.Flusher.Flush,
 			Process: func(in, out signal.Float64) error {
@@ -113,7 +119,7 @@ func (processor *Processor) Processor() pipe.ProcessorMaker {
 				}
 				return nil
 			},
-		}, sampleRate, numChannels, nil
+		}, bus, nil
 	}
 }
 
@@ -127,7 +133,7 @@ type Sink struct {
 
 // Sink returns closure with mocked processor.
 func (sink *Sink) Sink() pipe.SinkMaker {
-	return func(bufferSize int, sampleRate signal.SampleRate, numChannels int) (pipe.Sink, error) {
+	return func(pipe.Bus) (pipe.Sink, error) {
 		return pipe.Sink{
 			Flush: sink.Flusher.Flush,
 			Sink: func(in signal.Float64) error {

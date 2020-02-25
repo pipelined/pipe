@@ -6,6 +6,7 @@ import (
 	"io"
 	"testing"
 
+	"pipelined.dev/pipe"
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe/internal/mock"
@@ -20,10 +21,10 @@ func TestPump(t *testing.T) {
 	}
 	testPump := func(pump mock.Pump, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			fn, _, numChannels, err := pump.Pump()(p.bufferSize)
+			fn, bus, err := pump.Pump()(p.bufferSize)
 			assertError(t, nil, err)
 
-			buf := signal.Float64Buffer(numChannels, p.bufferSize)
+			buf := signal.Float64Buffer(bus.NumChannels, p.bufferSize)
 			for {
 				if err := fn.Pump(buf); err != nil {
 					if err != io.EOF {
@@ -76,13 +77,12 @@ func TestPump(t *testing.T) {
 
 func TestProcessor(t *testing.T) {
 	type params struct {
-		in         signal.Float64
-		expected   signal.Float64
-		bufferSize int
+		in       signal.Float64
+		expected signal.Float64
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, _, err := processorMock.Processor()(p.bufferSize, 0, 0)
+			processor, _, err := processorMock.Processor()(pipe.Bus{})
 			assertError(t, nil, err)
 
 			out := signal.Float64Buffer(p.expected.NumChannels(), p.expected.Size())
@@ -121,13 +121,12 @@ func TestProcessor(t *testing.T) {
 
 func TestSink(t *testing.T) {
 	type params struct {
-		in         signal.Float64
-		expected   signal.Float64
-		bufferSize int
+		in       signal.Float64
+		expected signal.Float64
 	}
 	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, err := sinkMock.Sink()(p.bufferSize, 0, 0)
+			sink, err := sinkMock.Sink()(pipe.Bus{})
 			assertError(t, nil, err)
 
 			err = sink.Sink(p.in)
