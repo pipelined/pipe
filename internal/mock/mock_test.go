@@ -21,7 +21,7 @@ func TestPump(t *testing.T) {
 	}
 	testPump := func(pump mock.Pump, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			fn, bus, err := pump.Pump()(p.bufferSize)
+			_, fn, bus, err := pump.Pump()(p.bufferSize)
 			assertError(t, nil, err)
 
 			buf := signal.Float64Buffer(bus.NumChannels, p.bufferSize)
@@ -82,7 +82,7 @@ func TestProcessor(t *testing.T) {
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, err := processorMock.Processor()(pipe.Bus{})
+			_, processor, _, err := processorMock.Processor()(pipe.Bus{})
 			assertError(t, nil, err)
 
 			out := signal.Float64Buffer(p.expected.NumChannels(), p.expected.Size())
@@ -126,7 +126,7 @@ func TestSink(t *testing.T) {
 	}
 	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, err := sinkMock.Sink()(pipe.Bus{})
+			_, sink, err := sinkMock.Sink()(pipe.Bus{})
 			assertError(t, nil, err)
 
 			err = sink.Sink(p.in)

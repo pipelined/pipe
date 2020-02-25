@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mutate"
 )
 
 // paramMock used to set up test cases for mutators
 type paramMock struct {
-	mutate.Receiver
+	id         [16]byte
 	value      int
 	operations int
 	expected   int
@@ -17,7 +18,7 @@ type paramMock struct {
 
 func (m *paramMock) mutators() mutate.Mutators {
 	var p mutate.Mutators
-	return p.Add(m.Receiver, m.param())
+	return p.Add(m.id, m.param())
 }
 
 // mutators closure to mutate value
@@ -75,11 +76,11 @@ func TestAddParams(t *testing.T) {
 		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Add(m.Receiver, m.param())
+				mutators = mutators.Add(m.id, m.param())
 			}
 		}
 		for _, m := range c.mocks {
-			mutators.ApplyTo(m.Receiver)
+			mutators.ApplyTo(m.id)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
@@ -127,7 +128,7 @@ func TestAppendParams(t *testing.T) {
 			}
 		}
 		for _, m := range c.mocks {
-			mutators.ApplyTo(m.Receiver)
+			mutators.ApplyTo(m.id)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
@@ -140,7 +141,7 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Receiver:   mutate.NewReceiver(),
+					id:         pipe.NewID(),
 					operations: 0,
 					expected:   0,
 				},
@@ -149,7 +150,7 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Receiver:   mutate.NewReceiver(),
+					id:         pipe.NewID(),
 					operations: 1,
 					expected:   10,
 				},
@@ -158,12 +159,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Receiver:   mutate.NewReceiver(),
+					id:         pipe.NewID(),
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
-					Receiver:   mutate.NewReceiver(),
+					id:         pipe.NewID(),
 					operations: 3,
 					expected:   30,
 				},
@@ -172,12 +173,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Receiver:   mutate.NewReceiver(),
+					id:         pipe.NewID(),
 					operations: 4,
 					expected:   40,
 				},
 				&paramMock{
-					Receiver:   mutate.NewReceiver(),
+					id:         pipe.NewID(),
 					operations: 0,
 					expected:   0,
 				},
@@ -189,14 +190,14 @@ func TestDetachParams(t *testing.T) {
 		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Add(m.Receiver, m.param())
+				mutators = mutators.Add(m.id, m.param())
 			}
 		}
 		for _, m := range c.mocks {
-			d := mutators.Detach(m.Receiver)
-			mutators.ApplyTo(m.Receiver)
+			d := mutators.Detach(m.id)
+			mutators.ApplyTo(m.id)
 			assert.Equal(t, 0, m.value)
-			d.ApplyTo(m.Receiver)
+			d.ApplyTo(m.id)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}

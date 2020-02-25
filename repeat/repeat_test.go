@@ -36,9 +36,7 @@ func TestAddRoute(t *testing.T) {
 	line := pipe.Line{
 		Sink: sink2.Sink(),
 	}
-	repeaterHandler := source.Sink()
-	m := repeaterHandler.Mutate(repeater.AddLine(p, line))
-	p.Push(m)
+	p.Push(repeater.AddLine(p, line))
 
 	// start
 	_ = p.Wait()
