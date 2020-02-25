@@ -26,11 +26,11 @@ type message struct {
 
 // Sink must be called once per broadcast.
 func (r *Repeater) Sink() pipe.SinkMaker {
-	return func(bufferSize int, sr signal.SampleRate, nc int) (pipe.Sink, error) {
-		r.bufferSize = bufferSize
-		r.sampleRate = sr
-		r.numChannels = nc
-		r.pool = pool.New(r.numChannels, bufferSize)
+	return func(bus pipe.Bus) (pipe.Sink, error) {
+		r.bufferSize = bus.BufferSize
+		r.sampleRate = bus.SampleRate
+		r.numChannels = bus.NumChannels
+		r.pool = pool.New(r.numChannels, bus.BufferSize)
 		var buffer *signal.Float64
 		return pipe.Sink{
 			Sink: func(b signal.Float64) error {
@@ -70,24 +70,30 @@ func (r *Repeater) AddLine(p pipe.Pipe, line pipe.Line) func() error {
 func (r *Repeater) Pump() pipe.PumpMaker {
 	pump := make(chan message, 1)
 	r.pumps = append(r.pumps, pump)
-	return func(bufferSize int) (pipe.Pump, signal.SampleRate, int, error) {
+	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
 		var (
 			message message
 			ok      bool
 		)
 		return pipe.Pump{
-			Pump: func(b signal.Float64) error {
-				message, ok = <-pump
-				if !ok {
-					return io.EOF
-				}
-				copyFloat64(b, *message.buffer)
-				if atomic.AddInt32(&message.pumps, -1) == 0 {
-					r.pool.Free(message.buffer)
-				}
-				return nil
+				Pump: func(b signal.Float64) error {
+					message, ok = <-pump
+					if !ok {
+						return io.EOF
+					}
+					copyFloat64(b, *message.buffer)
+					if atomic.AddInt32(&message.pumps, -1) == 0 {
+						r.pool.Free(message.buffer)
+					}
+					return nil
+				},
 			},
-		}, r.sampleRate, r.numChannels, nil
+			pipe.Bus{
+				BufferSize:  bufferSize,
+				SampleRate:  r.sampleRate,
+				NumChannels: r.numChannels,
+			},
+			nil
 	}
 }
 

@@ -23,18 +23,12 @@ type Message struct {
 	Mutators mutate.Mutators // Mutators for pipe.
 }
 
-type Bus struct {
-	signal.SampleRate
-	NumChannels int
-	Pool
-}
-
 type (
 	// Pump executes pipe.Pump components.
 	Pump struct {
 		mutate.Receiver
 		Flush
-		Output Bus
+		Output Pool
 		Fn     func(out signal.Float64) error
 		Meter  metric.ResetFunc
 	}
@@ -43,8 +37,8 @@ type (
 	Processor struct {
 		mutate.Receiver
 		Flush
-		Input  Bus
-		Output Bus
+		Input  Pool
+		Output Pool
 		Fn     func(in, out signal.Float64) error
 		Meter  metric.ResetFunc
 	}
@@ -53,7 +47,7 @@ type (
 	Sink struct {
 		mutate.Receiver
 		Flush
-		Input Bus
+		Input Pool
 		Fn    func(in signal.Float64) error
 		Meter metric.ResetFunc
 	}
