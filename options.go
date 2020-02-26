@@ -16,7 +16,7 @@ func WithMutators(mutations ...mutate.Mutation) Option {
 	return func(p *Pipe) {
 		mutations = p.filterMutations(mutations)
 		for _, m := range mutations {
-			p.mutators[m.Puller] = p.mutators[m.Puller].Add(m.Mutability, m.Mutators...)
+			p.mutators[m.Puller] = p.mutators[m.Puller].Add(m.Mutability, m.Mutator)
 		}
 	}
 }

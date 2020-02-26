@@ -26,7 +26,7 @@ type Message struct {
 type (
 	// Pump executes pipe.Pump components.
 	Pump struct {
-		Mutability [16]byte
+		mutate.Mutability
 		Flush
 		Output Pool
 		Fn     func(out signal.Float64) error
@@ -35,7 +35,7 @@ type (
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
-		Mutability [16]byte
+		mutate.Mutability
 		Flush
 		Input  Pool
 		Output Pool
@@ -45,7 +45,7 @@ type (
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
-		Mutability [16]byte
+		mutate.Mutability
 		Flush
 		Input Pool
 		Fn    func(in signal.Float64) error

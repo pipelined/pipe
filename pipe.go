@@ -211,13 +211,11 @@ func New(ctx context.Context, options ...Option) Pipe {
 				for _, m := range mutations {
 					// mutate pipe itself
 					if m.Mutability == p.mutability {
-						for _, fn := range m.Mutators {
-							if err := fn(); err != nil {
-								p.interrupt(err)
-							}
+						if err := m.Mutator(); err != nil {
+							p.interrupt(err)
 						}
 					} else {
-						p.mutators[m.Puller] = p.mutators[m.Puller].Add(m.Mutability, m.Mutators...)
+						p.mutators[m.Puller] = p.mutators[m.Puller].Add(m.Mutability, m.Mutator)
 					}
 				}
 			case puller := <-p.pull:
@@ -312,11 +310,9 @@ func (p Pipe) getPuller(id mutate.Mutability) chan mutate.Mutators {
 func (p Pipe) AddRoute(r Route) mutate.Mutation {
 	return mutate.Mutation{
 		Mutability: p.mutability,
-		Mutators: []mutate.Mutator{
-			func() error {
-				p.merger.merge(r.start(p.ctx, p.pull)...)
-				return nil
-			},
+		Mutator: func() error {
+			p.merger.merge(r.start(p.ctx, p.pull)...)
+			return nil
 		},
 	}
 }
