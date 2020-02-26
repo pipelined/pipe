@@ -204,6 +204,9 @@ func New(ctx context.Context, options ...Option) Pipe {
 	p.merger.merge(start(p.ctx, p.pull, p.routes)...)
 	go p.merger.wait()
 	go func() {
+		var (
+			puller chan mutate.Mutators
+		)
 		defer close(p.errors)
 		for {
 			select {
@@ -215,10 +218,12 @@ func New(ctx context.Context, options ...Option) Pipe {
 							p.interrupt(err)
 						}
 					} else {
-						p.mutators[m.Puller] = p.mutators[m.Puller].Add(m.Mutability, m.Mutator)
+						if puller = p.getPuller(m.Mutability); puller != nil {
+							p.mutators[puller] = p.mutators[puller].Add(m.Mutability, m.Mutator)
+						}
 					}
 				}
-			case puller := <-p.pull:
+			case puller = <-p.pull:
 				mutators := p.mutators[puller]
 				p.mutators[puller] = nil
 				puller <- mutators
@@ -279,23 +284,7 @@ func (r Route) start(ctx context.Context, pull chan<- chan mutate.Mutators) []<-
 // Push new mutators into pipe.
 // Calling this method after pipe is done will cause a panic.
 func (p Pipe) Push(mutations ...mutate.Mutation) {
-	p.push <- p.filterMutations(mutations)
-}
-
-// Filter mutations that belong to the current pipe.
-func (p Pipe) filterMutations(mutations []mutate.Mutation) []mutate.Mutation {
-	present := 0
-	for i := range mutations {
-		if mutations[i].Mutability == p.mutability {
-			mutations[present] = mutations[i]
-			present++
-		} else if puller := p.getPuller(mutations[i].Mutability); puller != nil {
-			mutations[present] = mutations[i]
-			mutations[present].Puller = puller
-			present++
-		}
-	}
-	return mutations[:present]
+	p.push <- mutations
 }
 
 func (p Pipe) getPuller(id mutate.Mutability) chan mutate.Mutators {

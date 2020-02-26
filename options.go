@@ -14,9 +14,10 @@ func WithRoutes(routes ...Route) Option {
 
 func WithMutators(mutations ...mutate.Mutation) Option {
 	return func(p *Pipe) {
-		mutations = p.filterMutations(mutations)
 		for _, m := range mutations {
-			p.mutators[m.Puller] = p.mutators[m.Puller].Add(m.Mutability, m.Mutator)
+			if puller := p.getPuller(m.Mutability); puller != nil {
+				p.mutators[puller] = p.mutators[puller].Add(m.Mutability, m.Mutator)
+			}
 		}
 	}
 }
