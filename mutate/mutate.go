@@ -12,7 +12,6 @@ type (
 	Mutation struct {
 		Mutability
 		Mutator func() error
-		Puller  chan Mutators
 	}
 )
 
