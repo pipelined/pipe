@@ -26,7 +26,7 @@ type Message struct {
 type (
 	// Pump executes pipe.Pump components.
 	Pump struct {
-		ID [16]byte
+		Mutability [16]byte
 		Flush
 		Output Pool
 		Fn     func(out signal.Float64) error
@@ -35,7 +35,7 @@ type (
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
-		ID [16]byte
+		Mutability [16]byte
 		Flush
 		Input  Pool
 		Output Pool
@@ -45,7 +45,7 @@ type (
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
-		ID [16]byte
+		Mutability [16]byte
 		Flush
 		Input Pool
 		Fn    func(in signal.Float64) error
@@ -96,7 +96,7 @@ func (r Pump) Run(ctx context.Context, give chan<- chan mutate.Mutators, take ch
 				return
 			}
 			// apply Mutators
-			if err = mutators.ApplyTo(r.ID); err != nil {
+			if err = mutators.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating pump: %w", err)
 				return
 			}
@@ -155,7 +155,7 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 			}
 
 			// apply Mutators
-			if err = m.Mutators.ApplyTo(r.ID); err != nil {
+			if err = m.Mutators.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating processor: %w", err)
 				r.Input.Free(m.Buffer) // need to free
 				return
@@ -209,7 +209,7 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 			}
 
 			// apply Mutators
-			if err = m.Mutators.ApplyTo(r.ID); err != nil {
+			if err = m.Mutators.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating sink: %w", err)
 				r.Input.Free(m.Buffer) // need to free
 				return

@@ -12,18 +12,12 @@ import (
 )
 
 type Repeater struct {
-	id          pipe.ID
+	pipe.Mutability
 	bufferSize  int
 	sampleRate  signal.SampleRate
 	numChannels int
 	pumps       []chan message
 	pool        *pool.Pool
-}
-
-func New() *Repeater {
-	return &Repeater{
-		id: pipe.NewID(),
-	}
 }
 
 type message struct {
@@ -33,37 +27,37 @@ type message struct {
 
 // Sink must be called once per broadcast.
 func (r *Repeater) Sink() pipe.SinkMaker {
-	return func(bus pipe.Bus) (pipe.ID, pipe.Sink, error) {
+	return func(bus pipe.Bus) (pipe.Sink, error) {
 		r.bufferSize = bus.BufferSize
 		r.sampleRate = bus.SampleRate
 		r.numChannels = bus.NumChannels
 		r.pool = pool.New(r.numChannels, bus.BufferSize)
 		var buffer *signal.Float64
-		return r.id,
-			pipe.Sink{
-				Sink: func(b signal.Float64) error {
-					buffer = r.pool.Alloc()
-					copyFloat64(*buffer, b)
-					for _, pump := range r.pumps {
-						pump <- message{
-							pumps:  int32(len(r.pumps)),
-							buffer: buffer,
-						}
+		return pipe.Sink{
+			Mutability: r.Mutability,
+			Sink: func(b signal.Float64) error {
+				buffer = r.pool.Alloc()
+				copyFloat64(*buffer, b)
+				for _, pump := range r.pumps {
+					pump <- message{
+						pumps:  int32(len(r.pumps)),
+						buffer: buffer,
 					}
-					return nil
-				},
-				Flush: func(context.Context) error {
-					for _, pump := range r.pumps {
-						close(pump)
-					}
-					return nil
-				},
-			}, nil
+				}
+				return nil
+			},
+			Flush: func(context.Context) error {
+				for _, pump := range r.pumps {
+					close(pump)
+				}
+				return nil
+			},
+		}, nil
 	}
 }
 
 func (r *Repeater) AddLine(p pipe.Pipe, line pipe.Line) pipe.Mutation {
-	return r.id.Mutate(func() error {
+	return r.Mutability.Mutate(func() error {
 		line.Pump = r.Pump()
 		route, err := line.Route(r.bufferSize)
 		if err != nil {
@@ -78,13 +72,12 @@ func (r *Repeater) AddLine(p pipe.Pipe, line pipe.Line) pipe.Mutation {
 func (r *Repeater) Pump() pipe.PumpMaker {
 	pump := make(chan message, 1)
 	r.pumps = append(r.pumps, pump)
-	return func(bufferSize int) (pipe.ID, pipe.Pump, pipe.Bus, error) {
+	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
 		var (
 			message message
 			ok      bool
 		)
-		return pipe.NewID(),
-			pipe.Pump{
+		return pipe.Pump{
 				Pump: func(b signal.Float64) error {
 					message, ok = <-pump
 					if !ok {
