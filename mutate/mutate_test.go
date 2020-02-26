@@ -141,7 +141,7 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         pipe.NewID(),
+					id:         pipe.Mutable(),
 					operations: 0,
 					expected:   0,
 				},
@@ -150,7 +150,7 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         pipe.NewID(),
+					id:         pipe.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -159,12 +159,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         pipe.NewID(),
+					id:         pipe.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
-					id:         pipe.NewID(),
+					id:         pipe.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
@@ -173,12 +173,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         pipe.NewID(),
+					id:         pipe.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
 				&paramMock{
-					id:         pipe.NewID(),
+					id:         pipe.Mutable(),
 					operations: 0,
 					expected:   0,
 				},

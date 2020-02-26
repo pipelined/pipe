@@ -50,9 +50,10 @@ type Pump struct {
 
 // Pump returns closure with mocked pump.
 func (p *Pump) Pump() pipe.PumpMaker {
-	return func(bufferSize int) (pipe.ID, pipe.Pump, pipe.Bus, error) {
-		return pipe.NewID(), pipe.Pump{
-				Flush: p.Flusher.Flush,
+	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
+		return pipe.Pump{
+				Mutability: pipe.Mutable(),
+				Flush:      p.Flusher.Flush,
 				Pump: func(b signal.Float64) error {
 					if p.ErrorOnCall != nil {
 						return p.ErrorOnCall
@@ -104,8 +105,8 @@ type Processor struct {
 
 // Processor returns closure with mocked processor.
 func (processor *Processor) Processor() pipe.ProcessorMaker {
-	return func(bus pipe.Bus) (pipe.ID, pipe.Processor, pipe.Bus, error) {
-		return pipe.NewID(), pipe.Processor{
+	return func(bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
+		return pipe.Processor{
 			Flush: processor.Flusher.Flush,
 			Process: func(in, out signal.Float64) error {
 				if processor.ErrorOnCall != nil {
@@ -131,8 +132,8 @@ type Sink struct {
 
 // Sink returns closure with mocked processor.
 func (sink *Sink) Sink() pipe.SinkMaker {
-	return func(pipe.Bus) (pipe.ID, pipe.Sink, error) {
-		return pipe.NewID(), pipe.Sink{
+	return func(pipe.Bus) (pipe.Sink, error) {
+		return pipe.Sink{
 			Flush: sink.Flusher.Flush,
 			Sink: func(in signal.Float64) error {
 				if sink.ErrorOnCall != nil {
