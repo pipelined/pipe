@@ -7,12 +7,13 @@ import (
 	"sync/atomic"
 
 	"pipelined.dev/pipe"
+	"pipelined.dev/pipe/mutate"
 	"pipelined.dev/signal"
 	"pipelined.dev/signal/pool"
 )
 
 type Repeater struct {
-	pipe.Mutability
+	mutate.Mutability
 	bufferSize  int
 	sampleRate  signal.SampleRate
 	numChannels int
@@ -56,7 +57,7 @@ func (r *Repeater) Sink() pipe.SinkMaker {
 	}
 }
 
-func (r *Repeater) AddLine(p pipe.Pipe, line pipe.Line) pipe.Mutation {
+func (r *Repeater) AddLine(p pipe.Pipe, line pipe.Line) mutate.Mutation {
 	return r.Mutability.Mutate(func() error {
 		line.Pump = r.Pump()
 		route, err := line.Route(r.bufferSize)

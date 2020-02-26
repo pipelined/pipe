@@ -2,7 +2,6 @@ package pipe
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 
 	"pipelined.dev/signal"
@@ -12,8 +11,6 @@ import (
 	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mutate"
 )
-
-var immutable = Mutability{}
 
 type (
 	Bus struct {
@@ -30,7 +27,7 @@ type (
 	// trim the size of the buffer to align it with actual data.
 	// Buffer size can only be decreased.
 	Pump struct {
-		Mutability
+		mutate.Mutability
 		Pump func(out signal.Float64) error
 		Flush
 	}
@@ -43,7 +40,7 @@ type (
 	// changed during execution, but only decrease allowed. Number of
 	// channels cannot be changed.
 	Processor struct {
-		Mutability
+		mutate.Mutability
 		Process func(in, out signal.Float64) error
 		Flush
 	}
@@ -55,7 +52,7 @@ type (
 	// This components must not change buffer content. Route can have
 	// multiple sinks and this will cause race condition.
 	Sink struct {
-		Mutability
+		mutate.Mutability
 		Sink func(in signal.Float64) error
 		Flush
 	}
@@ -69,7 +66,7 @@ type (
 	Route struct {
 		numChannels int
 		mutators    chan mutate.Mutators
-		receivers   map[Mutability]struct{}
+		receivers   map[mutate.Mutability]struct{}
 		pump        runner.Pump
 		processors  []runner.Processor
 		sink        runner.Sink
@@ -88,53 +85,21 @@ type (
 	// through components, mixer for example.  If lines are not chained, they must be
 	// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 	Pipe struct {
-		mutability Mutability
+		mutability mutate.Mutability
 		ctx        context.Context
 		cancelFn   context.CancelFunc
 		merger     *merger
 		routes     []Route
 		mutators   map[chan mutate.Mutators]mutate.Mutators
 		pull       chan chan mutate.Mutators
-		push       chan []Mutation
+		push       chan []mutate.Mutation
 		errors     chan error
 	}
 )
 
-type (
-	// Mutability of the DSP line.
-	Mutability [16]byte
-
-	// Mutation is a set of mutators attached to a specific component.
-	Mutation struct {
-		Mutability
-		Mutators []mutate.Mutator
-		puller   chan mutate.Mutators
-	}
-)
-
-func (m Mutability) Mutate(ms ...mutate.Mutator) Mutation {
-	return Mutation{
-		Mutability: m,
-		Mutators:   ms,
-	}
-}
-
-func (m Mutability) Mutable() Mutability {
-	if m == immutable {
-		return Mutable()
-	}
-	return m
-}
-
-func Mutable() Mutability {
-	var id [16]byte
-	rand.Read(id[:])
-	return id
-}
-
 // Route line components. All closures are executed and wrapped into runners.
 func (l Line) Route(bufferSize int) (Route, error) {
-	receivers := make(map[Mutability]struct{})
+	receivers := make(map[mutate.Mutability]struct{})
 	pump, input, err := l.Pump.runner(bufferSize)
 	if err != nil {
 		return Route{}, fmt.Errorf("error routing %w", err)
@@ -217,7 +182,7 @@ func (fn SinkMaker) runner(bufferSize int, input Bus) (runner.Sink, error) {
 func New(ctx context.Context, options ...Option) Pipe {
 	ctx, cancelFn := context.WithCancel(ctx)
 	p := Pipe{
-		mutability: Mutable(),
+		mutability: mutate.Mutable(),
 		merger: &merger{
 			errors: make(chan error, 1),
 		},
@@ -226,7 +191,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 		mutators: make(map[chan mutate.Mutators]mutate.Mutators),
 		routes:   make([]Route, 0),
 		pull:     make(chan chan mutate.Mutators),
-		push:     make(chan []Mutation, 1),
+		push:     make(chan []mutate.Mutation, 1),
 		errors:   make(chan error, 1),
 	}
 	for _, option := range options {
@@ -252,7 +217,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 							}
 						}
 					} else {
-						p.mutators[m.puller] = p.mutators[m.puller].Add(m.Mutability, m.Mutators...)
+						p.mutators[m.Puller] = p.mutators[m.Puller].Add(m.Mutability, m.Mutators...)
 					}
 				}
 			case puller := <-p.pull:
@@ -315,12 +280,12 @@ func (r Route) start(ctx context.Context, pull chan<- chan mutate.Mutators) []<-
 
 // Push new mutators into pipe.
 // Calling this method after pipe is done will cause a panic.
-func (p Pipe) Push(mutations ...Mutation) {
+func (p Pipe) Push(mutations ...mutate.Mutation) {
 	p.push <- p.filterMutations(mutations)
 }
 
 // Filter mutations that belong to the current pipe.
-func (p Pipe) filterMutations(mutations []Mutation) []Mutation {
+func (p Pipe) filterMutations(mutations []mutate.Mutation) []mutate.Mutation {
 	present := 0
 	for i := range mutations {
 		if mutations[i].Mutability == p.mutability {
@@ -328,14 +293,14 @@ func (p Pipe) filterMutations(mutations []Mutation) []Mutation {
 			present++
 		} else if puller := p.getPuller(mutations[i].Mutability); puller != nil {
 			mutations[present] = mutations[i]
-			mutations[present].puller = puller
+			mutations[present].Puller = puller
 			present++
 		}
 	}
 	return mutations[:present]
 }
 
-func (p Pipe) getPuller(id Mutability) chan mutate.Mutators {
+func (p Pipe) getPuller(id mutate.Mutability) chan mutate.Mutators {
 	for _, route := range p.routes {
 		if _, ok := route.receivers[id]; ok {
 			return route.mutators
@@ -344,8 +309,8 @@ func (p Pipe) getPuller(id Mutability) chan mutate.Mutators {
 	return nil
 }
 
-func (p Pipe) AddRoute(r Route) Mutation {
-	return Mutation{
+func (p Pipe) AddRoute(r Route) mutate.Mutation {
+	return mutate.Mutation{
 		Mutability: p.mutability,
 		Mutators: []mutate.Mutator{
 			func() error {
