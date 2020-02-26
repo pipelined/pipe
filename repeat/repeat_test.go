@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
+	"pipelined.dev/pipe/mutate"
 	"pipelined.dev/pipe/repeat"
 )
 
@@ -14,7 +15,7 @@ const bufferSize = 512
 
 func TestAddRoute(t *testing.T) {
 	repeater := &repeat.Repeater{
-		Mutability: pipe.Mutable(),
+		Mutability: mutate.Mutable(),
 	}
 	source, _ := pipe.Line{
 		Pump: (&mock.Pump{

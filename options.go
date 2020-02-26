@@ -1,5 +1,7 @@
 package pipe
 
+import "pipelined.dev/pipe/mutate"
+
 type Option func(*Pipe)
 
 func WithRoutes(routes ...Route) Option {
@@ -10,11 +12,11 @@ func WithRoutes(routes ...Route) Option {
 	}
 }
 
-func WithMutators(mutations ...Mutation) Option {
+func WithMutators(mutations ...mutate.Mutation) Option {
 	return func(p *Pipe) {
 		mutations = p.filterMutations(mutations)
 		for _, m := range mutations {
-			p.mutators[m.puller] = p.mutators[m.puller].Add(m.Mutability, m.Mutators...)
+			p.mutators[m.Puller] = p.mutators[m.Puller].Add(m.Mutability, m.Mutators...)
 		}
 	}
 }

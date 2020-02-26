@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"pipelined.dev/pipe/mutate"
+
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/goleak"
 
@@ -28,7 +30,7 @@ func TestPipe(t *testing.T) {
 	}
 	proc1 := &mock.Processor{}
 	proc2 := &mock.Processor{}
-	repeater := repeat.New()
+	repeater := &repeat.Repeater{}
 	sink1 := &mock.Sink{Discard: true}
 	sink2 := &mock.Sink{Discard: true}
 
@@ -85,6 +87,7 @@ func TestSimplePipe(t *testing.T) {
 
 func TestReset(t *testing.T) {
 	pump := &mock.Pump{
+		Mutability:  mutate.Mutable(),
 		Limit:       862 * bufferSize,
 		NumChannels: 2,
 	}
@@ -95,7 +98,6 @@ func TestReset(t *testing.T) {
 		Sink: sink.Sink(),
 	}.Route(bufferSize)
 	assert.Nil(t, err)
-	pumpHandle := route.Pump()
 	p := pipe.New(
 		context.Background(),
 		pipe.WithRoutes(route),
@@ -109,7 +111,7 @@ func TestReset(t *testing.T) {
 	p = pipe.New(
 		context.Background(),
 		pipe.WithRoutes(route),
-		pipe.WithMutators(pumpHandle.Mutate(pump.Reset())),
+		pipe.WithMutators(pump.Reset()),
 	)
 	_ = p.Wait()
 	assert.Nil(t, err)
@@ -156,6 +158,7 @@ func TestAddRoute(t *testing.T) {
 // 1 Pump, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
 	pump := &mock.Pump{
+		Mutability:  mutate.Mutable(),
 		Limit:       862 * bufferSize,
 		NumChannels: 2,
 	}
@@ -168,12 +171,11 @@ func BenchmarkSingleLine(b *testing.B) {
 		),
 		Sink: sink.Sink(),
 	}.Route(bufferSize)
-	pumpHandle := route.Pump()
 	for i := 0; i < b.N; i++ {
 		p := pipe.New(
 			context.Background(),
 			pipe.WithRoutes(route),
-			pipe.WithMutators(pumpHandle.Mutate(pump.Reset())),
+			pipe.WithMutators(pump.Reset()),
 		)
 		_ = p.Wait()
 	}

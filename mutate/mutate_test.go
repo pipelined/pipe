@@ -4,13 +4,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mutate"
 )
 
+var id [16]byte
+
 // paramMock used to set up test cases for mutators
 type paramMock struct {
-	id         [16]byte
 	value      int
 	operations int
 	expected   int
@@ -18,7 +18,7 @@ type paramMock struct {
 
 func (m *paramMock) mutators() mutate.Mutators {
 	var p mutate.Mutators
-	return p.Add(m.id, m.param())
+	return p.Add(id, m.param())
 }
 
 // mutators closure to mutate value
@@ -76,11 +76,11 @@ func TestAddParams(t *testing.T) {
 		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Add(m.id, m.param())
+				mutators = mutators.Add(id, m.param())
 			}
 		}
 		for _, m := range c.mocks {
-			mutators.ApplyTo(m.id)
+			mutators.ApplyTo(id)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
@@ -128,7 +128,7 @@ func TestAppendParams(t *testing.T) {
 			}
 		}
 		for _, m := range c.mocks {
-			mutators.ApplyTo(m.id)
+			mutators.ApplyTo(id)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
@@ -141,7 +141,6 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         pipe.Mutable(),
 					operations: 0,
 					expected:   0,
 				},
@@ -150,7 +149,6 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         pipe.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -159,12 +157,10 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         pipe.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
-					id:         pipe.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
@@ -173,12 +169,10 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         pipe.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
 				&paramMock{
-					id:         pipe.Mutable(),
 					operations: 0,
 					expected:   0,
 				},
@@ -190,14 +184,14 @@ func TestDetachParams(t *testing.T) {
 		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Add(m.id, m.param())
+				mutators = mutators.Add(id, m.param())
 			}
 		}
 		for _, m := range c.mocks {
-			d := mutators.Detach(m.id)
-			mutators.ApplyTo(m.id)
+			d := mutators.Detach(id)
+			mutators.ApplyTo(id)
 			assert.Equal(t, 0, m.value)
-			d.ApplyTo(m.id)
+			d.ApplyTo(id)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}

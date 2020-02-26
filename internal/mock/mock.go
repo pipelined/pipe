@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"pipelined.dev/pipe"
+	"pipelined.dev/pipe/mutate"
 
 	"pipelined.dev/signal"
 )
@@ -38,6 +39,7 @@ func (f *Flusher) Flush(ctx context.Context) error {
 
 // Pump are settings for pipe.Pump mock.
 type Pump struct {
+	mutate.Mutability
 	Counter
 	Flusher
 	Interval    time.Duration
@@ -52,7 +54,7 @@ type Pump struct {
 func (p *Pump) Pump() pipe.PumpMaker {
 	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
 		return pipe.Pump{
-				Mutability: pipe.Mutable(),
+				Mutability: p.Mutability,
 				Flush:      p.Flusher.Flush,
 				Pump: func(b signal.Float64) error {
 					if p.ErrorOnCall != nil {
@@ -89,11 +91,12 @@ func (p *Pump) Pump() pipe.PumpMaker {
 }
 
 // Reset allows to reset pump.
-func (p *Pump) Reset() func() error {
-	return func() error {
-		p.Counter = Counter{}
-		return nil
-	}
+func (p *Pump) Reset() mutate.Mutation {
+	return p.Mutability.Mutate(
+		func() error {
+			p.Counter = Counter{}
+			return nil
+		})
 }
 
 // Processor are settings for pipe.Processor mock.
