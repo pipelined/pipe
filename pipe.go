@@ -65,7 +65,7 @@ type (
 	// Route is a sequence of DSP components.
 	Route struct {
 		numChannels int
-		mutators    chan mutate.Mutators
+		mutators    chan runner.Mutators
 		receivers   map[mutate.Mutability]struct{}
 		pump        runner.Pump
 		processors  []runner.Processor
@@ -90,7 +90,7 @@ type (
 		cancelFn   context.CancelFunc
 		merger     *merger
 		routes     []Route
-		mutators   map[chan mutate.Mutators]mutate.Mutators
+		mutators   map[chan runner.Mutators]runner.Mutators
 		push       chan []mutate.Mutation
 		errors     chan error
 	}
@@ -125,7 +125,7 @@ func (l Line) Route(bufferSize int) (Route, error) {
 	receivers[sink.Mutability] = struct{}{}
 
 	return Route{
-		mutators:   make(chan mutate.Mutators, 1),
+		mutators:   make(chan runner.Mutators, 1),
 		receivers:  receivers,
 		pump:       pump,
 		processors: processors,
@@ -187,7 +187,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 		},
 		ctx:      ctx,
 		cancelFn: cancelFn,
-		mutators: make(map[chan mutate.Mutators]mutate.Mutators),
+		mutators: make(map[chan runner.Mutators]runner.Mutators),
 		routes:   make([]Route, 0),
 		push:     make(chan []mutate.Mutation, 1),
 		errors:   make(chan error, 1),
@@ -240,7 +240,7 @@ func mutators(p Pipe, ms []mutate.Mutation) {
 	}
 }
 
-func pushMutators(mutators map[chan mutate.Mutators]mutate.Mutators) {
+func pushMutators(mutators map[chan runner.Mutators]runner.Mutators) {
 	for c, m := range mutators {
 		c <- m
 	}
@@ -292,7 +292,7 @@ func (p Pipe) Push(mutations ...mutate.Mutation) {
 	p.push <- mutations
 }
 
-func (p Pipe) getPuller(id mutate.Mutability) chan mutate.Mutators {
+func (p Pipe) getPuller(id mutate.Mutability) chan runner.Mutators {
 	for _, route := range p.routes {
 		if _, ok := route.receivers[id]; ok {
 			return route.mutators
