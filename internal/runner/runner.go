@@ -63,7 +63,7 @@ func (fn Flush) call(ctx context.Context) error {
 }
 
 // Run starts the Pump runner.
-func (r Pump) Run(ctx context.Context, give chan<- chan mutate.Mutators, take chan mutate.Mutators) (<-chan Message, <-chan error) {
+func (r Pump) Run(ctx context.Context, take chan mutate.Mutators) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
 	meter := r.Meter()
@@ -82,18 +82,12 @@ func (r Pump) Run(ctx context.Context, give chan<- chan mutate.Mutators, take ch
 			output   *signal.Float64
 		)
 		for {
-			// request new message
-			select {
-			case give <- take:
-			case <-ctx.Done():
-				return
-			}
-
 			// receive new message
 			select {
 			case mutators = <-take:
 			case <-ctx.Done():
 				return
+			default:
 			}
 			// apply Mutators
 			if err = mutators.ApplyTo(r.Mutability); err != nil {
