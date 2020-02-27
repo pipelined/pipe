@@ -1,27 +1,30 @@
-package mutate_test
+package runner_test
 
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"pipelined.dev/pipe/mutate"
+
+	"github.com/stretchr/testify/assert"
+	"pipelined.dev/pipe/internal/runner"
 )
 
 var id [16]byte
 
 // paramMock used to set up test cases for mutators
 type paramMock struct {
+	id         [16]byte
 	value      int
 	operations int
 	expected   int
 }
 
-func (m *paramMock) mutators() mutate.Mutators {
-	var p mutate.Mutators
+func (m *paramMock) mutators() runner.Mutators {
+	var p runner.Mutators
 	return p.Add(id, m.param())
 }
 
-// mutators closure to mutate value
+// mutators closure to runner.value
 func (m *paramMock) param() func() error {
 	return func() error {
 		m.value += 10
@@ -73,7 +76,7 @@ func TestAddParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutate.Mutators
+		var mutators runner.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Add(id, m.param())
@@ -121,7 +124,7 @@ func TestAppendParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutate.Mutators
+		var mutators runner.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Append(m.mutators())
@@ -141,6 +144,7 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
+					id:         mutate.Mutable(),
 					operations: 0,
 					expected:   0,
 				},
@@ -149,6 +153,7 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
+					id:         mutate.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -157,10 +162,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
+					id:         mutate.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
+					id:         mutate.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
@@ -169,10 +176,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
+					id:         mutate.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
 				&paramMock{
+					id:         mutate.Mutable(),
 					operations: 0,
 					expected:   0,
 				},
@@ -181,17 +190,17 @@ func TestDetachParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutate.Mutators
+		var mutators runner.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Add(id, m.param())
+				mutators = mutators.Add(m.id, m.param())
 			}
 		}
 		for _, m := range c.mocks {
-			d := mutators.Detach(id)
-			mutators.ApplyTo(id)
+			d := mutators.Detach(m.id)
+			mutators.ApplyTo(m.id)
 			assert.Equal(t, 0, m.value)
-			d.ApplyTo(id)
+			d.ApplyTo(m.id)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}

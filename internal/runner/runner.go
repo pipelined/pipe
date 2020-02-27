@@ -8,7 +8,6 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe/metric"
-	"pipelined.dev/pipe/mutate"
 )
 
 // Pool provides pooling of signal.Float64 buffers.
@@ -20,13 +19,13 @@ type Pool interface {
 // Message is a main structure for pipe transport
 type Message struct {
 	Buffer   *signal.Float64 // Buffer of message.
-	Mutators mutate.Mutators // Mutators for pipe.
+	Mutators Mutators        // Mutators for pipe.
 }
 
 type (
 	// Pump executes pipe.Pump components.
 	Pump struct {
-		mutate.Mutability
+		Mutability [16]byte
 		Flush
 		Output Pool
 		Fn     func(out signal.Float64) error
@@ -35,7 +34,7 @@ type (
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
-		mutate.Mutability
+		Mutability [16]byte
 		Flush
 		Input  Pool
 		Output Pool
@@ -45,7 +44,7 @@ type (
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
-		mutate.Mutability
+		Mutability [16]byte
 		Flush
 		Input Pool
 		Fn    func(in signal.Float64) error
@@ -63,7 +62,7 @@ func (fn Flush) call(ctx context.Context) error {
 }
 
 // Run starts the Pump runner.
-func (r Pump) Run(ctx context.Context, take chan mutate.Mutators) (<-chan Message, <-chan error) {
+func (r Pump) Run(ctx context.Context, take chan Mutators) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
 	meter := r.Meter()
@@ -78,7 +77,7 @@ func (r Pump) Run(ctx context.Context, take chan mutate.Mutators) (<-chan Messag
 		}()
 		var (
 			err      error
-			mutators mutate.Mutators
+			mutators Mutators
 			output   *signal.Float64
 		)
 		for {
