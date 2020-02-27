@@ -91,7 +91,6 @@ type (
 		merger     *merger
 		routes     []Route
 		mutators   map[chan mutate.Mutators]mutate.Mutators
-		pull       chan chan mutate.Mutators
 		push       chan []mutate.Mutation
 		errors     chan error
 	}
@@ -126,7 +125,7 @@ func (l Line) Route(bufferSize int) (Route, error) {
 	receivers[sink.Mutability] = struct{}{}
 
 	return Route{
-		mutators:   make(chan mutate.Mutators),
+		mutators:   make(chan mutate.Mutators, 1),
 		receivers:  receivers,
 		pump:       pump,
 		processors: processors,
@@ -190,7 +189,6 @@ func New(ctx context.Context, options ...Option) Pipe {
 		cancelFn: cancelFn,
 		mutators: make(map[chan mutate.Mutators]mutate.Mutators),
 		routes:   make([]Route, 0),
-		pull:     make(chan chan mutate.Mutators),
 		push:     make(chan []mutate.Mutation, 1),
 		errors:   make(chan error, 1),
 	}
@@ -200,13 +198,12 @@ func New(ctx context.Context, options ...Option) Pipe {
 	if len(p.routes) == 0 {
 		panic("pipe without routes")
 	}
+	// push cached mutators at the start
+	pushMutators(p.mutators)
 	// options are before this step
-	p.merger.merge(start(p.ctx, p.pull, p.routes)...)
+	p.merger.merge(start(p.ctx, p.routes)...)
 	go p.merger.wait()
 	go func() {
-		var (
-			puller chan mutate.Mutators
-		)
 		defer close(p.errors)
 		for {
 			select {
@@ -218,16 +215,10 @@ func New(ctx context.Context, options ...Option) Pipe {
 							p.interrupt(err)
 						}
 					} else {
-						if puller = p.getPuller(m.Mutability); puller != nil {
-							p.mutators[puller] = p.mutators[puller].Add(m.Mutability, m.Mutator)
-						}
+						mutators(p, mutations)
+						pushMutators(p.mutators)
 					}
 				}
-			case puller = <-p.pull:
-				mutators := p.mutators[puller]
-				p.mutators[puller] = nil
-				puller <- mutators
-				continue
 			case err, ok := <-p.merger.errors:
 				// merger has buffer of one error,
 				// if more errors happen, they will be ignored.
@@ -239,6 +230,20 @@ func New(ctx context.Context, options ...Option) Pipe {
 		}
 	}()
 	return p
+}
+
+func mutators(p Pipe, ms []mutate.Mutation) {
+	for _, m := range ms {
+		if c := p.getPuller(m.Mutability); c != nil {
+			p.mutators[c] = p.mutators[c].Add(m.Mutability, m.Mutator)
+		}
+	}
+}
+
+func pushMutators(mutators map[chan mutate.Mutators]mutate.Mutators) {
+	for c, m := range mutators {
+		c <- m
+	}
 }
 
 func (p Pipe) interrupt(err error) {
@@ -254,20 +259,20 @@ func (p Pipe) interrupt(err error) {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, pull chan<- chan mutate.Mutators, routes []Route) []<-chan error {
+func start(ctx context.Context, routes []Route) []<-chan error {
 	// start all runners
 	// error channel for each component
 	errChans := make([]<-chan error, 0, 2*len(routes))
 	for _, r := range routes {
-		errChans = append(errChans, r.start(ctx, pull)...)
+		errChans = append(errChans, r.start(ctx)...)
 	}
 	return errChans
 }
 
-func (r Route) start(ctx context.Context, pull chan<- chan mutate.Mutators) []<-chan error {
+func (r Route) start(ctx context.Context) []<-chan error {
 	errChans := make([]<-chan error, 0, 2+len(r.processors))
 	// start pump
-	out, errs := r.pump.Run(ctx, pull, r.mutators)
+	out, errs := r.pump.Run(ctx, r.mutators)
 	errChans = append(errChans, errs)
 
 	// start chained processesing
@@ -300,7 +305,7 @@ func (p Pipe) AddRoute(r Route) mutate.Mutation {
 	return mutate.Mutation{
 		Mutability: p.mutability,
 		Mutator: func() error {
-			p.merger.merge(r.start(p.ctx, p.pull)...)
+			p.merger.merge(r.start(p.ctx)...)
 			return nil
 		},
 	}
