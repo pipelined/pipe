@@ -58,6 +58,7 @@ func (r *Repeater) Sink() pipe.SinkMaker {
 }
 
 func (r *Repeater) AddLine(p pipe.Pipe, line pipe.Line) mutate.Mutation {
+	fmt.Printf("add line: %v\n", r.Mutability)
 	return r.Mutability.Mutate(func() error {
 		line.Pump = r.Pump()
 		route, err := line.Route(r.bufferSize)

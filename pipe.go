@@ -66,7 +66,6 @@ type (
 	Route struct {
 		numChannels int
 		mutators    chan runner.Mutators
-		receivers   map[mutate.Mutability]struct{}
 		pump        runner.Pump
 		processors  []runner.Processor
 		sink        runner.Sink
@@ -90,6 +89,7 @@ type (
 		cancelFn   context.CancelFunc
 		merger     *merger
 		routes     []Route
+		receivers  map[mutate.Mutability]chan runner.Mutators
 		mutators   map[chan runner.Mutators]runner.Mutators
 		push       chan []mutate.Mutation
 		errors     chan error
@@ -98,12 +98,10 @@ type (
 
 // Route line components. All closures are executed and wrapped into runners.
 func (l Line) Route(bufferSize int) (Route, error) {
-	receivers := make(map[mutate.Mutability]struct{})
 	pump, input, err := l.Pump.runner(bufferSize)
 	if err != nil {
 		return Route{}, fmt.Errorf("error routing %w", err)
 	}
-	receivers[pump.Mutability] = struct{}{}
 
 	var (
 		processors []runner.Processor
@@ -115,22 +113,27 @@ func (l Line) Route(bufferSize int) (Route, error) {
 			return Route{}, fmt.Errorf("error routing %w", err)
 		}
 		processors = append(processors, processor)
-		receivers[processor.Mutability] = struct{}{}
 	}
 
 	sink, err := l.Sink.runner(bufferSize, input)
 	if err != nil {
 		return Route{}, fmt.Errorf("error routing sink: %w", err)
 	}
-	receivers[sink.Mutability] = struct{}{}
 
 	return Route{
 		mutators:   make(chan runner.Mutators, 1),
-		receivers:  receivers,
 		pump:       pump,
 		processors: processors,
 		sink:       sink,
 	}, nil
+}
+
+func (r Route) receivers(receivers map[mutate.Mutability]chan runner.Mutators) {
+	receivers[r.pump.Mutability] = r.mutators
+	for i := range r.processors {
+		receivers[r.processors[i].Mutability] = r.mutators
+	}
+	receivers[r.sink.Mutability] = r.mutators
 }
 
 func (fn PumpMaker) runner(bufferSize int) (runner.Pump, Bus, error) {
@@ -185,12 +188,13 @@ func New(ctx context.Context, options ...Option) Pipe {
 		merger: &merger{
 			errors: make(chan error, 1),
 		},
-		ctx:      ctx,
-		cancelFn: cancelFn,
-		mutators: make(map[chan runner.Mutators]runner.Mutators),
-		routes:   make([]Route, 0),
-		push:     make(chan []mutate.Mutation, 1),
-		errors:   make(chan error, 1),
+		ctx:       ctx,
+		cancelFn:  cancelFn,
+		receivers: make(map[mutate.Mutability]chan runner.Mutators),
+		mutators:  make(map[chan runner.Mutators]runner.Mutators),
+		routes:    make([]Route, 0),
+		push:      make(chan []mutate.Mutation, 1),
+		errors:    make(chan error, 1),
 	}
 	for _, option := range options {
 		option(&p)
@@ -209,6 +213,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 			select {
 			case mutations := <-p.push:
 				for _, m := range mutations {
+					fmt.Printf("got mutations: %d rotues: %d mutables: %+v\n", len(mutations), len(p.routes), p.receivers)
 					// mutate pipe itself
 					if m.Mutability == p.mutability {
 						if err := m.Mutator(); err != nil {
@@ -293,10 +298,8 @@ func (p Pipe) Push(mutations ...mutate.Mutation) {
 }
 
 func (p Pipe) getPuller(id mutate.Mutability) chan runner.Mutators {
-	for _, route := range p.routes {
-		if _, ok := route.receivers[id]; ok {
-			return route.mutators
-		}
+	if puller, ok := p.receivers[id]; ok {
+		return puller
 	}
 	return nil
 }
@@ -305,6 +308,8 @@ func (p Pipe) AddRoute(r Route) mutate.Mutation {
 	return mutate.Mutation{
 		Mutability: p.mutability,
 		Mutator: func() error {
+			p.routes = append(p.routes, r)
+			r.receivers(p.receivers)
 			p.merger.merge(r.start(p.ctx)...)
 			return nil
 		},
