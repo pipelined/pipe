@@ -111,7 +111,7 @@ func TestReset(t *testing.T) {
 	p = pipe.New(
 		context.Background(),
 		pipe.WithRoutes(route),
-		pipe.WithMutators(pump.Reset()),
+		pipe.WithMutations(pump.Reset()),
 	)
 	_ = p.Wait()
 	assert.Nil(t, err)
@@ -175,7 +175,7 @@ func BenchmarkSingleLine(b *testing.B) {
 		p := pipe.New(
 			context.Background(),
 			pipe.WithRoutes(route),
-			pipe.WithMutators(pump.Reset()),
+			pipe.WithMutations(pump.Reset()),
 		)
 		_ = p.Wait()
 	}
