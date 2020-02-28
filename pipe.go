@@ -49,7 +49,7 @@ type (
 	// It pre-allocates all necessary buffers and structures.
 	SinkMaker func(Bus) (Sink, error)
 	// Sink is an interface for final stage in audio pipeline.
-	// This components must not change buffer content. Route can have
+	// This components must not change buffer content. Line can have
 	// multiple sinks and this will cause race condition.
 	Sink struct {
 		mutate.Mutability
@@ -62,22 +62,22 @@ type (
 )
 
 type (
-	// Route is a sequence of DSP components.
+	// Route defines sequence of components closures.
+	// It has a single pump, zero or many processors, executed
+	// sequentially and one or many sinks executed in parallel.
 	Route struct {
+		Pump       PumpMaker
+		Processors []ProcessorMaker
+		Sink       SinkMaker
+	}
+
+	// Line is a sequence of DSP components.
+	Line struct {
 		numChannels int
 		mutators    chan runner.Mutators
 		pump        runner.Pump
 		processors  []runner.Processor
 		sink        runner.Sink
-	}
-
-	// Line defines sequence of components closures.
-	// It has a single pump, zero or many processors, executed
-	// sequentially and one or many sinks executed in parallel.
-	Line struct {
-		Pump       PumpMaker
-		Processors []ProcessorMaker
-		Sink       SinkMaker
 	}
 
 	// Pipe listeners the execution of multiple chained lines. Lines might be chained
@@ -88,7 +88,7 @@ type (
 		ctx                 context.Context
 		cancelFn            context.CancelFunc
 		merger              *merger
-		routes              []Route
+		lines               []Line
 		listeners           map[mutate.Mutability]chan runner.Mutators
 		mutatorsByListeners map[chan runner.Mutators]runner.Mutators
 		push                chan []mutate.Mutation
@@ -96,11 +96,11 @@ type (
 	}
 )
 
-// Route line components. All closures are executed and wrapped into runners.
-func (l Line) Route(bufferSize int) (Route, error) {
+// Line line components. All closures are executed and wrapped into runners.
+func (l Route) Line(bufferSize int) (Line, error) {
 	pump, input, err := l.Pump.runner(bufferSize)
 	if err != nil {
-		return Route{}, fmt.Errorf("error routing %w", err)
+		return Line{}, fmt.Errorf("error routing %w", err)
 	}
 
 	var (
@@ -110,17 +110,17 @@ func (l Line) Route(bufferSize int) (Route, error) {
 	for _, fn := range l.Processors {
 		processor, input, err = fn.runner(bufferSize, input)
 		if err != nil {
-			return Route{}, fmt.Errorf("error routing %w", err)
+			return Line{}, fmt.Errorf("error routing %w", err)
 		}
 		processors = append(processors, processor)
 	}
 
 	sink, err := l.Sink.runner(bufferSize, input)
 	if err != nil {
-		return Route{}, fmt.Errorf("error routing sink: %w", err)
+		return Line{}, fmt.Errorf("error routing sink: %w", err)
 	}
 
-	return Route{
+	return Line{
 		mutators:   make(chan runner.Mutators, 1),
 		pump:       pump,
 		processors: processors,
@@ -128,12 +128,12 @@ func (l Line) Route(bufferSize int) (Route, error) {
 	}, nil
 }
 
-func (r Route) receivers(receivers map[mutate.Mutability]chan runner.Mutators) {
-	receivers[r.pump.Mutability] = r.mutators
-	for i := range r.processors {
-		receivers[r.processors[i].Mutability] = r.mutators
+func (l Line) receivers(receivers map[mutate.Mutability]chan runner.Mutators) {
+	receivers[l.pump.Mutability] = l.mutators
+	for i := range l.processors {
+		receivers[l.processors[i].Mutability] = l.mutators
 	}
-	receivers[r.sink.Mutability] = r.mutators
+	receivers[l.sink.Mutability] = l.mutators
 }
 
 func (fn PumpMaker) runner(bufferSize int) (runner.Pump, Bus, error) {
@@ -192,19 +192,19 @@ func New(ctx context.Context, options ...Option) Pipe {
 		cancelFn:            cancelFn,
 		listeners:           make(map[mutate.Mutability]chan runner.Mutators),
 		mutatorsByListeners: make(map[chan runner.Mutators]runner.Mutators),
-		routes:              make([]Route, 0),
+		lines:               make([]Line, 0),
 		push:                make(chan []mutate.Mutation, 1),
 		errors:              make(chan error, 1),
 	}
 	for _, option := range options {
 		option(&p)
 	}
-	if len(p.routes) == 0 {
-		panic("pipe without routes")
+	if len(p.lines) == 0 {
+		panic("pipe without lines")
 	}
 	// push cached mutators at the start
 	push(p.mutatorsByListeners)
-	p.merger.merge(start(p.ctx, p.routes)...)
+	p.merger.merge(start(p.ctx, p.lines)...)
 	go p.merger.wait()
 	go func() {
 		defer close(p.errors)
@@ -258,29 +258,29 @@ func (p Pipe) interrupt(err error) {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, routes []Route) []<-chan error {
+func start(ctx context.Context, lines []Line) []<-chan error {
 	// start all runners
 	// error channel for each component
-	errChans := make([]<-chan error, 0, 2*len(routes))
-	for _, r := range routes {
-		errChans = append(errChans, r.start(ctx)...)
+	errChans := make([]<-chan error, 0, 2*len(lines))
+	for _, l := range lines {
+		errChans = append(errChans, l.start(ctx)...)
 	}
 	return errChans
 }
 
-func (r Route) start(ctx context.Context) []<-chan error {
-	errChans := make([]<-chan error, 0, 2+len(r.processors))
+func (l Line) start(ctx context.Context) []<-chan error {
+	errChans := make([]<-chan error, 0, 2+len(l.processors))
 	// start pump
-	out, errs := r.pump.Run(ctx, r.mutators)
+	out, errs := l.pump.Run(ctx, l.mutators)
 	errChans = append(errChans, errs)
 
 	// start chained processesing
-	for _, proc := range r.processors {
+	for _, proc := range l.processors {
 		out, errs = proc.Run(ctx, out)
 		errChans = append(errChans, errs)
 	}
 
-	errs = r.sink.Run(ctx, out)
+	errs = l.sink.Run(ctx, out)
 	errChans = append(errChans, errs)
 	return errChans
 }
@@ -291,13 +291,13 @@ func (p Pipe) Push(mutations ...mutate.Mutation) {
 	p.push <- mutations
 }
 
-func (p Pipe) AddRoute(r Route) mutate.Mutation {
+func (p Pipe) AddRoute(l Line) mutate.Mutation {
 	return mutate.Mutation{
 		Mutability: p.mutability,
 		Mutator: func() error {
-			p.routes = append(p.routes, r)
-			r.receivers(p.listeners)
-			p.merger.merge(r.start(p.ctx)...)
+			p.lines = append(p.lines, l)
+			l.receivers(p.listeners)
+			p.merger.merge(l.start(p.ctx)...)
 			return nil
 		},
 	}

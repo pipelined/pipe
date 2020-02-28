@@ -17,26 +17,26 @@ func TestAddRoute(t *testing.T) {
 	repeater := &repeat.Repeater{
 		Mutability: mutate.Mutable(),
 	}
-	source, _ := pipe.Line{
+	source, _ := pipe.Route{
 		Pump: (&mock.Pump{
 			Limit:       10 * bufferSize,
 			NumChannels: 2,
 		}).Pump(),
 		Sink: repeater.Sink(),
-	}.Route(bufferSize)
+	}.Line(bufferSize)
 
 	sink1 := &mock.Sink{}
-	destination1, _ := pipe.Line{
+	destination1, _ := pipe.Route{
 		Pump: repeater.Pump(),
 		Sink: sink1.Sink(),
-	}.Route(bufferSize)
+	}.Line(bufferSize)
 
 	p := pipe.New(
 		context.Background(),
 		pipe.WithRoutes(source, destination1),
 	)
 	sink2 := &mock.Sink{}
-	line := pipe.Line{
+	line := pipe.Route{
 		Sink: sink2.Sink(),
 	}
 	p.Push(repeater.AddLine(p, line))
