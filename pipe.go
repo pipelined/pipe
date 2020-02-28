@@ -239,7 +239,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 
 func mutators(p Pipe, ms []mutate.Mutation) {
 	for _, m := range ms {
-		if c := p.getPuller(m.Mutability); c != nil {
+		if c := p.receivers[m.Mutability]; c != nil {
 			p.mutators[c] = p.mutators[c].Add(m.Mutability, m.Mutator)
 		}
 	}
@@ -295,13 +295,6 @@ func (r Route) start(ctx context.Context) []<-chan error {
 // Calling this method after pipe is done will cause a panic.
 func (p Pipe) Push(mutations ...mutate.Mutation) {
 	p.push <- mutations
-}
-
-func (p Pipe) getPuller(id mutate.Mutability) chan runner.Mutators {
-	if puller, ok := p.receivers[id]; ok {
-		return puller
-	}
-	return nil
 }
 
 func (p Pipe) AddRoute(r Route) mutate.Mutation {
