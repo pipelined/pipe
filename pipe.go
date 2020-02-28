@@ -80,19 +80,19 @@ type (
 		Sink       SinkMaker
 	}
 
-	// Pipe controls the execution of multiple chained lines. Lines might be chained
+	// Pipe listeners the execution of multiple chained lines. Lines might be chained
 	// through components, mixer for example.  If lines are not chained, they must be
 	// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 	Pipe struct {
-		mutability mutate.Mutability
-		ctx        context.Context
-		cancelFn   context.CancelFunc
-		merger     *merger
-		routes     []Route
-		receivers  map[mutate.Mutability]chan runner.Mutators
-		mutators   map[chan runner.Mutators]runner.Mutators
-		push       chan []mutate.Mutation
-		errors     chan error
+		mutability          mutate.Mutability
+		ctx                 context.Context
+		cancelFn            context.CancelFunc
+		merger              *merger
+		routes              []Route
+		listeners           map[mutate.Mutability]chan runner.Mutators
+		mutatorsByListeners map[chan runner.Mutators]runner.Mutators
+		push                chan []mutate.Mutation
+		errors              chan error
 	}
 )
 
@@ -188,13 +188,13 @@ func New(ctx context.Context, options ...Option) Pipe {
 		merger: &merger{
 			errors: make(chan error, 1),
 		},
-		ctx:       ctx,
-		cancelFn:  cancelFn,
-		receivers: make(map[mutate.Mutability]chan runner.Mutators),
-		mutators:  make(map[chan runner.Mutators]runner.Mutators),
-		routes:    make([]Route, 0),
-		push:      make(chan []mutate.Mutation, 1),
-		errors:    make(chan error, 1),
+		ctx:                 ctx,
+		cancelFn:            cancelFn,
+		listeners:           make(map[mutate.Mutability]chan runner.Mutators),
+		mutatorsByListeners: make(map[chan runner.Mutators]runner.Mutators),
+		routes:              make([]Route, 0),
+		push:                make(chan []mutate.Mutation, 1),
+		errors:              make(chan error, 1),
 	}
 	for _, option := range options {
 		option(&p)
@@ -203,8 +203,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 		panic("pipe without routes")
 	}
 	// push cached mutators at the start
-	pushMutators(p.mutators)
-	// options are before this step
+	push(p.mutatorsByListeners)
 	p.merger.merge(start(p.ctx, p.routes)...)
 	go p.merger.wait()
 	go func() {
@@ -213,15 +212,18 @@ func New(ctx context.Context, options ...Option) Pipe {
 			select {
 			case mutations := <-p.push:
 				for _, m := range mutations {
-					fmt.Printf("got mutations: %d rotues: %d mutables: %+v\n", len(mutations), len(p.routes), p.receivers)
 					// mutate pipe itself
 					if m.Mutability == p.mutability {
 						if err := m.Mutator(); err != nil {
 							p.interrupt(err)
 						}
 					} else {
-						mutators(p, mutations)
-						pushMutators(p.mutators)
+						for _, m := range mutations {
+							if c := p.listeners[m.Mutability]; c != nil {
+								p.mutatorsByListeners[c] = p.mutatorsByListeners[c].Add(m.Mutability, m.Mutator)
+							}
+						}
+						push(p.mutatorsByListeners)
 					}
 				}
 			case err, ok := <-p.merger.errors:
@@ -237,15 +239,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 	return p
 }
 
-func mutators(p Pipe, ms []mutate.Mutation) {
-	for _, m := range ms {
-		if c := p.receivers[m.Mutability]; c != nil {
-			p.mutators[c] = p.mutators[c].Add(m.Mutability, m.Mutator)
-		}
-	}
-}
-
-func pushMutators(mutators map[chan runner.Mutators]runner.Mutators) {
+func push(mutators map[chan runner.Mutators]runner.Mutators) {
 	for c, m := range mutators {
 		c <- m
 	}
@@ -302,7 +296,7 @@ func (p Pipe) AddRoute(r Route) mutate.Mutation {
 		Mutability: p.mutability,
 		Mutator: func() error {
 			p.routes = append(p.routes, r)
-			r.receivers(p.receivers)
+			r.receivers(p.listeners)
 			p.merger.merge(r.start(p.ctx)...)
 			return nil
 		},

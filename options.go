@@ -10,16 +10,16 @@ func WithRoutes(routes ...Route) Option {
 	return func(p *Pipe) {
 		for _, r := range routes {
 			p.routes = append(p.routes, r)
-			r.receivers(p.receivers)
+			r.receivers(p.listeners)
 		}
 	}
 }
 
-func WithMutators(mutations ...mutate.Mutation) Option {
+func WithMutations(mutations ...mutate.Mutation) Option {
 	return func(p *Pipe) {
 		for _, m := range mutations {
-			if puller := p.receivers[m.Mutability]; puller != nil {
-				p.mutators[puller] = p.mutators[puller].Add(m.Mutability, m.Mutator)
+			if c := p.listeners[m.Mutability]; c != nil {
+				p.mutatorsByListeners[c] = p.mutatorsByListeners[c].Add(m.Mutability, m.Mutator)
 			}
 		}
 	}
