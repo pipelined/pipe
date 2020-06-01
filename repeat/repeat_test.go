@@ -19,8 +19,8 @@ func TestAddRoute(t *testing.T) {
 	}
 	source, _ := pipe.Route{
 		Pump: (&mock.Pump{
-			Limit:       10 * bufferSize,
-			NumChannels: 2,
+			Limit:    10 * bufferSize,
+			Channels: 2,
 		}).Pump(),
 		Sink: repeater.Sink(),
 	}.Line(bufferSize)

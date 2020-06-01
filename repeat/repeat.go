@@ -6,43 +6,46 @@ import (
 	"io"
 	"sync/atomic"
 
+	"pipelined.dev/signal"
+
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mutate"
-	"pipelined.dev/signal"
-	"pipelined.dev/signal/pool"
+	"pipelined.dev/pipe/pool"
 )
 
 type Repeater struct {
 	mutate.Mutability
-	bufferSize  int
-	sampleRate  signal.SampleRate
-	numChannels int
-	pumps       []chan message
-	pool        *pool.Pool
+	bufferSize int
+	sampleRate signal.SampleRate
+	channels   int
+	pumps      []chan message
 }
 
 type message struct {
-	buffer *signal.Float64
+	buffer signal.Floating
 	pumps  int32
 }
 
 // Sink must be called once per broadcast.
 func (r *Repeater) Sink() pipe.SinkMaker {
-	return func(bus pipe.Bus) (pipe.Sink, error) {
-		r.bufferSize = bus.BufferSize
+	return func(bufferSize int, bus pipe.Bus) (pipe.Sink, error) {
 		r.sampleRate = bus.SampleRate
-		r.numChannels = bus.NumChannels
-		r.pool = pool.New(r.numChannels, bus.BufferSize)
-		var buffer *signal.Float64
+		r.channels = bus.Channels
+		r.bufferSize = bufferSize
+		p := pool.Get(signal.Allocator{
+			Channels: bus.Channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		})
 		return pipe.Sink{
 			Mutability: r.Mutability,
-			Sink: func(b signal.Float64) error {
-				buffer = r.pool.Alloc()
-				copyFloat64(*buffer, b)
+			Sink: func(in signal.Floating) error {
 				for _, pump := range r.pumps {
+					out := p.GetFloat64()
+					signal.FloatingAsFloating(in, out)
 					pump <- message{
 						pumps:  int32(len(r.pumps)),
-						buffer: buffer,
+						buffer: out,
 					}
 				}
 				return nil
@@ -79,30 +82,28 @@ func (r *Repeater) Pump() pipe.PumpMaker {
 			message message
 			ok      bool
 		)
+		p := pool.Get(signal.Allocator{
+			Channels: r.channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		})
 		return pipe.Pump{
-				Pump: func(b signal.Float64) error {
+				Pump: func(b signal.Floating) (int, error) {
 					message, ok = <-pump
 					if !ok {
-						return io.EOF
+						return 0, io.EOF
 					}
-					copyFloat64(b, *message.buffer)
+					read := signal.FloatingAsFloating(message.buffer, b)
 					if atomic.AddInt32(&message.pumps, -1) == 0 {
-						r.pool.Free(message.buffer)
+						p.PutFloat64(message.buffer)
 					}
-					return nil
+					return read, nil
 				},
 			},
 			pipe.Bus{
-				BufferSize:  bufferSize,
-				SampleRate:  r.sampleRate,
-				NumChannels: r.numChannels,
+				SampleRate: r.sampleRate,
+				Channels:   r.channels,
 			},
 			nil
-	}
-}
-
-func copyFloat64(d signal.Float64, r signal.Float64) {
-	for i := range r {
-		copy(d[i], r[i])
 	}
 }
