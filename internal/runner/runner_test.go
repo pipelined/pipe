@@ -17,8 +17,8 @@ type noOpPool struct {
 	bufferSize  int
 }
 
-func (p noOpPool) Alloc() signal.Float64 {
-	return signal.Float64Buffer(p.numChannels, p.bufferSize)
+func (p noOpPool) Alloc() signal.Floating {
+	return signal.Allocator{Channels: p.numChannels, Length: p.bufferSize}.Float64()
 }
 
 func (p noOpPool) Free(signal.Float64) {}

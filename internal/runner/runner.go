@@ -10,15 +10,9 @@ import (
 	"pipelined.dev/pipe/metric"
 )
 
-// Pool provides pooling of signal.Float64 buffers.
-type Pool interface {
-	Alloc() *signal.Float64
-	Free(*signal.Float64)
-}
-
 // Message is a main structure for pipe transport
 type Message struct {
-	Buffer   *signal.Float64 // Buffer of message.
+	Buffer   signal.Floating // Buffer of message.
 	Mutators Mutators        // Mutators for pipe.
 }
 
@@ -27,8 +21,8 @@ type (
 	Pump struct {
 		Mutability [16]byte
 		Flush
-		Output Pool
-		Fn     func(out signal.Float64) error
+		Output *signal.Pool
+		Fn     func(out signal.Floating) (int, error)
 		Meter  metric.ResetFunc
 	}
 
@@ -36,9 +30,9 @@ type (
 	Processor struct {
 		Mutability [16]byte
 		Flush
-		Input  Pool
-		Output Pool
-		Fn     func(in, out signal.Float64) error
+		Input  *signal.Pool
+		Output *signal.Pool
+		Fn     func(in, out signal.Floating) error
 		Meter  metric.ResetFunc
 	}
 
@@ -46,12 +40,13 @@ type (
 	Sink struct {
 		Mutability [16]byte
 		Flush
-		Input Pool
-		Fn    func(in signal.Float64) error
+		Input *signal.Pool
+		Fn    func(in signal.Floating) error
 		Meter metric.ResetFunc
 	}
 )
 
+// Flush is a closure that triggers pipe component flush function.
 type Flush func(context.Context) error
 
 func (fn Flush) call(ctx context.Context) error {
@@ -76,9 +71,10 @@ func (r Pump) Run(ctx context.Context, take chan Mutators) (<-chan Message, <-ch
 			}
 		}()
 		var (
+			read     int
 			err      error
 			mutators Mutators
-			output   *signal.Float64
+			output   signal.Floating
 		)
 		for {
 			// receive new message
@@ -95,15 +91,18 @@ func (r Pump) Run(ctx context.Context, take chan Mutators) (<-chan Message, <-ch
 			}
 
 			// allocate new buffer
-			output = r.Output.Alloc()
+			output = r.Output.GetFloat64()
 			// pump new buffer
-			if err = r.Fn(*output); err != nil {
+			if read, err = r.Fn(output); err != nil {
 				if err != io.EOF {
 					errs <- fmt.Errorf("error running pump: %w", err)
 				}
 				return
 			}
-			meter(output.Size()) // capture metrics
+			if read != output.Length() {
+				output = output.Slice(0, read)
+			}
+			meter(output.Length()) // capture metrics
 
 			// push message further
 			select {
@@ -134,7 +133,7 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 			err    error
 			m      Message
 			ok     bool
-			output *signal.Float64
+			output signal.Floating
 		)
 		for {
 			// retrieve new message
@@ -150,17 +149,17 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 			// apply Mutators
 			if err = m.Mutators.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating processor: %w", err)
-				r.Input.Free(m.Buffer) // need to free
+				r.Input.PutFloat64(m.Buffer) // need to free
 				return
 			}
-			output = r.Output.Alloc()
-			err = r.Fn(*m.Buffer, *output) // process new buffer
-			r.Input.Free(m.Buffer)         // put buffer back to the input pool
+			output = r.Output.GetFloat64()
+			err = r.Fn(m.Buffer, output) // process new buffer
+			r.Input.PutFloat64(m.Buffer) // put buffer back to the input pool
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
 				return
 			}
-			meter(output.Size()) // capture metrics
+			meter(output.Length()) // capture metrics
 
 			// send message further
 			select {
@@ -204,12 +203,12 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 			// apply Mutators
 			if err = m.Mutators.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating sink: %w", err)
-				r.Input.Free(m.Buffer) // need to free
+				r.Input.PutFloat64(m.Buffer) // need to free
 				return
 			}
-			err = r.Fn(*m.Buffer)  // sink a buffer
-			meter(m.Buffer.Size()) // capture metrics
-			r.Input.Free(m.Buffer)
+			err = r.Fn(m.Buffer)     // sink a buffer
+			meter(m.Buffer.Length()) // capture metrics
+			r.Input.PutFloat64(m.Buffer)
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)
 				return
