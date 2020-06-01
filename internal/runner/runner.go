@@ -107,6 +107,7 @@ func (r Pump) Run(ctx context.Context, take chan Mutators) (<-chan Message, <-ch
 			// push message further
 			select {
 			case out <- Message{Mutators: mutators, Buffer: output}:
+				mutators = nil
 			case <-ctx.Done():
 				return
 			}
