@@ -6,54 +6,51 @@ import (
 
 	"pipelined.dev/signal"
 
-	"pipelined.dev/pipe/internal/pool"
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mutate"
+	"pipelined.dev/pipe/pool"
 )
 
 type (
 	Bus struct {
-		BufferSize int
 		signal.SampleRate
-		NumChannels int
+		Channels int
 	}
 	// PumpMaker creates new pump structure for provided buffer size.
 	// It pre-allocates all necessary buffers and structures.
-	PumpMaker func(bufferSize int) (Pump, Bus, error)
+	PumpMaker func(int) (Pump, Bus, error)
 	// Pump is a source of samples. Pump method accepts a new buffer and
 	// fills it with signal data. If no data is available, io.EOF should
-	// be returned. If pump cannot provide data to fulfill buffer, it can
-	// trim the size of the buffer to align it with actual data.
-	// Buffer size can only be decreased.
+	// be returned.
 	Pump struct {
 		mutate.Mutability
-		Pump func(out signal.Float64) error
+		Pump func(out signal.Floating) (int, error)
 		Flush
 	}
 
 	// ProcessorMaker creates new pump structure for provided buffer size.
 	// It pre-allocates all necessary buffers and structures.
-	ProcessorMaker func(Bus) (Processor, Bus, error)
+	ProcessorMaker func(int, Bus) (Processor, Bus, error)
 	// Processor defines interface for pipe processors. It receives two
 	// buffers for input and output signal data. Buffer size could be
 	// changed during execution, but only decrease allowed. Number of
 	// channels cannot be changed.
 	Processor struct {
 		mutate.Mutability
-		Process func(in, out signal.Float64) error
+		Process func(in, out signal.Floating) error
 		Flush
 	}
 
 	// SinkMaker creates new pump structure for provided buffer size.
 	// It pre-allocates all necessary buffers and structures.
-	SinkMaker func(Bus) (Sink, error)
+	SinkMaker func(int, Bus) (Sink, error)
 	// Sink is an interface for final stage in audio pipeline.
 	// This components must not change buffer content. Line can have
 	// multiple sinks and this will cause race condition.
 	Sink struct {
 		mutate.Mutability
-		Sink func(in signal.Float64) error
+		Sink func(in signal.Floating) error
 		Flush
 	}
 
@@ -128,12 +125,12 @@ func (l Route) Line(bufferSize int) (Line, error) {
 	}, nil
 }
 
-func (l Line) receivers(receivers map[mutate.Mutability]chan runner.Mutators) {
-	receivers[l.pump.Mutability] = l.mutators
+func (l Line) listeners(listeners map[mutate.Mutability]chan runner.Mutators) {
+	listeners[l.pump.Mutability] = l.mutators
 	for i := range l.processors {
-		receivers[l.processors[i].Mutability] = l.mutators
+		listeners[l.processors[i].Mutability] = l.mutators
 	}
-	receivers[l.sink.Mutability] = l.mutators
+	listeners[l.sink.Mutability] = l.mutators
 }
 
 func (fn PumpMaker) runner(bufferSize int) (runner.Pump, Bus, error) {
@@ -143,39 +140,55 @@ func (fn PumpMaker) runner(bufferSize int) (runner.Pump, Bus, error) {
 	}
 	return runner.Pump{
 		Mutability: pump.Mutable(),
-		Output:     pool.Get(bufferSize, bus.NumChannels),
-		Fn:         pump.Pump,
-		Flush:      runner.Flush(pump.Flush),
-		Meter:      metric.Meter(pump, bus.SampleRate),
+		Output: pool.Get(signal.Allocator{
+			Channels: bus.Channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		}),
+		Fn:    pump.Pump,
+		Flush: runner.Flush(pump.Flush),
+		Meter: metric.Meter(pump, bus.SampleRate),
 	}, bus, nil
 }
 
 func (fn ProcessorMaker) runner(bufferSize int, input Bus) (runner.Processor, Bus, error) {
-	processor, output, err := fn(input)
+	processor, output, err := fn(bufferSize, input)
 	if err != nil {
 		return runner.Processor{}, Bus{}, fmt.Errorf("processor: %w", err)
 	}
 	return runner.Processor{
 		Mutability: processor.Mutable(),
-		Input:      pool.Get(bufferSize, input.NumChannels),
-		Output:     pool.Get(bufferSize, output.NumChannels),
-		Fn:         processor.Process,
-		Flush:      runner.Flush(processor.Flush),
-		Meter:      metric.Meter(processor, output.SampleRate),
+		Input: pool.Get(signal.Allocator{
+			Channels: input.Channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		}),
+		Output: pool.Get(signal.Allocator{
+			Channels: output.Channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		}),
+		Fn:    processor.Process,
+		Flush: runner.Flush(processor.Flush),
+		Meter: metric.Meter(processor, output.SampleRate),
 	}, output, nil
 }
 
 func (fn SinkMaker) runner(bufferSize int, input Bus) (runner.Sink, error) {
-	sink, err := fn(input)
+	sink, err := fn(bufferSize, input)
 	if err != nil {
 		return runner.Sink{}, fmt.Errorf("sink: %w", err)
 	}
 	return runner.Sink{
 		Mutability: sink.Mutable(),
-		Input:      pool.Get(bufferSize, input.NumChannels),
-		Fn:         sink.Sink,
-		Flush:      runner.Flush(sink.Flush),
-		Meter:      metric.Meter(sink, input.SampleRate),
+		Input: pool.Get(signal.Allocator{
+			Channels: input.Channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		}),
+		Fn:    sink.Sink,
+		Flush: runner.Flush(sink.Flush),
+		Meter: metric.Meter(sink, input.SampleRate),
 	}, nil
 }
 
@@ -291,16 +304,22 @@ func (p Pipe) Push(mutations ...mutate.Mutation) {
 	p.push <- mutations
 }
 
-func (p Pipe) AddRoute(l Line) mutate.Mutation {
+func (p Pipe) AddLine(l Line) mutate.Mutation {
+	var i int
 	return mutate.Mutation{
 		Mutability: p.mutability,
 		Mutator: func() error {
-			p.lines = append(p.lines, l)
-			l.receivers(p.listeners)
+			i++
+			addLine(&p, l)
 			p.merger.merge(l.start(p.ctx)...)
 			return nil
 		},
 	}
+}
+
+func addLine(p *Pipe, l Line) {
+	p.lines = append(p.lines, l)
+	l.listeners(p.listeners)
 }
 
 // Processors is a helper function to use in line constructors.

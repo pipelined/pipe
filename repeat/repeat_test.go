@@ -33,7 +33,7 @@ func TestAddRoute(t *testing.T) {
 
 	p := pipe.New(
 		context.Background(),
-		pipe.WithRoutes(source, destination1),
+		pipe.WithLines(source, destination1),
 	)
 	sink2 := &mock.Sink{}
 	line := pipe.Route{
