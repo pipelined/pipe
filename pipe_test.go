@@ -4,13 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"pipelined.dev/pipe/mutate"
-
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/goleak"
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
+	"pipelined.dev/pipe/mutate"
 	"pipelined.dev/pipe/repeat"
 )
 
@@ -25,8 +24,8 @@ func TestMain(m *testing.M) {
 func TestPipe(t *testing.T) {
 	t.Skip()
 	pump := &mock.Pump{
-		Limit:       862 * bufferSize,
-		NumChannels: 2,
+		Limit:    862 * bufferSize,
+		Channels: 2,
 	}
 	proc1 := &mock.Processor{}
 	proc2 := &mock.Processor{}
@@ -51,7 +50,7 @@ func TestPipe(t *testing.T) {
 	}.Line(bufferSize)
 	assert.Nil(t, err)
 
-	p := pipe.New(context.Background(), pipe.WithRoutes(in, out1, out2))
+	p := pipe.New(context.Background(), pipe.WithLines(in, out1, out2))
 	// start
 	err = p.Wait()
 	assert.Nil(t, err)
@@ -62,8 +61,8 @@ func TestPipe(t *testing.T) {
 
 func TestSimplePipe(t *testing.T) {
 	pump := &mock.Pump{
-		Limit:       862 * bufferSize,
-		NumChannels: 2,
+		Limit:    862 * bufferSize,
+		Channels: 2,
 	}
 
 	proc1 := &mock.Processor{}
@@ -76,7 +75,7 @@ func TestSimplePipe(t *testing.T) {
 	}.Line(bufferSize)
 	assert.Nil(t, err)
 
-	p := pipe.New(context.Background(), pipe.WithRoutes(in))
+	p := pipe.New(context.Background(), pipe.WithLines(in))
 	// start
 	err = p.Wait()
 	assert.Nil(t, err)
@@ -87,9 +86,9 @@ func TestSimplePipe(t *testing.T) {
 
 func TestReset(t *testing.T) {
 	pump := &mock.Pump{
-		Mutability:  mutate.Mutable(),
-		Limit:       862 * bufferSize,
-		NumChannels: 2,
+		Mutability: mutate.Mutable(),
+		Limit:      862 * bufferSize,
+		Channels:   2,
 	}
 	sink := &mock.Sink{Discard: true}
 
@@ -100,7 +99,7 @@ func TestReset(t *testing.T) {
 	assert.Nil(t, err)
 	p := pipe.New(
 		context.Background(),
-		pipe.WithRoutes(route),
+		pipe.WithLines(route),
 	)
 	// start
 	err = p.Wait()
@@ -110,7 +109,7 @@ func TestReset(t *testing.T) {
 
 	p = pipe.New(
 		context.Background(),
-		pipe.WithRoutes(route),
+		pipe.WithLines(route),
 		pipe.WithMutations(pump.Reset()),
 	)
 	_ = p.Wait()
@@ -119,12 +118,12 @@ func TestReset(t *testing.T) {
 	assert.Equal(t, 2*862*bufferSize, sink.Counter.Samples)
 }
 
-func TestAddRoute(t *testing.T) {
+func TestAddLine(t *testing.T) {
 	sink1 := &mock.Sink{Discard: true}
 	route1, err := pipe.Route{
 		Pump: (&mock.Pump{
-			Limit:       862 * bufferSize,
-			NumChannels: 2,
+			Limit:    862 * bufferSize,
+			Channels: 2,
 		}).Pump(),
 		Sink: sink1.Sink(),
 	}.Line(bufferSize)
@@ -133,8 +132,8 @@ func TestAddRoute(t *testing.T) {
 	sink2 := &mock.Sink{Discard: true}
 	route2, err := pipe.Route{
 		Pump: (&mock.Pump{
-			Limit:       862 * bufferSize,
-			NumChannels: 2,
+			Limit:    862 * bufferSize,
+			Channels: 2,
 		}).Pump(),
 		Sink: sink2.Sink(),
 	}.Line(bufferSize)
@@ -142,9 +141,9 @@ func TestAddRoute(t *testing.T) {
 
 	p := pipe.New(
 		context.Background(),
-		pipe.WithRoutes(route1),
+		pipe.WithLines(route1),
 	)
-	p.Push(p.AddRoute(route2))
+	p.Push(p.AddLine(route2))
 
 	// start
 	err = p.Wait()
@@ -158,9 +157,9 @@ func TestAddRoute(t *testing.T) {
 // 1 Pump, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
 	pump := &mock.Pump{
-		Mutability:  mutate.Mutable(),
-		Limit:       862 * bufferSize,
-		NumChannels: 2,
+		Mutability: mutate.Mutable(),
+		Limit:      862 * bufferSize,
+		Channels:   2,
 	}
 	sink := &mock.Sink{Discard: true}
 	route, _ := pipe.Route{
@@ -174,7 +173,7 @@ func BenchmarkSingleLine(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p := pipe.New(
 			context.Background(),
-			pipe.WithRoutes(route),
+			pipe.WithLines(route),
 			pipe.WithMutations(pump.Reset()),
 		)
 		_ = p.Wait()

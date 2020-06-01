@@ -6,11 +6,10 @@ import (
 
 type Option func(*Pipe)
 
-func WithRoutes(lines ...Line) Option {
+func WithLines(lines ...Line) Option {
 	return func(p *Pipe) {
 		for _, l := range lines {
-			p.lines = append(p.lines, l)
-			l.receivers(p.listeners)
+			addLine(p, l)
 		}
 	}
 }
