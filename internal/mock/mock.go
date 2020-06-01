@@ -6,17 +6,17 @@ import (
 	"io"
 	"time"
 
+	"pipelined.dev/signal"
+
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mutate"
-
-	"pipelined.dev/signal"
 )
 
 // Counter counts messages, samples and can capture sinked values.
 type Counter struct {
 	Messages int
 	Samples  int
-	Values   signal.Float64
+	Values   signal.Floating
 }
 
 // advance counter's metrics.
@@ -45,7 +45,7 @@ type Pump struct {
 	Interval    time.Duration
 	Limit       int
 	Value       float64
-	NumChannels int
+	Channels    int
 	SampleRate  signal.SampleRate
 	ErrorOnCall error
 }
@@ -56,36 +56,30 @@ func (p *Pump) Pump() pipe.PumpMaker {
 		return pipe.Pump{
 				Mutability: p.Mutability,
 				Flush:      p.Flusher.Flush,
-				Pump: func(b signal.Float64) error {
+				Pump: func(s signal.Floating) (int, error) {
 					if p.ErrorOnCall != nil {
-						return p.ErrorOnCall
+						return 0, p.ErrorOnCall
 					}
 
 					if p.Counter.Samples >= p.Limit {
-						return io.EOF
+						return 0, io.EOF
 					}
 					time.Sleep(p.Interval)
 
-					// calculate buffer size.
-					bs := b.Size()
-					// check if we need a shorter.
-					if left := p.Limit - p.Counter.Samples; left < bs {
-						bs = left
+					read := s.Length()
+					// ensure that we have enough samples
+					if left := p.Limit - p.Counter.Samples; left < read {
+						read = left
 					}
-					for i := range b {
-						// resize buffer
-						b[i] = b[i][:bs]
-						for j := range b[i] {
-							b[i][j] = p.Value
-						}
+					for i := 0; i < read*p.Channels; i++ {
+						s.SetSample(i, p.Value)
 					}
-					p.Counter.advance(bs)
-					return nil
+					p.Counter.advance(read)
+					return read, nil
 				},
 			}, pipe.Bus{
-				BufferSize:  bufferSize,
-				SampleRate:  p.SampleRate,
-				NumChannels: p.NumChannels,
+				SampleRate: p.SampleRate,
+				Channels:   p.Channels,
 			}, nil
 	}
 }
@@ -108,17 +102,14 @@ type Processor struct {
 
 // Processor returns closure with mocked processor.
 func (processor *Processor) Processor() pipe.ProcessorMaker {
-	return func(bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
+	return func(bufferSize int, bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
 		return pipe.Processor{
 			Flush: processor.Flusher.Flush,
-			Process: func(in, out signal.Float64) error {
+			Process: func(in, out signal.Floating) error {
 				if processor.ErrorOnCall != nil {
 					return processor.ErrorOnCall
 				}
-				processor.Counter.advance(in.Size())
-				for i := range in {
-					copy(out[i], in[i])
-				}
+				processor.Counter.advance(signal.FloatingAsFloating(in, out))
 				return nil
 			},
 		}, bus, nil
@@ -135,17 +126,18 @@ type Sink struct {
 
 // Sink returns closure with mocked processor.
 func (sink *Sink) Sink() pipe.SinkMaker {
-	return func(pipe.Bus) (pipe.Sink, error) {
+	return func(bufferSize int, b pipe.Bus) (pipe.Sink, error) {
+		sink.Counter.Values = signal.Allocator{Channels: b.Channels, Capacity: bufferSize}.Float64()
 		return pipe.Sink{
 			Flush: sink.Flusher.Flush,
-			Sink: func(in signal.Float64) error {
+			Sink: func(in signal.Floating) error {
 				if sink.ErrorOnCall != nil {
 					return sink.ErrorOnCall
 				}
 				if !sink.Discard {
 					sink.Counter.Values = sink.Counter.Values.Append(in)
 				}
-				sink.Counter.advance(in.Size())
+				sink.Counter.advance(in.Length())
 				return nil
 			},
 		}, nil

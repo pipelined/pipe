@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"reflect"
 	"testing"
 
 	"pipelined.dev/pipe"
@@ -23,10 +24,13 @@ func TestPump(t *testing.T) {
 		return func(t *testing.T) {
 			fn, bus, err := pump.Pump()(p.bufferSize)
 			assertError(t, nil, err)
-
-			buf := signal.Float64Buffer(bus.NumChannels, p.bufferSize)
+			buf := signal.Allocator{
+				Channels: bus.Channels,
+				Length:   p.bufferSize,
+				Capacity: p.bufferSize,
+			}.Float64()
 			for {
-				if err := fn.Pump(buf); err != nil {
+				if _, err := fn.Pump(buf); err != nil {
 					if err != io.EOF {
 						assertError(t, pump.ErrorOnCall, err)
 					}
@@ -45,10 +49,10 @@ func TestPump(t *testing.T) {
 
 	t.Run("3 calls", testPump(
 		mock.Pump{
-			SampleRate:  44100,
-			NumChannels: 2,
-			Limit:       11,
-			Value:       1,
+			SampleRate: 44100,
+			Channels:   2,
+			Limit:      11,
+			Value:      1,
 		},
 		params{
 			bufferSize: 5,
@@ -57,10 +61,10 @@ func TestPump(t *testing.T) {
 	))
 	t.Run("500 calls", testPump(
 		mock.Pump{
-			SampleRate:  44100,
-			NumChannels: 2,
-			Limit:       2500,
-			Value:       2,
+			SampleRate: 44100,
+			Channels:   2,
+			Limit:      2500,
+			Value:      2,
 		},
 		params{
 			bufferSize: 5,
@@ -77,38 +81,45 @@ func TestPump(t *testing.T) {
 
 func TestProcessor(t *testing.T) {
 	type params struct {
-		in       signal.Float64
-		expected signal.Float64
+		in       []float64
+		expected []float64
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, err := processorMock.Processor()(pipe.Bus{})
+			processor, _, err := processorMock.Processor()(0, pipe.Bus{})
 			assertError(t, nil, err)
 
-			out := signal.Float64Buffer(p.expected.NumChannels(), p.expected.Size())
-			err = processor.Process(p.in, out)
+			alloc := signal.Allocator{
+				Channels: 1,
+				Capacity: len(p.in),
+				Length:   len(p.in),
+			}
+			in, out := alloc.Float64(), alloc.Float64()
+			signal.WriteFloat64(p.in, in)
+
+			err = processor.Process(in, out)
 			assertError(t, processorMock.ErrorOnCall, err)
-			if p.expected.NumChannels() != out.NumChannels() {
-				t.Fatalf("Invalid number of channels: %d expected: %d", out.NumChannels(), p.expected.NumChannels())
+			if err != nil {
+				return
 			}
-			if p.expected.Size() != out.Size() {
-				t.Fatalf("Invalid buffer size: %d expected: %d", out.Size(), p.expected.Size())
-			}
+			result := make([]float64, len(p.expected))
+			signal.ReadFloat64(out, result)
+			assertEqual(t, "slice", result, p.expected)
 		}
 	}
 
 	t.Run("1 channel", testProcessor(
 		mock.Processor{},
 		params{
-			in:       [][]float64{{1, 1, 1, 1}},
-			expected: [][]float64{{1, 1, 1, 1}},
+			in:       []float64{1, 1, 1, 1},
+			expected: []float64{1, 1, 1, 1},
 		},
 	))
 	t.Run("2 channels", testProcessor(
 		mock.Processor{},
 		params{
-			in:       [][]float64{{1, 1, 1, 1}, {2, 2, 2, 2}},
-			expected: [][]float64{{1, 1, 1, 1}, {2, 2, 2, 2}},
+			in:       []float64{1, 1, 1, 1, 2, 2, 2, 2},
+			expected: []float64{1, 1, 1, 1, 2, 2, 2, 2},
 		},
 	))
 	t.Run("error on call", testProcessor(
@@ -121,23 +132,31 @@ func TestProcessor(t *testing.T) {
 
 func TestSink(t *testing.T) {
 	type params struct {
-		in       signal.Float64
-		expected signal.Float64
+		in       []float64
+		expected []float64
 	}
 	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, err := sinkMock.Sink()(pipe.Bus{})
+			sink, err := sinkMock.Sink()(0, pipe.Bus{Channels: 1})
 			assertError(t, nil, err)
 
-			err = sink.Sink(p.in)
-			assertError(t, sinkMock.ErrorOnCall, err)
+			alloc := signal.Allocator{
+				Channels: 1,
+				Capacity: len(p.in),
+				Length:   len(p.in),
+			}
+			in := alloc.Float64()
+			signal.WriteFloat64(p.in, in)
 
-			if p.expected.NumChannels() != sinkMock.Counter.Values.NumChannels() {
-				t.Fatalf("Invalid number of channels: %d expected: %d", sinkMock.Counter.Values.NumChannels(), p.expected.NumChannels())
+			err = sink.Sink(in)
+			assertError(t, sinkMock.ErrorOnCall, err)
+			if err != nil {
+				return
 			}
-			if p.expected.Size() != sinkMock.Counter.Values.Size() {
-				t.Fatalf("Invalid buffer size: %d expected: %d", sinkMock.Counter.Values.Size(), p.expected.Size())
-			}
+
+			result := make([]float64, len(p.expected))
+			signal.ReadFloat64(sinkMock.Counter.Values, result)
+			assertEqual(t, "slice", result, p.expected)
 		}
 	}
 
@@ -146,8 +165,8 @@ func TestSink(t *testing.T) {
 			Discard: false,
 		},
 		params{
-			in:       [][]float64{{1, 1, 1, 1}},
-			expected: [][]float64{{1, 1, 1, 1}},
+			in:       []float64{1, 1, 1, 1},
+			expected: []float64{1, 1, 1, 1},
 		},
 	))
 	t.Run("2 channel", testSink(
@@ -155,8 +174,8 @@ func TestSink(t *testing.T) {
 			Discard: false,
 		},
 		params{
-			in:       [][]float64{{1, 1, 1, 1}, {2, 2, 2, 2}},
-			expected: [][]float64{{1, 1, 1, 1}, {2, 2, 2, 2}},
+			in:       []float64{1, 1, 1, 1, 2, 2, 2, 2},
+			expected: []float64{1, 1, 1, 1, 2, 2, 2, 2},
 		},
 	))
 	t.Run("error on call", testSink(
@@ -182,5 +201,12 @@ func TestHooks(t *testing.T) {
 func assertError(t *testing.T, expected, err error) {
 	if err != expected {
 		t.Fatalf("Unexpected error: %v expected: %v", err, expected)
+	}
+}
+
+func assertEqual(t *testing.T, name string, result, expected interface{}) {
+	t.Helper()
+	if !reflect.DeepEqual(expected, result) {
+		t.Fatalf("%v\nresult: \t%T\t%+v \nexpected: \t%T\t%+v", name, result, result, expected, expected)
 	}
 }
