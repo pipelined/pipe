@@ -1,4 +1,4 @@
-package runner_test
+package mutate_test
 
 import (
 	"testing"
@@ -6,7 +6,6 @@ import (
 	"pipelined.dev/pipe/mutate"
 
 	"github.com/stretchr/testify/assert"
-	"pipelined.dev/pipe/internal/runner"
 )
 
 var id [16]byte
@@ -19,12 +18,12 @@ type paramMock struct {
 	expected   int
 }
 
-func (m *paramMock) mutators() runner.Mutators {
-	var p runner.Mutators
+func (m *paramMock) mutators() mutate.Mutators {
+	var p mutate.Mutators
 	return p.Add(id, m.param())
 }
 
-// mutators closure to runner.value
+// mutators closure to mutate.value
 func (m *paramMock) param() func() error {
 	return func() error {
 		m.value += 10
@@ -76,7 +75,7 @@ func TestAddParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators runner.Mutators
+		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Add(id, m.param())
@@ -124,7 +123,7 @@ func TestAppendParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators runner.Mutators
+		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Append(m.mutators())
@@ -190,7 +189,7 @@ func TestDetachParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators runner.Mutators
+		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Add(m.id, m.param())
