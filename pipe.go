@@ -71,7 +71,7 @@ type (
 	// Line is a sequence of DSP components.
 	Line struct {
 		numChannels int
-		mutators    chan runner.Mutators
+		mutators    chan mutate.Mutators
 		pump        runner.Pump
 		processors  []runner.Processor
 		sink        runner.Sink
@@ -86,8 +86,8 @@ type (
 		cancelFn            context.CancelFunc
 		merger              *merger
 		lines               []Line
-		listeners           map[mutate.Mutability]chan runner.Mutators
-		mutatorsByListeners map[chan runner.Mutators]runner.Mutators
+		listeners           map[mutate.Mutability]chan mutate.Mutators
+		mutatorsByListeners map[chan mutate.Mutators]mutate.Mutators
 		push                chan []mutate.Mutation
 		errors              chan error
 	}
@@ -118,14 +118,14 @@ func (l Route) Line(bufferSize int) (Line, error) {
 	}
 
 	return Line{
-		mutators:   make(chan runner.Mutators, 1),
+		mutators:   make(chan mutate.Mutators, 1),
 		pump:       pump,
 		processors: processors,
 		sink:       sink,
 	}, nil
 }
 
-func (l Line) listeners(listeners map[mutate.Mutability]chan runner.Mutators) {
+func (l Line) listeners(listeners map[mutate.Mutability]chan mutate.Mutators) {
 	listeners[l.pump.Mutability] = l.mutators
 	for i := range l.processors {
 		listeners[l.processors[i].Mutability] = l.mutators
@@ -203,8 +203,8 @@ func New(ctx context.Context, options ...Option) Pipe {
 		},
 		ctx:                 ctx,
 		cancelFn:            cancelFn,
-		listeners:           make(map[mutate.Mutability]chan runner.Mutators),
-		mutatorsByListeners: make(map[chan runner.Mutators]runner.Mutators),
+		listeners:           make(map[mutate.Mutability]chan mutate.Mutators),
+		mutatorsByListeners: make(map[chan mutate.Mutators]mutate.Mutators),
 		lines:               make([]Line, 0),
 		push:                make(chan []mutate.Mutation, 1),
 		errors:              make(chan error, 1),
@@ -252,7 +252,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 	return p
 }
 
-func push(mutators map[chan runner.Mutators]runner.Mutators) {
+func push(mutators map[chan mutate.Mutators]mutate.Mutators) {
 	for c, m := range mutators {
 		c <- m
 	}
