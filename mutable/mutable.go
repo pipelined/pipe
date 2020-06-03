@@ -4,21 +4,23 @@ import (
 	"crypto/rand"
 )
 
+// zero value for mutable is immutable.
 var immutable = Mutable{}
 
 type (
 	// Mutable can be embedded to make structure behaviour mutable.
 	Mutable [16]byte
 
-	// Mutation is a set of Mutations attached to a specific component.
+	// Mutation is mutator function associated with a certain mutable.
 	Mutation struct {
 		Mutable
 		mutator MutatorFunc
 	}
 
-	// Mutations is a set of Mutations mapped to Receiver of their receivers.
+	// Mutations is a set of Mutations mapped their Mutables.
 	Mutations map[Mutable][]MutatorFunc
 
+	// MutatorFunc mutates the object.
 	MutatorFunc func() error
 )
 
@@ -29,6 +31,7 @@ func New() Mutable {
 	return id
 }
 
+// Mutate associates provided mutator with mutable and return mutation.
 func (m Mutable) Mutate(mutator MutatorFunc) Mutation {
 	if m == immutable {
 		return Mutation{}
@@ -39,6 +42,7 @@ func (m Mutable) Mutate(mutator MutatorFunc) Mutation {
 	}
 }
 
+// Apply mutator function.
 func (m Mutation) Apply() error {
 	return m.mutator()
 }
