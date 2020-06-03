@@ -10,14 +10,14 @@ type (
 	// Mutable can be embedded to make structure behaviour mutable.
 	Mutable [16]byte
 
-	// Mutation is a set of mutators attached to a specific component.
+	// Mutation is a set of Mutations attached to a specific component.
 	Mutation struct {
 		Mutable
 		mutator MutatorFunc
 	}
 
-	// Mutators is a set of mutators mapped to Receiver of their receivers.
-	Mutators map[Mutable][]MutatorFunc
+	// Mutations is a set of Mutations mapped to Receiver of their receivers.
+	Mutations map[Mutable][]MutatorFunc
 
 	MutatorFunc func() error
 )
@@ -43,8 +43,8 @@ func (m Mutation) Apply() error {
 	return m.mutator()
 }
 
-// Put mutation to the set of mutators.
-func (ms Mutators) Put(m Mutation) Mutators {
+// Put mutation to the set of Mutations.
+func (ms Mutations) Put(m Mutation) Mutations {
 	if m.Mutable == immutable {
 		return ms
 	}
@@ -61,8 +61,8 @@ func (ms Mutators) Put(m Mutation) Mutators {
 	return ms
 }
 
-// ApplyTo consumes Mutators defined for consumer in this param set.
-func (ms Mutators) ApplyTo(id Mutable) error {
+// ApplyTo consumes Mutations defined for consumer in this param set.
+func (ms Mutations) ApplyTo(id Mutable) error {
 	if ms == nil || id == immutable {
 		return nil
 	}
@@ -78,7 +78,7 @@ func (ms Mutators) ApplyTo(id Mutable) error {
 }
 
 // Append param set to another set.
-func (ms Mutators) Append(source Mutators) Mutators {
+func (ms Mutations) Append(source Mutations) Mutations {
 	if ms == nil {
 		ms = make(map[Mutable][]MutatorFunc)
 	}
@@ -93,7 +93,7 @@ func (ms Mutators) Append(source Mutators) Mutators {
 }
 
 // Detach params for provided component id.
-func (ms Mutators) Detach(id Mutable) Mutators {
+func (ms Mutations) Detach(id Mutable) Mutations {
 	if ms == nil {
 		return nil
 	}

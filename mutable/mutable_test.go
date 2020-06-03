@@ -16,8 +16,8 @@ type paramMock struct {
 	expected   int
 }
 
-func (m *paramMock) mutators() mutable.Mutators {
-	var p mutable.Mutators
+func (m *paramMock) mutators() mutable.Mutations {
+	var p mutable.Mutations
 	return p.Put(m.param())
 }
 
@@ -76,7 +76,7 @@ func TestAddParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutable.Mutators
+		var mutators mutable.Mutations
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Put(m.param())
@@ -127,7 +127,7 @@ func TestAppendParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutable.Mutators
+		var mutators mutable.Mutations
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Append(m.mutators())
@@ -192,7 +192,7 @@ func TestDetachParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutable.Mutators
+		var mutators mutable.Mutations
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
 				mutators = mutators.Put(m.param())
