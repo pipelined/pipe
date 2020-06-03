@@ -48,3 +48,33 @@ func TestAddRoute(t *testing.T) {
 	assert.True(t, sink2.Counter.Messages > 0)
 	assert.True(t, sink2.Counter.Samples > 0)
 }
+
+// This benchmark runs the following pipe:
+// 1 Pump is repeated to 2 Sinks
+func BenchmarkRepeat2(b *testing.B) {
+	pump := &mock.Pump{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	repeater := repeat.Repeater{}
+	l1, _ := pipe.Route{
+		Pump: pump.Pump(),
+		Sink: repeater.Sink(),
+	}.Line(bufferSize)
+	l2, _ := pipe.Route{
+		Pump: repeater.Pump(),
+		Sink: (&mock.Sink{Discard: true}).Sink(),
+	}.Line(bufferSize)
+	l3, _ := pipe.Route{
+		Pump: repeater.Pump(),
+		Sink: (&mock.Sink{Discard: true}).Sink(),
+	}.Line(bufferSize)
+	for i := 0; i < b.N; i++ {
+		p := pipe.New(
+			context.Background(),
+			pipe.WithLines(l1, l2, l3),
+			pipe.WithMutations(pump.Reset()),
+		)
+		_ = p.Wait()
+	}
+}
