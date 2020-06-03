@@ -51,9 +51,10 @@ func (r *Repeater) Sink() pipe.SinkMaker {
 				return nil
 			},
 			Flush: func(context.Context) error {
-				for _, pump := range r.pumps {
-					close(pump)
+				for i := range r.pumps {
+					close(r.pumps[i])
 				}
+				r.pumps = nil
 				return nil
 			},
 		}, nil
@@ -74,9 +75,9 @@ func (r *Repeater) AddLine(p pipe.Pipe, route pipe.Route) mutable.Mutation {
 
 // Pump must be called at least once per broadcast.
 func (r *Repeater) Pump() pipe.PumpMaker {
-	pump := make(chan message, 1)
-	r.pumps = append(r.pumps, pump)
 	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
+		pump := make(chan message, 1)
+		r.pumps = append(r.pumps, pump)
 		var (
 			message message
 			ok      bool
