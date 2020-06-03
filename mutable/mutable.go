@@ -1,49 +1,42 @@
-package mutate
+package mutable
 
 import (
 	"crypto/rand"
 )
 
-var immutable = Mutability{}
+var immutable = Mutable{}
 
 type (
-	// Mutability of the DSP line.
-	Mutability [16]byte
+	// Mutable can be embedded to make structure behaviour mutable.
+	Mutable [16]byte
 
 	// Mutation is a set of mutators attached to a specific component.
 	Mutation struct {
-		Mutability
+		Mutable
 		mutator MutatorFunc
 	}
 
 	// Mutators is a set of mutators mapped to Receiver of their receivers.
-	Mutators map[Mutability][]MutatorFunc
+	Mutators map[Mutable][]MutatorFunc
 
 	MutatorFunc func() error
 )
 
-// Mutable returns new Mutability.
-func Mutable() Mutability {
+// New returns new Mutable.
+func New() Mutable {
 	var id [16]byte
 	rand.Read(id[:])
 	return id
 }
 
-func (m Mutability) Mutate(mutator MutatorFunc) Mutation {
+func (m Mutable) Mutate(mutator MutatorFunc) Mutation {
 	if m == immutable {
 		return Mutation{}
 	}
 	return Mutation{
-		Mutability: m,
-		mutator:    mutator,
+		Mutable: m,
+		mutator: mutator,
 	}
-}
-
-func (m Mutability) Mutable() Mutability {
-	if m == immutable {
-		return Mutable()
-	}
-	return m
 }
 
 func (m Mutation) Apply() error {
@@ -52,24 +45,24 @@ func (m Mutation) Apply() error {
 
 // Put mutation to the set of mutators.
 func (ms Mutators) Put(m Mutation) Mutators {
-	if m.Mutability == immutable {
+	if m.Mutable == immutable {
 		return ms
 	}
 	if ms == nil {
-		return map[Mutability][]MutatorFunc{m.Mutability: {m.mutator}}
+		return map[Mutable][]MutatorFunc{m.Mutable: {m.mutator}}
 	}
 
-	if _, ok := ms[m.Mutability]; !ok {
-		ms[m.Mutability] = []MutatorFunc{m.mutator}
+	if _, ok := ms[m.Mutable]; !ok {
+		ms[m.Mutable] = []MutatorFunc{m.mutator}
 	} else {
-		ms[m.Mutability] = append(ms[m.Mutability], m.mutator)
+		ms[m.Mutable] = append(ms[m.Mutable], m.mutator)
 	}
 
 	return ms
 }
 
 // ApplyTo consumes Mutators defined for consumer in this param set.
-func (ms Mutators) ApplyTo(id Mutability) error {
+func (ms Mutators) ApplyTo(id Mutable) error {
 	if ms == nil || id == immutable {
 		return nil
 	}
@@ -87,7 +80,7 @@ func (ms Mutators) ApplyTo(id Mutability) error {
 // Append param set to another set.
 func (ms Mutators) Append(source Mutators) Mutators {
 	if ms == nil {
-		ms = make(map[Mutability][]MutatorFunc)
+		ms = make(map[Mutable][]MutatorFunc)
 	}
 	for id, fns := range source {
 		if _, ok := ms[id]; ok {
@@ -100,12 +93,12 @@ func (ms Mutators) Append(source Mutators) Mutators {
 }
 
 // Detach params for provided component id.
-func (ms Mutators) Detach(id Mutability) Mutators {
+func (ms Mutators) Detach(id Mutable) Mutators {
 	if ms == nil {
 		return nil
 	}
 	if v, ok := ms[id]; ok {
-		d := map[Mutability][]MutatorFunc{id: v}
+		d := map[Mutable][]MutatorFunc{id: v}
 		delete(ms, id)
 		return d
 	}

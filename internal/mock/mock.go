@@ -6,10 +6,10 @@ import (
 	"io"
 	"time"
 
+	"pipelined.dev/pipe/mutable"
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe"
-	"pipelined.dev/pipe/mutate"
 )
 
 // Counter counts messages, samples and can capture sinked values.
@@ -39,7 +39,7 @@ func (f *Flusher) Flush(ctx context.Context) error {
 
 // Pump are settings for pipe.Pump mock.
 type Pump struct {
-	mutate.Mutability
+	mutable.Mutable
 	Counter
 	Flusher
 	Interval    time.Duration
@@ -54,8 +54,8 @@ type Pump struct {
 func (p *Pump) Pump() pipe.PumpMaker {
 	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
 		return pipe.Pump{
-				Mutability: p.Mutability,
-				Flush:      p.Flusher.Flush,
+				Mutable: p.Mutable,
+				Flush:   p.Flusher.Flush,
 				Pump: func(s signal.Floating) (int, error) {
 					if p.ErrorOnCall != nil {
 						return 0, p.ErrorOnCall
@@ -85,8 +85,8 @@ func (p *Pump) Pump() pipe.PumpMaker {
 }
 
 // Reset allows to reset pump.
-func (p *Pump) Reset() mutate.Mutation {
-	return p.Mutability.Mutate(
+func (p *Pump) Reset() mutable.Mutation {
+	return p.Mutable.Mutate(
 		func() error {
 			p.Counter = Counter{}
 			return nil
