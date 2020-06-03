@@ -9,12 +9,12 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe"
-	"pipelined.dev/pipe/mutate"
+	"pipelined.dev/pipe/mutable"
 	"pipelined.dev/pipe/pool"
 )
 
 type Repeater struct {
-	mutate.Mutability
+	mutable.Mutable
 	bufferSize int
 	sampleRate signal.SampleRate
 	channels   int
@@ -38,7 +38,7 @@ func (r *Repeater) Sink() pipe.SinkMaker {
 			Capacity: bufferSize,
 		})
 		return pipe.Sink{
-			Mutability: r.Mutability,
+			Mutable: r.Mutable,
 			Sink: func(in signal.Floating) error {
 				for _, pump := range r.pumps {
 					out := p.GetFloat64()
@@ -60,8 +60,8 @@ func (r *Repeater) Sink() pipe.SinkMaker {
 	}
 }
 
-func (r *Repeater) AddLine(p pipe.Pipe, route pipe.Route) mutate.Mutation {
-	return r.Mutability.Mutate(func() error {
+func (r *Repeater) AddLine(p pipe.Pipe, route pipe.Route) mutable.Mutation {
+	return r.Mutable.Mutate(func() error {
 		route.Pump = r.Pump()
 		line, err := route.Line(r.bufferSize)
 		if err != nil {

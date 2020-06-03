@@ -8,13 +8,13 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe/metric"
-	"pipelined.dev/pipe/mutate"
+	"pipelined.dev/pipe/mutable"
 )
 
 // Message is a main structure for pipe transport
 type Message struct {
-	Buffer   signal.Floating // Buffer of message.
-	Mutators mutate.Mutators // Mutators for pipe.
+	Buffer   signal.Floating  // Buffer of message.
+	Mutators mutable.Mutators // Mutators for pipe.
 }
 
 type (
@@ -58,7 +58,7 @@ func (fn Flush) call(ctx context.Context) error {
 }
 
 // Run starts the Pump runner.
-func (r Pump) Run(ctx context.Context, take chan mutate.Mutators) (<-chan Message, <-chan error) {
+func (r Pump) Run(ctx context.Context, take chan mutable.Mutators) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
 	meter := r.Meter()
@@ -74,7 +74,7 @@ func (r Pump) Run(ctx context.Context, take chan mutate.Mutators) (<-chan Messag
 		var (
 			read     int
 			err      error
-			mutators mutate.Mutators
+			mutators mutable.Mutators
 			output   signal.Floating
 		)
 		for {
