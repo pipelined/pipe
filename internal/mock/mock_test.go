@@ -20,30 +20,25 @@ func TestPump(t *testing.T) {
 		bufferSize int
 		calls      int
 	}
-	testPump := func(pump mock.Pump, p params) func(*testing.T) {
+	testPump := func(pump mock.Pump, test params) func(*testing.T) {
 		return func(t *testing.T) {
-			fn, bus, err := pump.Pump()(p.bufferSize)
-			assertError(t, nil, err)
+			fn, bus, _ := pump.Pump()(test.bufferSize)
 			buf := signal.Allocator{
 				Channels: bus.Channels,
-				Length:   p.bufferSize,
-				Capacity: p.bufferSize,
+				Length:   test.bufferSize,
+				Capacity: test.bufferSize,
 			}.Float64()
 			for {
 				if _, err := fn.Pump(buf); err != nil {
 					if err != io.EOF {
-						assertError(t, pump.ErrorOnCall, err)
+						assertEqual(t, "error", err, pump.ErrorOnCall)
 					}
 					break
 				}
 			}
 
-			if p.calls != pump.Messages {
-				t.Fatalf("Invalid number of calls: %d expected: %d", pump.Messages, p.calls)
-			}
-			if pump.Limit != pump.Samples {
-				t.Fatalf("Invalid number of samples: %d expected: %d", pump.Samples, pump.Limit)
-			}
+			assertEqual(t, "calls", pump.Messages, test.calls)
+			assertEqual(t, "samples", pump.Samples, pump.Limit)
 		}
 	}
 
@@ -86,8 +81,7 @@ func TestProcessor(t *testing.T) {
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, err := processorMock.Processor()(0, pipe.Bus{})
-			assertError(t, nil, err)
+			processor, _, _ := processorMock.Processor()(0, pipe.Bus{})
 
 			alloc := signal.Allocator{
 				Channels: 1,
@@ -97,8 +91,8 @@ func TestProcessor(t *testing.T) {
 			in, out := alloc.Float64(), alloc.Float64()
 			signal.WriteFloat64(p.in, in)
 
-			err = processor.Process(in, out)
-			assertError(t, processorMock.ErrorOnCall, err)
+			err := processor.Process(in, out)
+			assertEqual(t, "error", err, processorMock.ErrorOnCall)
 			if err != nil {
 				return
 			}
@@ -137,8 +131,7 @@ func TestSink(t *testing.T) {
 	}
 	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, err := sinkMock.Sink()(0, pipe.Bus{Channels: 1})
-			assertError(t, nil, err)
+			sink, _ := sinkMock.Sink()(0, pipe.Bus{Channels: 1})
 
 			alloc := signal.Allocator{
 				Channels: 1,
@@ -148,8 +141,8 @@ func TestSink(t *testing.T) {
 			in := alloc.Float64()
 			signal.WriteFloat64(p.in, in)
 
-			err = sink.Sink(in)
-			assertError(t, sinkMock.ErrorOnCall, err)
+			err := sink.Sink(in)
+			assertEqual(t, "error", err, sinkMock.ErrorOnCall)
 			if err != nil {
 				return
 			}
@@ -190,18 +183,12 @@ func TestHooks(t *testing.T) {
 	testFlush := func(f *mock.Flusher, expected error) func(*testing.T) {
 		return func(t *testing.T) {
 			err := f.Flush(context.Background())
-			assertError(t, expected, err)
+			assertEqual(t, "error", err, expected)
 		}
 	}
 
 	t.Run("flush nil", testFlush(&mock.Flusher{}, nil))
 	t.Run("flush err", testFlush(&mock.Flusher{ErrorOnFlush: errTest}, errTest))
-}
-
-func assertError(t *testing.T, expected, err error) {
-	if err != expected {
-		t.Fatalf("Unexpected error: %v expected: %v", err, expected)
-	}
 }
 
 func assertEqual(t *testing.T, name string, result, expected interface{}) {
