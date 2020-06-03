@@ -227,13 +227,13 @@ func New(ctx context.Context, options ...Option) Pipe {
 				for _, m := range mutations {
 					// mutate pipe itself
 					if m.Mutability == p.mutability {
-						if err := m.Mutator(); err != nil {
+						if err := m.Apply(); err != nil {
 							p.interrupt(err)
 						}
 					} else {
 						for _, m := range mutations {
 							if c := p.listeners[m.Mutability]; c != nil {
-								p.mutatorsByListeners[c] = p.mutatorsByListeners[c].Add(m.Mutability, m.Mutator)
+								p.mutatorsByListeners[c] = p.mutatorsByListeners[c].Put(m)
 							}
 						}
 						push(p.mutatorsByListeners)
@@ -305,16 +305,11 @@ func (p Pipe) Push(mutations ...mutate.Mutation) {
 }
 
 func (p Pipe) AddLine(l Line) mutate.Mutation {
-	var i int
-	return mutate.Mutation{
-		Mutability: p.mutability,
-		Mutator: func() error {
-			i++
-			addLine(&p, l)
-			p.merger.merge(l.start(p.ctx)...)
-			return nil
-		},
-	}
+	return p.mutability.Mutate(func() error {
+		addLine(&p, l)
+		p.merger.merge(l.start(p.ctx)...)
+		return nil
+	})
 }
 
 func addLine(p *Pipe, l Line) {

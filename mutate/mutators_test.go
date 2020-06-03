@@ -8,11 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var id [16]byte
-
 // paramMock used to set up test cases for mutators
 type paramMock struct {
-	id         [16]byte
+	mutate.Mutability
 	value      int
 	operations int
 	expected   int
@@ -20,26 +18,25 @@ type paramMock struct {
 
 func (m *paramMock) mutators() mutate.Mutators {
 	var p mutate.Mutators
-	return p.Add(id, m.param())
+	return p.Put(m.param())
 }
 
 // mutators closure to mutate.value
-func (m *paramMock) param() func() error {
-	return func() error {
+func (m *paramMock) param() mutate.Mutation {
+	return m.Mutate(func() error {
 		m.value += 10
 		return nil
-	}
+	})
 }
 
 func TestAddParams(t *testing.T) {
 	var tests = []struct {
 		mocks []*paramMock
 	}{
-		{},
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					operations: 0,
+					operations: 10,
 					expected:   0,
 				},
 			},
@@ -47,6 +44,7 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
+					Mutability: mutate.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -55,6 +53,7 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
+					Mutability: mutate.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
@@ -63,10 +62,12 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
+					Mutability: mutate.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
 				&paramMock{
+					Mutability: mutate.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
@@ -78,11 +79,11 @@ func TestAddParams(t *testing.T) {
 		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Add(id, m.param())
+				mutators = mutators.Put(m.param())
 			}
 		}
 		for _, m := range c.mocks {
-			mutators.ApplyTo(id)
+			mutators.ApplyTo(m.Mutability)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
@@ -95,7 +96,7 @@ func TestAppendParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					operations: 0,
+					operations: 10,
 					expected:   0,
 				},
 			},
@@ -103,6 +104,7 @@ func TestAppendParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
+					Mutability: mutate.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -111,10 +113,12 @@ func TestAppendParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
+					Mutability: mutate.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
+					Mutability: mutate.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
@@ -130,7 +134,7 @@ func TestAppendParams(t *testing.T) {
 			}
 		}
 		for _, m := range c.mocks {
-			mutators.ApplyTo(id)
+			mutators.ApplyTo(m.Mutability)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
@@ -143,8 +147,7 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         mutate.Mutable(),
-					operations: 0,
+					operations: 10,
 					expected:   0,
 				},
 			},
@@ -152,7 +155,7 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         mutate.Mutable(),
+					Mutability: mutate.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -161,12 +164,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         mutate.Mutable(),
+					Mutability: mutate.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
-					id:         mutate.Mutable(),
+					Mutability: mutate.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
@@ -175,12 +178,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					id:         mutate.Mutable(),
+					Mutability: mutate.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
 				&paramMock{
-					id:         mutate.Mutable(),
+					Mutability: mutate.Mutable(),
 					operations: 0,
 					expected:   0,
 				},
@@ -192,14 +195,14 @@ func TestDetachParams(t *testing.T) {
 		var mutators mutate.Mutators
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Add(m.id, m.param())
+				mutators = mutators.Put(m.param())
 			}
 		}
 		for _, m := range c.mocks {
-			d := mutators.Detach(m.id)
-			mutators.ApplyTo(m.id)
+			d := mutators.Detach(m.Mutability)
+			mutators.ApplyTo(m.Mutability)
 			assert.Equal(t, 0, m.value)
-			d.ApplyTo(m.id)
+			d.ApplyTo(m.Mutability)
 			assert.Equal(t, m.expected, m.value)
 		}
 	}
