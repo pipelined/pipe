@@ -50,7 +50,7 @@ type Pump struct {
 	ErrorOnCall error
 }
 
-// Pump returns closure with mocked pump.
+// Pump returns closure that creates new pumps.
 func (p *Pump) Pump() pipe.PumpMaker {
 	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
 		return pipe.Pump{
@@ -100,7 +100,7 @@ type Processor struct {
 	ErrorOnCall error
 }
 
-// Processor returns closure with mocked processor.
+// Processor returns closure that creates new processors.
 func (processor *Processor) Processor() pipe.ProcessorMaker {
 	return func(bufferSize int, bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
 		return pipe.Processor{
@@ -116,7 +116,7 @@ func (processor *Processor) Processor() pipe.ProcessorMaker {
 	}
 }
 
-// Sink are settings for pipe.Processor mock.
+// Sink are settings for pipe.Sink mock.
 type Sink struct {
 	Counter
 	Flusher
@@ -124,7 +124,7 @@ type Sink struct {
 	ErrorOnCall error
 }
 
-// Sink returns closure with mocked processor.
+// Sink returns closure that creates new sinks.
 func (sink *Sink) Sink() pipe.SinkMaker {
 	return func(bufferSize int, b pipe.Bus) (pipe.Sink, error) {
 		sink.Counter.Values = signal.Allocator{Channels: b.Channels, Capacity: bufferSize}.Float64()
