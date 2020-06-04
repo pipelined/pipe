@@ -35,14 +35,6 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					operations: 10,
-					expected:   0,
-				},
-			},
-		},
-		{
-			mocks: []*paramMock{
-				&paramMock{
 					Mutable:    mutable.New(),
 					operations: 1,
 					expected:   10,
@@ -95,14 +87,6 @@ func TestAppendParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					operations: 10,
-					expected:   0,
-				},
-			},
-		},
-		{
-			mocks: []*paramMock{
-				&paramMock{
 					Mutable:    mutable.New(),
 					operations: 1,
 					expected:   10,
@@ -143,14 +127,6 @@ func TestDetachParams(t *testing.T) {
 	var tests = []struct {
 		mocks []*paramMock
 	}{
-		{
-			mocks: []*paramMock{
-				&paramMock{
-					operations: 10,
-					expected:   0,
-				},
-			},
-		},
 		{
 			mocks: []*paramMock{
 				&paramMock{
