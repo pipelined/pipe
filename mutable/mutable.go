@@ -34,7 +34,7 @@ func New() Mutable {
 // Mutate associates provided mutator with mutable and return mutation.
 func (m Mutable) Mutate(mutator MutatorFunc) Mutation {
 	if m == immutable {
-		return Mutation{}
+		panic("mutate immutable")
 	}
 	return Mutation{
 		Mutable: m,
