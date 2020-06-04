@@ -1,213 +1,128 @@
 package runner_test
 
 import (
+	"context"
 	"errors"
+	"reflect"
 	"testing"
 
+	"pipelined.dev/pipe"
+
 	"pipelined.dev/signal"
+
+	"pipelined.dev/pipe/internal/mock"
+	"pipelined.dev/pipe/internal/runner"
+	"pipelined.dev/pipe/metric"
+	"pipelined.dev/pipe/mutable"
+	"pipelined.dev/pipe/pool"
 )
-
-const (
-	pipeID      = "testPipeID"
-	componentID = "testComponentID"
-)
-
-type noOpPool struct {
-	numChannels int
-	bufferSize  int
-}
-
-func (p noOpPool) Alloc() signal.Floating {
-	return signal.Allocator{Channels: p.numChannels, Length: p.bufferSize}.Float64()
-}
-
-func (p noOpPool) Free(signal.Float64) {}
 
 var testError = errors.New("test runner error")
 
 func TestPump(t *testing.T) {
-	// bufferSize := 1024
-	// testGood := func(options mock.PumpOptions) func(*testing.T) {
-	// 	return func(t *testing.T) {
-	// 		pump, sampleRate, numChannels, err := mock.Pump(&options)()
-	// 		assert.NoError(t, err)
-	// 		r := runner.Pump{
-	// 			Fn:    pump.Pump,
-	// 			Meter: metric.Meter(pump, sampleRate),
-	// 			Hooks: runner.Hooks{
-	// 				Reset:     runner.Hook(pump.Reset),
-	// 				Flush:     runner.Hook(pump.Flush),
-	// 				Interrupt: runner.Hook(pump.Interrupt),
-	// 			},
-	// 		}
-	// 		cancel := make(chan struct{})
-	// 		give := make(chan string)
-	// 		take := make(chan runner.Message)
-	// 		out, errs := r.Run(
-	// 			noOpPool{
-	// 				numChannels: numChannels,
-	// 				bufferSize:  bufferSize,
-	// 			},
-	// 			cancel,
-	// 			give,
-	// 			take,
-	// 		)
-	// 		// test message exchange
-	// 		for i := 0; i <= options.Limit/bufferSize; i++ {
-	// 			<-give
-	// 			take <- runner.Message{}
-	// 			<-out
-	// 		}
+	bufferSize := 1024
+	setupPump := func(pumpMaker pipe.PumpMaker) runner.Pump {
+		pump, bus, _ := pumpMaker(bufferSize)
+		return runner.Pump{
+			Mutability: pump.Mutable,
+			Output: pool.Get(signal.Allocator{
+				Channels: bus.Channels,
+				Length:   bufferSize,
+				Capacity: bufferSize,
+			}),
+			Fn:    pump.Pump,
+			Flush: runner.Flush(pump.Flush),
+			Meter: metric.Meter(pump, bus.SampleRate),
+		}
+	}
+	assertPump := func(mockPump *mock.Pump, out <-chan runner.Message, errs <-chan error) {
+		t.Helper()
+		received := 0
+		for {
+			select {
+			case err, ok := <-errs:
+				if ok {
+					assertEqual(t, "error", errors.Unwrap(err), testError)
+				} else {
+					assertEqual(t, "pump flushed", mockPump.Flushed, true)
+					assertEqual(t, "pump samples", received, mockPump.Limit)
+					return
+				}
+			case buf, ok := <-out:
+				if ok {
+					received = received + buf.Signal.Length()
+				}
+			}
+		}
+	}
+	testPump := func(ctx context.Context, mockPump mock.Pump) func(*testing.T) {
+		return func(t *testing.T) {
+			t.Helper()
+			r := setupPump(mockPump.Pump())
+			mutations := make(chan mutable.Mutations)
+			out, errs := r.Run(ctx, mutations)
+			assertPump(&mockPump, out, errs)
+		}
+	}
+	testContextDone := func(mockPump mock.Pump) func(*testing.T) {
+		t.Helper()
+		cancelCtx, cancelFn := context.WithCancel(context.Background())
+		cancelFn()
+		return testPump(cancelCtx, mockPump)
+	}
 
-	// 		pipe.Wait(errs)
-	// 		var ok bool
-	// 		_, ok = <-out
-	// 		assert.False(t, ok)
-	// 		_, ok = <-errs
-	// 		assert.False(t, ok)
-	// 		assert.True(t, options.Resetted)
-	// 	}
-	// }
+	testMutationError := func(ctx context.Context, mockPump mock.Pump) func(*testing.T) {
+		return func(t *testing.T) {
+			t.Helper()
+			r := setupPump(mockPump.Pump())
+			mutations := make(chan mutable.Mutations, 1)
+			mutations <- mutable.Mutations{}.Put(mockPump.MockMutation())
+			out, errs := r.Run(ctx, mutations)
+			assertPump(&mockPump, out, errs)
+		}
+	}
 
-	// t.Run("good test", testGood(
-	// 	mock.PumpOptions{
-	// 		NumChannels: 1,
-	// 		Limit:       10 * bufferSize,
-	// 	},
-	// ))
-	// tests := []struct {
-	// 	cancelOnGive bool
-	// 	cancelOnTake bool
-	// 	cancelOnSend bool
-	// 	pump         *mock.Pump
-	// }{
-	// {
-	// 	pump: &mock.Pump{
-	// 		NumChannels: 1,
-	// 		Limit:       10 * bufferSize,
-	// 	},
-	// },
-	// 	{
-	// 		cancelOnGive: true,
-	// 		pump: &mock.Pump{
-	// 			NumChannels: 1,
-	// 		},
-	// 	},
-	// 	{
-	// 		cancelOnTake: true,
-	// 		pump: &mock.Pump{
-	// 			NumChannels: 1,
-	// 		},
-	// 	},
-	// 	// This test case cannot guarantee coverage because buffered out channel is used.
-	// 	// {
-	// 	// 	cancelOnSend: true,
-	// 	// 	pump: &mock.Pump{
-	// 	// 		NumChannels: 1,
-	// 	// 		Limit:       bufferSize,
-	// 	// 	},
-	// 	// },
-	// 	{
-	// 		pump: &mock.Pump{
-	// 			ErrorOnCall: testError,
-	// 			NumChannels: 1,
-	// 			Limit:       bufferSize,
-	// 		},
-	// 	},
-	// 	{
-	// 		pump: &mock.Pump{
-	// 			Hooks: mock.Hooks{
-	// 				ErrorOnReset: testError,
-	// 			},
-	// 			NumChannels: 1,
-	// 			Limit:       bufferSize,
-	// 		},
-	// 	},
-	// }
+	t.Run("ok", testPump(
+		context.Background(),
+		mock.Pump{
+			Channels: 1,
+			Limit:    10*bufferSize + 1,
+		},
+	))
+	t.Run("error", testPump(
+		context.Background(),
+		mock.Pump{
+			ErrorOnCall: testError,
+			Channels:    1,
+			Limit:       0,
+		},
+	))
+	t.Run("flush error", testPump(
+		context.Background(),
+		mock.Pump{
+			Flusher: mock.Flusher{
+				ErrorOnFlush: testError,
+			},
+			Channels: 1,
+			Limit:    10 * bufferSize,
+		},
+	))
 
-	// // var ok bool
-
-	// for _, c := range tests {
-	// 	fn, sampleRate, _, _ := c.pump.Pump(pipeID)
-	// 	r := runner.Pump{
-	// 		Fn:    fn,
-	// 		Meter: metric.Meter(c.pump, signal.SampleRate(sampleRate)),
-	// 		Hooks: pipe.BindHooks(c.pump),
-	// 	}
-	// 	cancel := make(chan struct{})
-	// 	give := make(chan string)
-	// 	take := make(chan runner.Message)
-	// 	out, errs := r.Run(
-	// 		noOpPool{
-	// 			numChannels: c.pump.NumChannels,
-	// 			bufferSize:  bufferSize,
-	// 		},
-	// 		pipeID,
-	// 		componentID,
-	// 		cancel,
-	// 		give,
-	// 		take,
-	// 	)
-	// 	assert.NotNil(t, out)
-	// 	assert.NotNil(t, errs)
-
-	// 	// test cancellation
-	// 	switch {
-	// 	case c.cancelOnGive:
-	// 		close(cancel)
-	// 	case c.cancelOnTake:
-	// 		<-give
-	// 		close(cancel)
-	// 	case c.cancelOnSend:
-	// 		<-give
-	// 		take <- runner.Message{
-	// 			PipeID: pipeID,
-	// 		}
-	// 		close(cancel)
-	// 	case c.pump.ErrorOnCall != nil:
-	// 		<-give
-	// 		take <- runner.Message{
-	// 			PipeID: pipeID,
-	// 		}
-	// 		<-out
-	// 		err := <-errs
-	// 		assert.Equal(t, c.pump.ErrorOnCall, errors.Unwrap(err))
-	// 	case c.pump.ErrorOnReset != nil:
-	// 		err := <-errs
-	// 		assert.Equal(t, c.pump.ErrorOnReset, errors.Unwrap(err))
-	// 	default:
-	// 		// test message exchange
-	// 		for i := 0; i <= c.pump.Limit/bufferSize; i++ {
-	// 			<-give
-	// 			take <- runner.Message{
-	// 				PipeID: pipeID,
-	// 			}
-	// 			<-out
-	// 		}
-	// 	}
-
-	// 	pipe.Wait(errs)
-
-	// 	// test channels closed
-	// 	_, ok = <-out
-	// 	assert.False(t, ok)
-	// 	_, ok = <-errs
-	// 	assert.False(t, ok)
-
-	// 	assert.True(t, c.pump.Resetted)
-
-	// 	if c.pump.ErrorOnReset != nil {
-	// 		assert.False(t, c.pump.Flushed)
-	// 	} else {
-	// 		assert.True(t, c.pump.Flushed)
-	// 	}
-
-	// 	if c.cancelOnGive || c.cancelOnTake || c.cancelOnSend {
-	// 		assert.True(t, c.pump.Interrupted)
-	// 	} else {
-	// 		assert.False(t, c.pump.Interrupted)
-	// 	}
-	// }
+	t.Run("context done", testContextDone(
+		mock.Pump{
+			Channels: 1,
+			Limit:    0,
+		},
+	))
+	t.Run("mutation error", testMutationError(
+		context.Background(),
+		mock.Pump{
+			ErrorOnMutation: testError,
+			Mutable:         mutable.New(),
+			Channels:        1,
+			Limit:           0,
+		},
+	))
 }
 
 // func TestProcessorRunner(t *testing.T) {
@@ -452,3 +367,10 @@ func TestPump(t *testing.T) {
 // 		}
 // 	}
 // }
+
+func assertEqual(t *testing.T, name string, result, expected interface{}) {
+	t.Helper()
+	if !reflect.DeepEqual(expected, result) {
+		t.Fatalf("%v\nresult: \t%T\t%+v \nexpected: \t%T\t%+v", name, result, result, expected, expected)
+	}
+}
