@@ -1,6 +1,6 @@
 package pipe
 
-import "pipelined.dev/pipe/mutable"
+import "pipelined.dev/pipe/mutability"
 
 type Option func(*Pipe)
 
@@ -12,10 +12,10 @@ func WithLines(lines ...Line) Option {
 	}
 }
 
-func WithMutations(mutations ...mutable.Mutation) Option {
+func WithMutations(mutations ...mutability.Mutation) Option {
 	return func(p *Pipe) {
 		for _, m := range mutations {
-			if c := p.listeners[m.Mutable]; c != nil {
+			if c := p.listeners[m.Mutability]; c != nil {
 				p.mutatorsByListeners[c] = p.mutatorsByListeners[c].Put(m)
 			}
 		}

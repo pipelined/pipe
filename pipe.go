@@ -8,7 +8,7 @@ import (
 
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/metric"
-	"pipelined.dev/pipe/mutable"
+	"pipelined.dev/pipe/mutability"
 	"pipelined.dev/pipe/pool"
 )
 
@@ -24,7 +24,7 @@ type (
 	// fills it with signal data. If no data is available, io.EOF should
 	// be returned.
 	Pump struct {
-		mutable.Mutable
+		mutability.Mutability
 		Pump func(out signal.Floating) (int, error)
 		Flush
 	}
@@ -37,7 +37,7 @@ type (
 	// changed during execution, but only decrease allowed. Number of
 	// channels cannot be changed.
 	Processor struct {
-		mutable.Mutable
+		mutability.Mutability
 		Process func(in, out signal.Floating) error
 		Flush
 	}
@@ -49,7 +49,7 @@ type (
 	// This components must not change buffer content. Line can have
 	// multiple sinks and this will cause race condition.
 	Sink struct {
-		mutable.Mutable
+		mutability.Mutability
 		Sink func(in signal.Floating) error
 		Flush
 	}
@@ -71,7 +71,7 @@ type (
 	// Line is a sequence of DSP components.
 	Line struct {
 		numChannels int
-		mutators    chan mutable.Mutations
+		mutators    chan mutability.Mutations
 		pump        runner.Pump
 		processors  []runner.Processor
 		sink        runner.Sink
@@ -81,14 +81,14 @@ type (
 	// through components, mixer for example.  If lines are not chained, they must be
 	// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 	Pipe struct {
-		mutability          mutable.Mutable
+		mutability          mutability.Mutability
 		ctx                 context.Context
 		cancelFn            context.CancelFunc
 		merger              *merger
 		lines               []Line
-		listeners           map[mutable.Mutable]chan mutable.Mutations
-		mutatorsByListeners map[chan mutable.Mutations]mutable.Mutations
-		push                chan []mutable.Mutation
+		listeners           map[mutability.Mutability]chan mutability.Mutations
+		mutatorsByListeners map[chan mutability.Mutations]mutability.Mutations
+		push                chan []mutability.Mutation
 		errors              chan error
 	}
 )
@@ -118,14 +118,14 @@ func (l Route) Line(bufferSize int) (Line, error) {
 	}
 
 	return Line{
-		mutators:   make(chan mutable.Mutations, 1),
+		mutators:   make(chan mutability.Mutations, 1),
 		pump:       pump,
 		processors: processors,
 		sink:       sink,
 	}, nil
 }
 
-func (l Line) listeners(listeners map[mutable.Mutable]chan mutable.Mutations) {
+func (l Line) listeners(listeners map[mutability.Mutability]chan mutability.Mutations) {
 	listeners[l.pump.Mutability] = l.mutators
 	for i := range l.processors {
 		listeners[l.processors[i].Mutability] = l.mutators
@@ -139,7 +139,7 @@ func (fn PumpMaker) runner(bufferSize int) (runner.Pump, Bus, error) {
 		return runner.Pump{}, Bus{}, fmt.Errorf("pump: %w", err)
 	}
 	return runner.Pump{
-		Mutability: pump.Mutable,
+		Mutability: pump.Mutability,
 		Output: pool.Get(signal.Allocator{
 			Channels: bus.Channels,
 			Length:   bufferSize,
@@ -157,7 +157,7 @@ func (fn ProcessorMaker) runner(bufferSize int, input Bus) (runner.Processor, Bu
 		return runner.Processor{}, Bus{}, fmt.Errorf("processor: %w", err)
 	}
 	return runner.Processor{
-		Mutability: processor.Mutable,
+		Mutability: processor.Mutability,
 		Input: pool.Get(signal.Allocator{
 			Channels: input.Channels,
 			Length:   bufferSize,
@@ -180,7 +180,7 @@ func (fn SinkMaker) runner(bufferSize int, input Bus) (runner.Sink, error) {
 		return runner.Sink{}, fmt.Errorf("sink: %w", err)
 	}
 	return runner.Sink{
-		Mutability: sink.Mutable,
+		Mutability: sink.Mutability,
 		Input: pool.Get(signal.Allocator{
 			Channels: input.Channels,
 			Length:   bufferSize,
@@ -197,16 +197,16 @@ func (fn SinkMaker) runner(bufferSize int, input Bus) (runner.Sink, error) {
 func New(ctx context.Context, options ...Option) Pipe {
 	ctx, cancelFn := context.WithCancel(ctx)
 	p := Pipe{
-		mutability: mutable.New(),
+		mutability: mutability.New(),
 		merger: &merger{
 			errors: make(chan error, 1),
 		},
 		ctx:                 ctx,
 		cancelFn:            cancelFn,
-		listeners:           make(map[mutable.Mutable]chan mutable.Mutations),
-		mutatorsByListeners: make(map[chan mutable.Mutations]mutable.Mutations),
+		listeners:           make(map[mutability.Mutability]chan mutability.Mutations),
+		mutatorsByListeners: make(map[chan mutability.Mutations]mutability.Mutations),
 		lines:               make([]Line, 0),
-		push:                make(chan []mutable.Mutation, 1),
+		push:                make(chan []mutability.Mutation, 1),
 		errors:              make(chan error, 1),
 	}
 	for _, option := range options {
@@ -226,13 +226,13 @@ func New(ctx context.Context, options ...Option) Pipe {
 			case mutations := <-p.push:
 				for _, m := range mutations {
 					// mutate pipe itself
-					if m.Mutable == p.mutability {
+					if m.Mutability == p.mutability {
 						if err := m.Apply(); err != nil {
 							p.interrupt(err)
 						}
 					} else {
 						for _, m := range mutations {
-							if c := p.listeners[m.Mutable]; c != nil {
+							if c := p.listeners[m.Mutability]; c != nil {
 								p.mutatorsByListeners[c] = p.mutatorsByListeners[c].Put(m)
 							}
 						}
@@ -252,7 +252,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 	return p
 }
 
-func push(mutators map[chan mutable.Mutations]mutable.Mutations) {
+func push(mutators map[chan mutability.Mutations]mutability.Mutations) {
 	for c, m := range mutators {
 		c <- m
 	}
@@ -300,11 +300,11 @@ func (l Line) start(ctx context.Context) []<-chan error {
 
 // Push new mutators into pipe.
 // Calling this method after pipe is done will cause a panic.
-func (p Pipe) Push(mutations ...mutable.Mutation) {
+func (p Pipe) Push(mutations ...mutability.Mutation) {
 	p.push <- mutations
 }
 
-func (p Pipe) AddLine(l Line) mutable.Mutation {
+func (p Pipe) AddLine(l Line) mutability.Mutation {
 	return p.mutability.Mutate(func() error {
 		addLine(&p, l)
 		p.merger.merge(l.start(p.ctx)...)

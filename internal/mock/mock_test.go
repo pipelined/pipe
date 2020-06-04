@@ -11,7 +11,7 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe/internal/mock"
-	"pipelined.dev/pipe/mutable"
+	"pipelined.dev/pipe/mutability"
 )
 
 var errTest = errors.New("Test error")
@@ -46,7 +46,7 @@ func TestPump(t *testing.T) {
 
 	testMutations := func(test params) func(*testing.T) {
 		mockPump := &mock.Pump{
-			Mutable:  mutable.New(),
+			Mutability:  mutability.New(),
 			Limit:    test.bufferSize,
 			Channels: 1,
 		}
