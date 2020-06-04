@@ -13,7 +13,7 @@ import (
 	"pipelined.dev/pipe/internal/mock"
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/metric"
-	"pipelined.dev/pipe/mutable"
+	"pipelined.dev/pipe/mutability"
 	"pipelined.dev/pipe/pool"
 )
 
@@ -24,7 +24,7 @@ func TestPump(t *testing.T) {
 	setupPump := func(pumpMaker pipe.PumpMaker) runner.Pump {
 		pump, bus, _ := pumpMaker(bufferSize)
 		return runner.Pump{
-			Mutability: pump.Mutable,
+			Mutability: pump.Mutability,
 			Output: pool.Get(signal.Allocator{
 				Channels: bus.Channels,
 				Length:   bufferSize,
@@ -59,7 +59,7 @@ func TestPump(t *testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
 			r := setupPump(mockPump.Pump())
-			mutations := make(chan mutable.Mutations)
+			mutations := make(chan mutability.Mutations)
 			out, errs := r.Run(ctx, mutations)
 			assertPump(&mockPump, out, errs)
 		}
@@ -75,8 +75,8 @@ func TestPump(t *testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
 			r := setupPump(mockPump.Pump())
-			mutations := make(chan mutable.Mutations, 1)
-			mutations <- mutable.Mutations{}.Put(mockPump.MockMutation())
+			mutations := make(chan mutability.Mutations, 1)
+			mutations <- mutability.Mutations{}.Put(mockPump.MockMutation())
 			out, errs := r.Run(ctx, mutations)
 			assertPump(&mockPump, out, errs)
 		}
@@ -118,7 +118,7 @@ func TestPump(t *testing.T) {
 		context.Background(),
 		mock.Pump{
 			ErrorOnMutation: testError,
-			Mutable:         mutable.New(),
+			Mutability:         mutability.New(),
 			Channels:        1,
 			Limit:           0,
 		},

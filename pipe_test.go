@@ -9,7 +9,7 @@ import (
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
-	"pipelined.dev/pipe/mutable"
+	"pipelined.dev/pipe/mutability"
 	"pipelined.dev/pipe/repeat"
 )
 
@@ -86,7 +86,7 @@ func TestSimplePipe(t *testing.T) {
 
 func TestReset(t *testing.T) {
 	pump := &mock.Pump{
-		Mutable:  mutable.New(),
+		Mutability:  mutability.New(),
 		Limit:    862 * bufferSize,
 		Channels: 2,
 	}
@@ -157,7 +157,7 @@ func TestAddLine(t *testing.T) {
 // 1 Pump, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
 	pump := &mock.Pump{
-		Mutable:  mutable.New(),
+		Mutability:  mutability.New(),
 		Limit:    862 * bufferSize,
 		Channels: 2,
 	}
