@@ -11,6 +11,7 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe/internal/mock"
+	"pipelined.dev/pipe/mutable"
 )
 
 var errTest = errors.New("Test error")
@@ -22,6 +23,7 @@ func TestPump(t *testing.T) {
 	}
 	testPump := func(pump mock.Pump, test params) func(*testing.T) {
 		return func(t *testing.T) {
+			t.Helper()
 			fn, bus, _ := pump.Pump()(test.bufferSize)
 			buf := signal.Allocator{
 				Channels: bus.Channels,
@@ -39,6 +41,27 @@ func TestPump(t *testing.T) {
 
 			assertEqual(t, "calls", pump.Messages, test.calls)
 			assertEqual(t, "samples", pump.Samples, pump.Limit)
+		}
+	}
+
+	testMutations := func(test params) func(*testing.T) {
+		mockPump := &mock.Pump{
+			Mutable:  mutable.New(),
+			Limit:    test.bufferSize,
+			Channels: 1,
+		}
+		pump, bus, _ := mockPump.Pump()(10)
+		pump.Pump(signal.Allocator{
+			Channels: bus.Channels,
+			Length:   test.bufferSize,
+			Capacity: test.bufferSize,
+		}.Float64())
+		return func(t *testing.T) {
+			t.Helper()
+			assertEqual(t, "counter before reset", mockPump.Counter.Samples, test.bufferSize)
+			mockPump.Reset().Apply()
+			assertEqual(t, "counter before after", mockPump.Counter.Samples, 0)
+			mockPump.MockMutation().Apply()
 		}
 	}
 
@@ -72,6 +95,9 @@ func TestPump(t *testing.T) {
 		},
 		params{},
 	))
+	t.Run("mutations", testMutations(params{
+		bufferSize: 10,
+	}))
 }
 
 func TestProcessor(t *testing.T) {
