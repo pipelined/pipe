@@ -42,12 +42,13 @@ type Pump struct {
 	mutable.Mutable
 	Counter
 	Flusher
-	Interval    time.Duration
-	Limit       int
-	Value       float64
-	Channels    int
-	SampleRate  signal.SampleRate
-	ErrorOnCall error
+	Interval        time.Duration
+	Limit           int
+	Value           float64
+	Channels        int
+	SampleRate      signal.SampleRate
+	ErrorOnCall     error
+	ErrorOnMutation error
 }
 
 // Pump returns closure that creates new pumps.
@@ -90,6 +91,14 @@ func (p *Pump) Reset() mutable.Mutation {
 		func() error {
 			p.Counter = Counter{}
 			return nil
+		})
+}
+
+// MockMutation mocks mutation, so errors can be simulated.
+func (p *Pump) MockMutation() mutable.Mutation {
+	return p.Mutable.Mutate(
+		func() error {
+			return p.ErrorOnMutation
 		})
 }
 
