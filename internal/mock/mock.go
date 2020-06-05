@@ -56,13 +56,12 @@ func (p *Pump) Pump() pipe.PumpMaker {
 	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
 		return pipe.Pump{
 				Mutability: p.Mutability,
-				Flush:   p.Flusher.Flush,
+				Flush:      p.Flusher.Flush,
 				Pump: func(s signal.Floating) (int, error) {
 					if p.ErrorOnCall != nil {
 						return 0, p.ErrorOnCall
 					}
-
-					if p.Counter.Samples >= p.Limit {
+					if p.Counter.Samples == p.Limit {
 						return 0, io.EOF
 					}
 					time.Sleep(p.Interval)
