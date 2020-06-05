@@ -35,25 +35,18 @@ func TestPump(t *testing.T) {
 			Meter: metric.Meter(pump, bus.SampleRate),
 		}
 	}
-	assertPump := func(mockPump *mock.Pump, out <-chan runner.Message, errs <-chan error) {
+	assertPump := func(t *testing.T, mockPump *mock.Pump, out <-chan runner.Message, errs <-chan error) {
 		t.Helper()
 		received := 0
-		for {
-			select {
-			case err, ok := <-errs:
-				if ok {
-					assertEqual(t, "error", errors.Unwrap(err), testError)
-				} else {
-					assertEqual(t, "pump flushed", mockPump.Flushed, true)
-					assertEqual(t, "pump samples", received, mockPump.Limit)
-					return
-				}
-			case buf, ok := <-out:
-				if ok {
-					received = received + buf.Signal.Length()
-				}
-			}
+		for buf := range out {
+			received = received + buf.Signal.Length()
 		}
+		for err := range errs {
+			assertEqual(t, "error", errors.Unwrap(err), testError)
+		}
+		assertEqual(t, "pump samples", received, mockPump.Limit)
+		assertEqual(t, "pump flushed", mockPump.Flushed, true)
+		return
 	}
 	testPump := func(ctx context.Context, mockPump mock.Pump) func(*testing.T) {
 		return func(t *testing.T) {
@@ -61,7 +54,7 @@ func TestPump(t *testing.T) {
 			r := setupPump(mockPump.Pump())
 			mutations := make(chan mutability.Mutations)
 			out, errs := r.Run(ctx, mutations)
-			assertPump(&mockPump, out, errs)
+			assertPump(t, &mockPump, out, errs)
 		}
 	}
 	testContextDone := func(mockPump mock.Pump) func(*testing.T) {
@@ -78,7 +71,7 @@ func TestPump(t *testing.T) {
 			mutations := make(chan mutability.Mutations, 1)
 			mutations <- mutability.Mutations{}.Put(mockPump.MockMutation())
 			out, errs := r.Run(ctx, mutations)
-			assertPump(&mockPump, out, errs)
+			assertPump(t, &mockPump, out, errs)
 		}
 	}
 
@@ -118,7 +111,7 @@ func TestPump(t *testing.T) {
 		context.Background(),
 		mock.Pump{
 			ErrorOnMutation: testError,
-			Mutability:         mutability.New(),
+			Mutability:      mutability.New(),
 			Channels:        1,
 			Limit:           0,
 		},
