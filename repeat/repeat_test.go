@@ -2,9 +2,9 @@ package repeat_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
 	"pipelined.dev/pipe/mutability"
@@ -43,10 +43,10 @@ func TestAddRoute(t *testing.T) {
 
 	// start
 	_ = p.Wait()
-	assert.Equal(t, 10, sink1.Counter.Messages)
-	assert.Equal(t, 10*bufferSize, sink1.Counter.Samples)
-	assert.True(t, sink2.Counter.Messages > 0)
-	assert.True(t, sink2.Counter.Samples > 0)
+	assertEqual(t, "sink1 messages", sink1.Counter.Messages, 10)
+	assertEqual(t, "sink1 samples", sink1.Counter.Samples, 10*bufferSize)
+	assertEqual(t, "sink2 messages", sink2.Counter.Messages > 0, true)
+	assertEqual(t, "sink2 samples", sink2.Counter.Samples > 0, true)
 }
 
 // This benchmark runs the following pipe:
@@ -76,5 +76,12 @@ func BenchmarkRepeat2(b *testing.B) {
 			pipe.WithMutations(pump.Reset()),
 		)
 		_ = p.Wait()
+	}
+}
+
+func assertEqual(t *testing.T, name string, result, expected interface{}) {
+	t.Helper()
+	if !reflect.DeepEqual(expected, result) {
+		t.Fatalf("%v\nresult: \t%T\t%+v \nexpected: \t%T\t%+v", name, result, result, expected, expected)
 	}
 }
