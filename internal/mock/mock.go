@@ -2,216 +2,169 @@
 package mock
 
 import (
+	"context"
 	"io"
 	"time"
 
 	"pipelined.dev/signal"
+
+	"pipelined.dev/pipe"
+	"pipelined.dev/pipe/mutability"
 )
 
-// Pump mocks a pipe.Pump interface.
+type (
+	// Counter counts messages, samples and can capture sinked values.
+	Counter struct {
+		Messages int
+		Samples  int
+		Values   signal.Floating
+	}
+
+	// Flusher allows to mock components hooks.
+	Flusher struct {
+		Flushed      bool
+		ErrorOnFlush error
+	}
+
+	// Mutator allows to mock mutations.
+	Mutator struct {
+		mutability.Mutability
+		Mutated         bool
+		ErrorOnMutation error
+	}
+)
+
+// advance counter's metrics.
+func (c *Counter) advance(size int) {
+	c.Messages++
+	c.Samples = c.Samples + size
+}
+
+// Flush implements pipe.Flusher.
+func (f *Flusher) Flush(ctx context.Context) error {
+	f.Flushed = true
+	return f.ErrorOnFlush
+}
+
+// Pump are settings for pipe.Pump mock.
 type Pump struct {
-	counter
+	Mutator
+	Counter
+	Flusher
 	Interval    time.Duration
 	Limit       int
 	Value       float64
-	NumChannels int
+	Channels    int
 	SampleRate  signal.SampleRate
 	ErrorOnCall error
-	Hooks
+	ErrorOnMake error
 }
 
-// IntervalParam pushes new interval value for pump.
-func (m *Pump) IntervalParam(i time.Duration) func() {
-	return func() {
-		m.Interval = i
+// Pump returns closure that creates new pumps.
+func (m *Pump) Pump() pipe.PumpMaker {
+	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
+		return pipe.Pump{
+				Mutability: m.Mutability,
+				Flush:      m.Flusher.Flush,
+				Pump: func(s signal.Floating) (int, error) {
+					if m.ErrorOnCall != nil {
+						return 0, m.ErrorOnCall
+					}
+					if m.Counter.Samples == m.Limit {
+						return 0, io.EOF
+					}
+					time.Sleep(m.Interval)
+
+					read := s.Length()
+					// ensure that we have enough samples
+					if left := m.Limit - m.Counter.Samples; left < read {
+						read = left
+					}
+					for i := 0; i < read*m.Channels; i++ {
+						s.SetSample(i, m.Value)
+					}
+					m.Counter.advance(read)
+					return read, nil
+				},
+			}, pipe.Bus{
+				SampleRate: m.SampleRate,
+				Channels:   m.Channels,
+			},
+			m.ErrorOnMake
 	}
 }
 
-// LimitParam pushes new limit value for pump.
-func (m *Pump) LimitParam(l int) func() {
-	return func() {
-		m.Limit = l
-	}
+// Reset allows to reset pump.
+func (m *Pump) Reset() mutability.Mutation {
+	return m.Mutability.Mutate(
+		func() error {
+			m.Counter = Counter{}
+			return nil
+		})
 }
 
-// ValueParam pushes new signal value for pump.
-func (m *Pump) ValueParam(v float64) func() {
-	return func() {
-		m.Value = v
-	}
+// MockMutation mocks mutation, so errors can be simulated.
+func (m *Mutator) MockMutation() mutability.Mutation {
+	return m.Mutability.Mutate(
+		func() error {
+			m.Mutated = true
+			return m.ErrorOnMutation
+		})
 }
 
-// Pump returns new buffer for pipe.
-func (m *Pump) Pump(sourceID string) (func(b signal.Float64) error, signal.SampleRate, int, error) {
-	return func(b signal.Float64) error {
-		if m.ErrorOnCall != nil {
-			return m.ErrorOnCall
-		}
-
-		if m.samples >= m.Limit {
-			return io.EOF
-		}
-		time.Sleep(m.Interval)
-
-		// calculate buffer size.
-		bs := b.Size()
-		// check if we need a shorter.
-		if left := m.Limit - m.samples; left < bs {
-			bs = left
-		}
-		for i := range b {
-			// resize buffer
-			b[i] = b[i][:bs]
-			for j := range b[i] {
-				b[i][j] = m.Value
-			}
-		}
-		m.advance(bs)
-		return nil
-	}, m.SampleRate, m.NumChannels, nil
-}
-
-// Reset implements pipe.Resetter.
-func (m *Pump) Reset(string) error {
-	m.Resetted = true
-	if m.ErrorOnReset != nil {
-		return m.ErrorOnReset
-	}
-	m.reset()
-	return nil
-}
-
-// Interrupt implements pipe.Interrupter.
-func (m *Pump) Interrupt(string) error {
-	m.Interrupted = true
-	return m.ErrorOnInterrupt
-}
-
-// Flush implements pipe.Flusher.
-func (m *Pump) Flush(string) error {
-	m.Flushed = true
-	return m.ErrorOnFlush
-}
-
-// Processor mocks a pipe.Processor interface.
+// Processor are settings for pipe.Processor mock.
 type Processor struct {
-	counter
+	Mutator
+	Counter
+	Flusher
 	ErrorOnCall error
-	Hooks
+	ErrorOnMake error
 }
 
-// Process implementation for runner
-func (m *Processor) Process(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error) {
-	return func(b signal.Float64) error {
-		if m.ErrorOnCall != nil {
-			return m.ErrorOnCall
-		}
-		m.advance(b.Size())
-		return nil
-	}, nil
-}
-
-// Reset implements pipe.Resetter.
-func (m *Processor) Reset(string) error {
-	m.Resetted = true
-	if m.ErrorOnReset != nil {
-		return m.ErrorOnReset
+// Processor returns closure that creates new processors.
+func (m *Processor) Processor() pipe.ProcessorMaker {
+	return func(bufferSize int, bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
+		return pipe.Processor{
+			Mutability: m.Mutator.Mutability,
+			Flush:      m.Flusher.Flush,
+			Process: func(in, out signal.Floating) error {
+				if m.ErrorOnCall != nil {
+					return m.ErrorOnCall
+				}
+				m.Counter.advance(signal.FloatingAsFloating(in, out))
+				return nil
+			},
+		}, bus, m.ErrorOnMake
 	}
-	m.reset()
-	return nil
 }
 
-// Interrupt implements pipe.Interrupter.
-func (m *Processor) Interrupt(string) error {
-	m.Interrupted = true
-	return m.ErrorOnInterrupt
-}
-
-// Flush implements pipe.Flusher.
-func (m *Processor) Flush(string) error {
-	m.Flushed = true
-	return m.ErrorOnFlush
-}
-
-// Sink mocks up a pipe.Sink interface.
-// Buffer is not thread-safe, so should not be checked while pipe is running.
+// Sink are settings for pipe.Sink mock.
 type Sink struct {
-	counter
-	buffer      signal.Float64
+	Mutator
+	Counter
+	Flusher
 	Discard     bool
 	ErrorOnCall error
-	Hooks
+	ErrorOnMake error
 }
 
-// Sink implementation for runner.
-func (m *Sink) Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error) {
-	return func(b signal.Float64) error {
-		if m.ErrorOnCall != nil {
-			return m.ErrorOnCall
-		}
-		if !m.Discard {
-			m.buffer = signal.Float64(m.buffer).Append(b)
-		}
-		m.advance(b.Size())
-		return nil
-	}, nil
-}
-
-// Reset implements pipe.Resetter.
-func (m *Sink) Reset(string) error {
-	m.Resetted = true
-	m.buffer = nil
-	m.reset()
-	return m.ErrorOnReset
-}
-
-// Interrupt implements pipe.Interrupter.
-func (m *Sink) Interrupt(string) error {
-	m.Interrupted = true
-	return m.ErrorOnInterrupt
-}
-
-// Flush implements pipe.Flusher.
-func (m *Sink) Flush(string) error {
-	m.Flushed = true
-	return m.ErrorOnFlush
-}
-
-// Hooks allows to mock components hooks.
-type Hooks struct {
-	Resetted    bool
-	Flushed     bool
-	Interrupted bool
-
-	ErrorOnReset     error
-	ErrorOnFlush     error
-	ErrorOnInterrupt error
-}
-
-// Buffer returns sink's buffer
-func (m *Sink) Buffer() signal.Float64 {
-	return m.buffer
-}
-
-// Reset resets counter's metrics.
-func (c *counter) reset() {
-	c.messages, c.samples = 0, 0
-}
-
-// counter counts messages and samples.
-// Duration is not zero only in context of measure.
-type counter struct {
-	messages int
-	samples  int
-}
-
-// Advance counter's metrics.
-func (c *counter) advance(size int) {
-	c.messages++
-	c.samples = c.samples + size
-}
-
-// Count returns messages and samples metrics.
-func (c *counter) Count() (int, int) {
-	return c.messages, c.samples
+// Sink returns closure that creates new sinks.
+func (m *Sink) Sink() pipe.SinkMaker {
+	return func(bufferSize int, b pipe.Bus) (pipe.Sink, error) {
+		m.Counter.Values = signal.Allocator{Channels: b.Channels, Capacity: bufferSize}.Float64()
+		return pipe.Sink{
+			Mutability: m.Mutator.Mutability,
+			Flush:      m.Flusher.Flush,
+			Sink: func(in signal.Floating) error {
+				if m.ErrorOnCall != nil {
+					return m.ErrorOnCall
+				}
+				if !m.Discard {
+					m.Counter.Values = m.Counter.Values.Append(in)
+				}
+				m.Counter.advance(in.Length())
+				return nil
+			},
+		}, m.ErrorOnMake
+	}
 }

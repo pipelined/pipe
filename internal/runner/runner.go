@@ -1,145 +1,113 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"sync/atomic"
 
 	"pipelined.dev/signal"
 
-	"pipelined.dev/pipe/internal/state"
 	"pipelined.dev/pipe/metric"
+	"pipelined.dev/pipe/mutability"
 )
-
-// Pool provides pooling of signal.Float64 buffers.
-type Pool interface {
-	Alloc() signal.Float64
-	Free(signal.Float64)
-}
 
 // Message is a main structure for pipe transport
 type Message struct {
-	SinkRefs int32          // number of sinks referencing buffer in this message.
-	PipeID   string         // ID of pipe which spawned this message.
-	Buffer   signal.Float64 // Buffer of message.
-	Params   state.Params   // params for pipe.
+	Signal               signal.Floating // Buffer of message.
+	mutability.Mutations                 // Mutators for pipe.
 }
 
 type (
-	// PumpFunc is closure of pipe.Pump that emits new messages.
-	PumpFunc func(signal.Float64) error
-
-	// ProcessFunc is closure of pipe.Processor that processes messages.
-	ProcessFunc func(signal.Float64) error
-
-	// SinkFunc is closure of pipe.Sink that sinks messages.
-	SinkFunc func(signal.Float64) error
-
 	// Pump executes pipe.Pump components.
 	Pump struct {
-		ID    string
-		Fn    PumpFunc
-		Meter metric.ResetFunc
-		Hooks
+		Mutability [16]byte
+		Flush
+		Output *signal.Pool
+		Fn     func(out signal.Floating) (int, error)
+		Meter  metric.ResetFunc
 	}
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
-		ID    string
-		Fn    ProcessFunc
-		Meter metric.ResetFunc
-		Hooks
+		Mutability [16]byte
+		Flush
+		Input  *signal.Pool
+		Output *signal.Pool
+		Fn     func(in, out signal.Floating) error
+		Meter  metric.ResetFunc
 	}
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
-		ID    string
-		Fn    SinkFunc
+		Mutability [16]byte
+		Flush
+		Input *signal.Pool
+		Fn    func(in signal.Floating) error
 		Meter metric.ResetFunc
-		Hooks
 	}
 )
 
-type (
-	// Hook represents optional functions for components lyfecycle.
-	Hook func(string) error
+// Flush is a closure that triggers pipe component flush function.
+type Flush func(context.Context) error
 
-	// Hooks is the set of components Hooks for runners.
-	Hooks struct {
-		Flush     Hook
-		Interrupt Hook
-		Reset     Hook
+func (fn Flush) call(ctx context.Context) error {
+	if fn == nil {
+		return nil
 	}
-)
+	return fn(ctx)
+}
 
 // Run starts the Pump runner.
-func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, give chan<- string, take <-chan Message) (<-chan Message, <-chan error) {
+func (r Pump) Run(ctx context.Context, mutationsChan chan mutability.Mutations) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
 	meter := r.Meter()
 	go func() {
 		defer close(out)
 		defer close(errs)
-		// Reset hook
-		if err := call(r.Reset, pipeID); err != nil {
-			errs <- fmt.Errorf("error resetting pump: %w", err)
-			return
-		}
-		// Flush hook on return
+		// flush on return
 		defer func() {
-			if err := call(r.Flush, pipeID); err != nil {
+			if err := r.Flush.call(ctx); err != nil {
 				errs <- fmt.Errorf("error flushing pump: %w", err)
 			}
 		}()
-		var err error
-		var m Message
+		var (
+			read      int
+			mutations mutability.Mutations
+			outSignal signal.Floating
+			err       error
+		)
 		for {
-			// request new message
 			select {
-			case give <- pipeID:
-			case <-cancel:
-				if err := call(r.Interrupt, pipeID); err != nil {
-					errs <- fmt.Errorf("error interrupting pump: %w", err)
-				}
+			case mutations = <-mutationsChan:
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			if err = mutations.ApplyTo(r.Mutability); err != nil {
+				errs <- fmt.Errorf("error mutating pump: %w", err)
 				return
 			}
 
-			// receive new message
-			select {
-			case m = <-take:
-			case <-cancel:
-				if err := call(r.Interrupt, pipeID); err != nil {
-					errs <- fmt.Errorf("error interrupting pump: %w", err)
-				}
-				return
-			}
-
-			m.Params.ApplyTo(componentID) // apply params
-
-			// POOL: Allocate buffer here.
-			// allocate new buffer
-			m.Buffer = p.Alloc()
-
-			err = r.Fn(m.Buffer)   // pump new buffer
-			meter(m.Buffer.Size()) // capture metrics
-			// handle error
-			if err != nil {
-				switch err {
-				case io.EOF:
-					// EOF is a good end.
-				default:
+			outSignal = r.Output.GetFloat64()
+			if read, err = r.Fn(outSignal); err != nil {
+				if err != io.EOF {
 					errs <- fmt.Errorf("error running pump: %w", err)
 				}
+				// this buffer wasn't sent, free now
+				r.Output.PutFloat64(outSignal)
 				return
 			}
+			if read != outSignal.Length() {
+				outSignal = outSignal.Slice(0, read)
+			}
+			meter(outSignal.Length())
 
-			// push message further
 			select {
-			case out <- m:
-			case <-cancel:
-				if err := call(r.Interrupt, pipeID); err != nil {
-					errs <- fmt.Errorf("error interrupting pump: %w", err)
-				}
+			case out <- Message{Mutations: mutations, Signal: outSignal}:
+				mutations = nil
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -148,57 +116,55 @@ func (r Pump) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, gi
 }
 
 // Run starts the Processor runner.
-func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) (<-chan Message, <-chan error) {
+func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, <-chan error) {
 	errs := make(chan error, 1)
 	out := make(chan Message, 1)
 	meter := r.Meter()
 	go func() {
 		defer close(out)
 		defer close(errs)
-		// Reset hook
-		if err := call(r.Reset, pipeID); err != nil {
-			errs <- fmt.Errorf("error resetting processor: %w", err)
-			return
-		}
-		// Flush hook on return
+		// flush on return
 		defer func() {
-			if err := call(r.Flush, pipeID); err != nil {
+			if err := r.Flush.call(ctx); err != nil {
 				errs <- fmt.Errorf("error flushing processor: %w", err)
 			}
 		}()
-		var err error
-		var m Message
-		var ok bool
+		var (
+			message   Message
+			outSignal signal.Floating
+			ok        bool
+			err       error
+		)
 		for {
-			// retrieve new message
 			select {
-			case m, ok = <-in:
+			case message, ok = <-in:
 				if !ok {
 					return
 				}
-			case <-cancel:
-				if err := call(r.Interrupt, pipeID); err != nil {
-					errs <- fmt.Errorf("error interrupting processor: %w", err)
-				}
+			case <-ctx.Done():
 				return
 			}
 
-			m.Params.ApplyTo(componentID) // apply params
-			err = r.Fn(m.Buffer)          // process new buffer
+			if err = message.Mutations.ApplyTo(r.Mutability); err != nil {
+				errs <- fmt.Errorf("error mutating processor: %w", err)
+				r.Input.PutFloat64(message.Signal)
+				return
+			}
+
+			outSignal = r.Output.GetFloat64()
+			err = r.Fn(message.Signal, outSignal)
+			r.Input.PutFloat64(message.Signal)
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
+				// this buffer wasn't sent, free now
+				r.Output.PutFloat64(outSignal)
 				return
 			}
+			meter(outSignal.Length())
 
-			meter(m.Buffer.Size()) // capture metrics
-
-			// send message further
 			select {
-			case out <- m:
-			case <-cancel:
-				if err := call(r.Interrupt, pipeID); err != nil {
-					errs <- fmt.Errorf("error interrupting pump: %w", err)
-				}
+			case out <- Message{Mutations: message.Mutations, Signal: outSignal}:
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -207,99 +173,48 @@ func (r Processor) Run(pipeID, componentID string, cancel <-chan struct{}, in <-
 }
 
 // Run starts the sink runner.
-func (r Sink) Run(p Pool, pipeID, componentID string, cancel <-chan struct{}, in <-chan Message) <-chan error {
+func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 	errs := make(chan error, 1)
 	meter := r.Meter()
 	go func() {
 		defer close(errs)
-		// Reset hook
-		if err := call(r.Reset, pipeID); err != nil {
-			errs <- fmt.Errorf("error resetting sink: %w", err)
-			return
-		}
-		// Flush hook on return
+		// flush on return
 		defer func() {
-			if err := call(r.Flush, pipeID); err != nil {
+			if err := r.Flush.call(ctx); err != nil {
 				errs <- fmt.Errorf("error flushing sink: %w", err)
 			}
 		}()
-		var m Message
-		var ok bool
+		var (
+			message Message
+			ok      bool
+			err     error
+		)
 		for {
 			// receive new message
 			select {
-			case m, ok = <-in:
+			case message, ok = <-in:
 				if !ok {
 					return
 				}
-			case <-cancel:
-				if err := call(r.Interrupt, pipeID); err != nil {
-					errs <- fmt.Errorf("error interrupting sink: %w", err)
-				}
+			case <-ctx.Done():
 				return
 			}
 
-			m.Params.ApplyTo(componentID) // apply params
-			err := r.Fn(m.Buffer)         // sink a buffer
+			// apply Mutators
+			if err = message.Mutations.ApplyTo(r.Mutability); err != nil {
+				errs <- fmt.Errorf("error mutating sink: %w", err)
+				r.Input.PutFloat64(message.Signal) // need to free
+				return
+			}
+			err = r.Fn(message.Signal)     // sink a buffer
+			meter(message.Signal.Length()) // capture metrics
+			r.Input.PutFloat64(message.Signal)
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)
 				return
 			}
-			meter(m.Buffer.Size()) // capture metrics
-			if atomic.AddInt32(&m.SinkRefs, -1) == 0 {
-				p.Free(m.Buffer)
-			}
 		}
 	}()
 
 	return errs
-}
-
-// Broadcast passes messages to all sinks.
-func Broadcast(p Pool, pipeID string, sinks []Sink, cancel <-chan struct{}, in <-chan Message) []<-chan error {
-	//init errs for sinks error channels
-	errs := make([]<-chan error, 0, len(sinks))
-	//list of channels for broadcast
-	broadcasts := make([]chan Message, len(sinks))
-	for i := range broadcasts {
-		broadcasts[i] = make(chan Message, 1)
-	}
-
-	//start broadcast
-	for i, s := range sinks {
-		errs = append(errs, s.Run(p, pipeID, s.ID, cancel, broadcasts[i]))
-	}
-
-	go func() {
-		//close broadcasts on return
-		defer func() {
-			for i := range broadcasts {
-				close(broadcasts[i])
-			}
-		}()
-		for msg := range in {
-			for i := range broadcasts {
-				m := Message{
-					SinkRefs: int32(len(broadcasts)),
-					PipeID:   pipeID,
-					Buffer:   msg.Buffer,
-					Params:   msg.Params.Detach(sinks[i].ID),
-				}
-				select {
-				case broadcasts[i] <- m:
-				case <-cancel:
-					return
-				}
-			}
-		}
-	}()
-
-	return errs
-}
-
-func call(h Hook, pipeID string) error {
-	if h != nil {
-		return h(pipeID)
-	}
-	return nil
 }
