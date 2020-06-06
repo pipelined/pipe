@@ -2,6 +2,7 @@ package pipe_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -86,9 +87,9 @@ func TestSimplePipe(t *testing.T) {
 
 func TestReset(t *testing.T) {
 	pump := &mock.Pump{
-		Mutability:  mutability.New(),
-		Limit:    862 * bufferSize,
-		Channels: 2,
+		Mutability: mutability.Mutable(),
+		Limit:      862 * bufferSize,
+		Channels:   2,
 	}
 	sink := &mock.Sink{Discard: true}
 
@@ -157,9 +158,9 @@ func TestAddLine(t *testing.T) {
 // 1 Pump, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
 	pump := &mock.Pump{
-		Mutability:  mutability.New(),
-		Limit:    862 * bufferSize,
-		Channels: 2,
+		Mutability: mutability.Mutable(),
+		Limit:      862 * bufferSize,
+		Channels:   2,
 	}
 	sink := &mock.Sink{Discard: true}
 	route, _ := pipe.Route{
@@ -179,4 +180,11 @@ func BenchmarkSingleLine(b *testing.B) {
 		_ = p.Wait()
 	}
 	b.Logf("recieved messages: %d samples: %d", sink.Messages, sink.Samples)
+}
+
+func assertEqual(t *testing.T, name string, result, expected interface{}) {
+	t.Helper()
+	if !reflect.DeepEqual(expected, result) {
+		t.Fatalf("%v\nresult: \t%T\t%+v \nexpected: \t%T\t%+v", name, result, result, expected, expected)
+	}
 }

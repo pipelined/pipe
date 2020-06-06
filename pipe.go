@@ -197,7 +197,7 @@ func (fn SinkMaker) runner(bufferSize int, input Bus) (runner.Sink, error) {
 func New(ctx context.Context, options ...Option) Pipe {
 	ctx, cancelFn := context.WithCancel(ctx)
 	p := Pipe{
-		mutability: mutability.New(),
+		mutability: mutability.Mutable(),
 		merger: &merger{
 			errors: make(chan error, 1),
 		},
