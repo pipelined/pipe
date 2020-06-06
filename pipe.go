@@ -6,215 +6,329 @@ import (
 
 	"pipelined.dev/signal"
 
-	"pipelined.dev/pipe/internal/pool"
 	"pipelined.dev/pipe/internal/runner"
-	"pipelined.dev/pipe/internal/state"
 	"pipelined.dev/pipe/metric"
+	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/pool"
 )
 
-// Pipe controls the execution of multiple chained lines. Lines might be chained
-// through components, mixer for example.  If lines are not chained, they must be
-// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
-type Pipe struct {
-	h                *state.Handle
-	lines            map[*Line]string  // map pipe to chain id
-	chains           map[string]chain  // map chain id to chain
-	chainByComponent map[string]string // map component id to chain id
+type (
+	// TODO: consider renaming or using values directly
+	Bus struct {
+		signal.SampleRate
+		Channels int
+	}
+	// PumpMaker creates new pump structure for provided buffer size.
+	// It pre-allocates all necessary buffers and structures.
+	PumpMaker func(int) (Pump, Bus, error)
+	// Pump is a source of samples. Pump method accepts a new buffer and
+	// fills it with signal data. If no data is available, io.EOF should
+	// be returned.
+	Pump struct {
+		mutability.Mutability
+		Pump func(out signal.Floating) (int, error)
+		Flush
+	}
+
+	// ProcessorMaker creates new pump structure for provided buffer size.
+	// It pre-allocates all necessary buffers and structures.
+	ProcessorMaker func(int, Bus) (Processor, Bus, error)
+	// Processor defines interface for pipe processors. It receives two
+	// buffers for input and output signal data. Number of channels cannot
+	// be changed.
+	Processor struct {
+		mutability.Mutability
+		Process func(in, out signal.Floating) error
+		Flush
+	}
+
+	// SinkMaker creates new pump structure for provided buffer size.
+	// It pre-allocates all necessary buffers and structures.
+	SinkMaker func(int, Bus) (Sink, error)
+	// Sink is an interface for final stage in audio pipeline.
+	// This components must not change buffer content. Line can have
+	// multiple sinks and this will cause race condition.
+	Sink struct {
+		mutability.Mutability
+		Sink func(in signal.Floating) error
+		Flush
+	}
+
+	// Flush provides a hook to flush all buffers for the component.
+	Flush func(context.Context) error
+)
+
+type (
+	// Route defines sequence of components closures.
+	// It has a single pump, zero or many processors, executed
+	// sequentially and one or many sinks executed in parallel.
+	Route struct {
+		Pump       PumpMaker
+		Processors []ProcessorMaker
+		Sink       SinkMaker
+	}
+
+	// Line is a sequence of DSP components.
+	Line struct {
+		numChannels int
+		mutators    chan mutability.Mutations
+		pump        runner.Pump
+		processors  []runner.Processor
+		sink        runner.Sink
+	}
+
+	// Pipe listeners the execution of multiple chained lines. Lines might be chained
+	// through components, mixer for example.  If lines are not chained, they must be
+	// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
+	Pipe struct {
+		mutability mutability.Mutability
+		ctx        context.Context
+		cancelFn   context.CancelFunc
+		merger     *merger
+		lines      []Line
+		listeners  map[mutability.Mutability]chan mutability.Mutations
+		mutations  map[chan mutability.Mutations]mutability.Mutations
+		push       chan []mutability.Mutation
+		errors     chan error
+	}
+)
+
+// Line line components. All closures are executed and wrapped into runners.
+func (l Route) Line(bufferSize int) (Line, error) {
+	pump, input, err := l.Pump.runner(bufferSize)
+	if err != nil {
+		return Line{}, fmt.Errorf("error routing %w", err)
+	}
+
+	var (
+		processors []runner.Processor
+		processor  runner.Processor
+	)
+	for _, fn := range l.Processors {
+		processor, input, err = fn.runner(bufferSize, input)
+		if err != nil {
+			return Line{}, fmt.Errorf("error routing %w", err)
+		}
+		processors = append(processors, processor)
+	}
+
+	sink, err := l.Sink.runner(bufferSize, input)
+	if err != nil {
+		return Line{}, fmt.Errorf("error routing sink: %w", err)
+	}
+
+	return Line{
+		mutators:   make(chan mutability.Mutations, 1),
+		pump:       pump,
+		processors: processors,
+		sink:       sink,
+	}, nil
 }
 
-// chain is a runtime chain of the pipeline.
-type chain struct {
-	uid         string
-	sampleRate  signal.SampleRate
-	numChannels int
-	pump        runner.Pump
-	processors  []runner.Processor
-	sinks       []runner.Sink
-	components  map[interface{}]string
-	take        chan runner.Message // emission of messages
-	params      state.Params
+func (l Line) listeners(listeners map[mutability.Mutability]chan mutability.Mutations) {
+	listeners[l.pump.Mutability] = l.mutators
+	for i := range l.processors {
+		listeners[l.processors[i].Mutability] = l.mutators
+	}
+	listeners[l.sink.Mutability] = l.mutators
+}
+
+func (fn PumpMaker) runner(bufferSize int) (runner.Pump, Bus, error) {
+	pump, bus, err := fn(bufferSize)
+	if err != nil {
+		return runner.Pump{}, Bus{}, fmt.Errorf("pump: %w", err)
+	}
+	return runner.Pump{
+		Mutability: pump.Mutability,
+		Output: pool.Get(signal.Allocator{
+			Channels: bus.Channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		}),
+		Fn:    pump.Pump,
+		Flush: runner.Flush(pump.Flush),
+		Meter: metric.Meter(pump, bus.SampleRate),
+	}, bus, nil
+}
+
+func (fn ProcessorMaker) runner(bufferSize int, input Bus) (runner.Processor, Bus, error) {
+	processor, output, err := fn(bufferSize, input)
+	if err != nil {
+		return runner.Processor{}, Bus{}, fmt.Errorf("processor: %w", err)
+	}
+	return runner.Processor{
+		Mutability: processor.Mutability,
+		Input: pool.Get(signal.Allocator{
+			Channels: input.Channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		}),
+		Output: pool.Get(signal.Allocator{
+			Channels: output.Channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		}),
+		Fn:    processor.Process,
+		Flush: runner.Flush(processor.Flush),
+		Meter: metric.Meter(processor, output.SampleRate),
+	}, output, nil
+}
+
+func (fn SinkMaker) runner(bufferSize int, input Bus) (runner.Sink, error) {
+	sink, err := fn(bufferSize, input)
+	if err != nil {
+		return runner.Sink{}, fmt.Errorf("sink: %w", err)
+	}
+	return runner.Sink{
+		Mutability: sink.Mutability,
+		Input: pool.Get(signal.Allocator{
+			Channels: input.Channels,
+			Length:   bufferSize,
+			Capacity: bufferSize,
+		}),
+		Fn:    sink.Sink,
+		Flush: runner.Flush(sink.Flush),
+		Meter: metric.Meter(sink, input.SampleRate),
+	}, nil
 }
 
 // New creates a new pipeline.
 // Returned pipeline is in Ready state.
-func New(ls ...*Line) (*Pipe, error) {
-	lines := make(map[*Line]string)
-	chains := make(map[string]chain)
-	chainByComponent := make(map[string]string)
-	for _, p := range ls {
-		// bind all lines
-		c, err := bindLine(p)
-		if err != nil {
-			return nil, fmt.Errorf("error binding line: %w", err)
-		}
-		// map pipe to chain id
-		lines[p] = c.uid
-		// map chains
-		chains[c.uid] = c
-		for _, componentID := range c.components {
-			chainByComponent[componentID] = c.uid
-		}
+func New(ctx context.Context, options ...Option) Pipe {
+	ctx, cancelFn := context.WithCancel(ctx)
+	p := Pipe{
+		mutability: mutability.Mutable(),
+		merger: &merger{
+			errors: make(chan error, 1),
+		},
+		ctx:       ctx,
+		cancelFn:  cancelFn,
+		listeners: make(map[mutability.Mutability]chan mutability.Mutations),
+		mutations: make(map[chan mutability.Mutations]mutability.Mutations),
+		lines:     make([]Line, 0),
+		push:      make(chan []mutability.Mutation, 1),
+		errors:    make(chan error, 1),
 	}
-
-	p := &Pipe{
-		lines:            lines,
-		chains:           chains,
-		chainByComponent: chainByComponent,
+	for _, option := range options {
+		option(&p)
 	}
-	p.h = state.NewHandle(start(p), newMessage(p), pushParams(p))
-	go state.Loop(p.h)
-	return p, nil
+	if len(p.lines) == 0 {
+		panic("pipe without lines")
+	}
+	// push cached mutators at the start
+	push(p.mutations)
+	p.merger.merge(start(p.ctx, p.lines)...)
+	go p.merger.wait()
+	go func() {
+		defer close(p.errors)
+		for {
+			select {
+			case mutations := <-p.push:
+				for _, m := range mutations {
+					// mutate pipe itself
+					if m.Mutability == p.mutability {
+						if err := m.Apply(); err != nil {
+							p.interrupt(err)
+						}
+					} else {
+						for _, m := range mutations {
+							if c := p.listeners[m.Mutability]; c != nil {
+								p.mutations[c] = p.mutations[c].Put(m)
+							}
+						}
+						push(p.mutations)
+					}
+				}
+			case err, ok := <-p.merger.errors:
+				// merger has buffer of one error,
+				// if more errors happen, they will be ignored.
+				if ok {
+					p.interrupt(err)
+				}
+				return
+			}
+		}
+	}()
+	return p
 }
 
-func bindLine(p *Line) (chain, error) {
-	components := make(map[interface{}]string)
-	pipeID := newUID()
-	// bind pump
-	pumpFn, sampleRate, numChannels, err := p.Pump.Pump(pipeID)
-	if err != nil {
-		return chain{}, fmt.Errorf("pump: %w", err)
+func push(mutators map[chan mutability.Mutations]mutability.Mutations) {
+	for c, m := range mutators {
+		c <- m
 	}
-	pumpRunner := runner.Pump{
-		ID:    newUID(),
-		Fn:    runner.PumpFunc(pumpFn),
-		Meter: metric.Meter(p.Pump, signal.SampleRate(sampleRate)),
-		Hooks: BindHooks(p.Pump),
-	}
-	components[p.Pump] = pumpRunner.ID
-
-	// bind processors
-	processorRunners := make([]runner.Processor, 0, len(p.Processors))
-	for _, proc := range p.Processors {
-		processFn, err := proc.Process(pipeID, sampleRate, numChannels)
-		if err != nil {
-			return chain{}, fmt.Errorf("processor: %w", err)
-		}
-		processorRunner := runner.Processor{
-			ID:    newUID(),
-			Fn:    runner.ProcessFunc(processFn),
-			Meter: metric.Meter(proc, signal.SampleRate(sampleRate)),
-			Hooks: BindHooks(proc),
-		}
-		processorRunners = append(processorRunners, processorRunner)
-		components[proc] = processorRunner.ID
-	}
-
-	// bind sinks
-	sinkRunners := make([]runner.Sink, 0, len(p.Sinks))
-	for _, sink := range p.Sinks {
-		sinkFn, err := sink.Sink(pipeID, sampleRate, numChannels)
-		if err != nil {
-			return chain{}, fmt.Errorf("sink: %w", err)
-		}
-		sinkRunner := runner.Sink{
-			ID:    newUID(),
-			Fn:    runner.SinkFunc(sinkFn),
-			Meter: metric.Meter(sink, signal.SampleRate(sampleRate)),
-			Hooks: BindHooks(sink),
-		}
-		sinkRunners = append(sinkRunners, sinkRunner)
-		components[sink] = sinkRunner.ID
-	}
-	return chain{
-		uid:         pipeID,
-		sampleRate:  sampleRate,
-		numChannels: numChannels,
-		pump:        pumpRunner,
-		processors:  processorRunners,
-		sinks:       sinkRunners,
-		take:        make(chan runner.Message),
-		components:  components,
-		params:      make(map[string][]func()),
-	}, nil
 }
 
-// ComponentID finds id of the component within network.
-func (p *Pipe) ComponentID(component interface{}) (id string, ok bool) {
-	for _, c := range p.chains {
-		if id, ok = c.components[component]; ok {
+func (p Pipe) interrupt(err error) {
+	p.cancelFn()
+	// wait until all groutines stop.
+	for {
+		// only the first error is propagated.
+		if _, ok := <-p.merger.errors; !ok {
 			break
 		}
 	}
-	return id, ok
+	p.errors <- fmt.Errorf("pipe error: %w", err)
 }
 
 // start starts the execution of pipe.
-func start(p *Pipe) state.StartFunc {
-	return func(bufferSize int, cancel <-chan struct{}, give chan<- string) []<-chan error {
-		// error channel for each component
-		errcList := make([]<-chan error, 0)
-		for _, c := range p.chains {
-			p := pool.New(c.numChannels, bufferSize)
-			// start pump
-			out, errs := c.pump.Run(p, c.uid, c.pump.ID, cancel, give, c.take)
-			errcList = append(errcList, errs)
-
-			// start chained processesing
-			for _, proc := range c.processors {
-				out, errs = proc.Run(c.uid, proc.ID, cancel, out)
-				errcList = append(errcList, errs)
-			}
-
-			sinkErrcList := runner.Broadcast(p, c.uid, c.sinks, cancel, out)
-			errcList = append(errcList, sinkErrcList...)
-		}
-		return errcList
+func start(ctx context.Context, lines []Line) []<-chan error {
+	// start all runners
+	// error channel for each component
+	errChans := make([]<-chan error, 0, 2*len(lines))
+	for _, l := range lines {
+		errChans = append(errChans, l.start(ctx)...)
 	}
+	return errChans
 }
 
-// newMessage creates a new message with cached Params.
-// if new Params are pushed into pipe - next message will contain them.
-func newMessage(p *Pipe) state.NewMessageFunc {
-	return func(pipeID string) {
-		c := p.chains[pipeID]
-		m := runner.Message{PipeID: c.uid}
-		if len(c.params) > 0 {
-			m.Params = c.params
-			c.params = make(map[string][]func())
-		}
-		c.take <- m
+func (l Line) start(ctx context.Context) []<-chan error {
+	errChans := make([]<-chan error, 0, 2+len(l.processors))
+	// start pump
+	out, errs := l.pump.Run(ctx, l.mutators)
+	errChans = append(errChans, errs)
+
+	// start chained processesing
+	for _, proc := range l.processors {
+		out, errs = proc.Run(ctx, out)
+		errChans = append(errChans, errs)
 	}
+
+	errs = l.sink.Run(ctx, out)
+	errChans = append(errChans, errs)
+	return errChans
 }
 
-func pushParams(p *Pipe) state.PushParamsFunc {
-	return func(params state.Params) {
-		for id, param := range params {
-			chainID := p.chainByComponent[id]
-			chain := p.chains[chainID]
-			chain.params = chain.params.Append(map[string][]func(){id: param})
+// Push new mutators into pipe.
+// Calling this method after pipe is done will cause a panic.
+func (p Pipe) Push(mutations ...mutability.Mutation) {
+	p.push <- mutations
+}
+
+// AddLine adds the line to the pipe.
+func (p Pipe) AddLine(l Line) mutability.Mutation {
+	return p.mutability.Mutate(func() error {
+		addLine(&p, l)
+		p.merger.merge(l.start(p.ctx)...)
+		return nil
+	})
+}
+
+func addLine(p *Pipe, l Line) {
+	p.lines = append(p.lines, l)
+	l.listeners(p.listeners)
+}
+
+// Processors is a helper function to use in line constructors.
+func Processors(processors ...ProcessorMaker) []ProcessorMaker {
+	return processors
+}
+
+// Wait for state transition or first error to occur.
+func (p Pipe) Wait() error {
+	for err := range p.errors {
+		if err != nil {
+			return err
 		}
 	}
-}
-
-// Run sends a run event into handle.
-// Calling this method after handle is closed causes a panic.
-// Feedback channel is closed when Ready state is reached or context is cancelled.
-func (p *Pipe) Run(ctx context.Context, bufferSize int) chan error {
-	return p.h.Run(ctx, bufferSize)
-}
-
-// Pause sends a pause event into handle.
-// Calling this method after handle is closed causes a panic.
-// Feedback is closed when Paused state is reached.
-func (p *Pipe) Pause() chan error {
-	return p.h.Pause()
-}
-
-// Resume sends a resume event into handle.
-// Calling this method after handle is closed causes a panic.
-// Feedback is closed when Ready state is reached.
-func (p *Pipe) Resume() chan error {
-	return p.h.Resume()
-}
-
-// Close must be called to clean up handle's resources.
-// Feedback is closed when line is done.
-func (p *Pipe) Close() chan error {
-	return p.h.Interrupt()
-}
-
-// Push new params into pipe.
-// Calling this method after pipe is closed causes a panic.
-func (p *Pipe) Push(id string, paramFuncs ...func()) {
-	p.h.Push(state.Params{id: paramFuncs})
+	return nil
 }

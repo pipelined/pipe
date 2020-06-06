@@ -1,10 +1,9 @@
 package metric_test
 
 import (
+	"reflect"
 	"sync"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 
 	"pipelined.dev/pipe/metric"
 	"pipelined.dev/signal"
@@ -65,10 +64,17 @@ func TestMeter(t *testing.T) {
 		// check if no data race.
 		wg.Wait()
 		values := metric.Get(c.component)
-		assert.Equal(t, c.expectedSamples, values[metric.SampleCounter])
-		assert.Equal(t, c.expectedComponents, values[metric.ComponentCounter])
+		assertEqual(t, "samples", values[metric.SampleCounter], c.expectedSamples)
+		assertEqual(t, "components", values[metric.ComponentCounter], c.expectedComponents)
 	}
 
 	total := metric.GetAll()
-	assert.Equal(t, 2, len(total))
+	assertEqual(t, "total", len(total), 2)
+}
+
+func assertEqual(t *testing.T, name string, result, expected interface{}) {
+	t.Helper()
+	if !reflect.DeepEqual(expected, result) {
+		t.Fatalf("%v\nresult: \t%T\t%+v \nexpected: \t%T\t%+v", name, result, result, expected, expected)
+	}
 }

@@ -2,6 +2,8 @@ package pipe_test
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +11,8 @@ import (
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
+	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/repeat"
 )
 
 const (
@@ -20,77 +24,218 @@ func TestMain(m *testing.M) {
 }
 
 func TestPipe(t *testing.T) {
+	t.Skip()
 	pump := &mock.Pump{
-		Limit:       100 * bufferSize,
-		NumChannels: 1,
+		Limit:    862 * bufferSize,
+		Channels: 2,
 	}
 	proc1 := &mock.Processor{}
 	proc2 := &mock.Processor{}
-	sink1 := &mock.Sink{}
-	sink2 := &mock.Sink{}
+	repeater := &repeat.Repeater{}
+	sink1 := &mock.Sink{Discard: true}
+	sink2 := &mock.Sink{Discard: true}
 
-	l, err := pipe.New(
-		&pipe.Line{
-			Pump:       pump,
-			Processors: pipe.Processors(proc1, proc2),
-			Sinks:      pipe.Sinks(sink1, sink2),
-		},
-	)
+	in, err := pipe.Route{
+		Pump:       pump.Pump(),
+		Processors: pipe.Processors(proc1.Processor(), proc2.Processor()),
+		Sink:       repeater.Sink(),
+	}.Line(bufferSize)
 	assert.Nil(t, err)
+	out1, err := pipe.Route{
+		Pump: repeater.Pump(),
+		Sink: sink1.Sink(),
+	}.Line(bufferSize)
+	assert.Nil(t, err)
+	out2, err := pipe.Route{
+		Pump: repeater.Pump(),
+		Sink: sink2.Sink(),
+	}.Line(bufferSize)
+	assert.Nil(t, err)
+
+	p := pipe.New(context.Background(), pipe.WithLines(in, out1, out2))
+	// start
+	err = p.Wait()
+	assert.Nil(t, err)
+
+	assert.Equal(t, 862, pump.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
+}
+
+func TestSimplePipe(t *testing.T) {
+	pump := &mock.Pump{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+
+	proc1 := &mock.Processor{}
+	sink1 := &mock.Sink{Discard: true}
+
+	in, err := pipe.Route{
+		Pump:       pump.Pump(),
+		Processors: pipe.Processors(proc1.Processor()),
+		Sink:       sink1.Sink(),
+	}.Line(bufferSize)
+	assert.Nil(t, err)
+
+	p := pipe.New(context.Background(), pipe.WithLines(in))
+	// start
+	err = p.Wait()
+	assert.Nil(t, err)
+
+	assert.Equal(t, 862, pump.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
+}
+
+func TestReset(t *testing.T) {
+	pump := &mock.Pump{
+		Mutator: mock.Mutator{
+			Mutability: mutability.Mutable(),
+		},
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink := &mock.Sink{Discard: true}
+
+	route, err := pipe.Route{
+		Pump: pump.Pump(),
+		Sink: sink.Sink(),
+	}.Line(bufferSize)
+	assert.Nil(t, err)
+	p := pipe.New(
+		context.Background(),
+		pipe.WithLines(route),
+	)
+	// start
+	err = p.Wait()
+	assert.Nil(t, err)
+	assert.Equal(t, 862, pump.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
+
+	p = pipe.New(
+		context.Background(),
+		pipe.WithLines(route),
+		pipe.WithMutations(pump.Reset()),
+	)
+	_ = p.Wait()
+	assert.Nil(t, err)
+	assert.Equal(t, 2*862, sink.Counter.Messages)
+	assert.Equal(t, 2*862*bufferSize, sink.Counter.Samples)
+}
+
+func TestAddLine(t *testing.T) {
+	sink1 := &mock.Sink{Discard: true}
+	route1, err := pipe.Route{
+		Pump: (&mock.Pump{
+			Limit:    862 * bufferSize,
+			Channels: 2,
+		}).Pump(),
+		Sink: sink1.Sink(),
+	}.Line(bufferSize)
+	assert.Nil(t, err)
+
+	sink2 := &mock.Sink{Discard: true}
+	route2, err := pipe.Route{
+		Pump: (&mock.Pump{
+			Limit:    862 * bufferSize,
+			Channels: 2,
+		}).Pump(),
+		Sink: sink2.Sink(),
+	}.Line(bufferSize)
+	assert.Nil(t, err)
+
+	p := pipe.New(
+		context.Background(),
+		pipe.WithLines(route1),
+	)
+	p.Push(p.AddLine(route2))
 
 	// start
-	runc := l.Run(context.Background(), bufferSize)
-	assert.NotNil(t, runc)
-	assert.Nil(t, err)
-
-	// test params push
-	pumpID, ok := l.ComponentID(pump)
-	assert.True(t, ok)
-	assert.NotEmpty(t, pumpID)
-	// push new limit for pump
-	newLimit := 200
-	paramFn := pump.LimitParam(newLimit)
-	l.Push(pumpID, paramFn)
-
-	// pause
-	err = pipe.Wait(l.Pause())
-	assert.Nil(t, err)
-	// runc must be cancelled by now
-	err = pipe.Wait(runc)
-	assert.Nil(t, err)
-
-	// resume
-	err = pipe.Wait(l.Resume())
-	assert.Nil(t, err)
-
-	pipe.Wait(l.Close())
+	err = p.Wait()
+	assert.Equal(t, 862, sink1.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, sink1.Counter.Samples)
+	assert.Equal(t, 862, sink2.Counter.Messages)
+	assert.Equal(t, 862*bufferSize, sink2.Counter.Samples)
 }
 
 // This benchmark runs next line:
-// 1 Pump, 2 Processors, 2 Sinks, 1000 buffers of 512 samples with 2 channels.
+// 1 Pump, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
+	pump := &mock.Pump{
+		Mutator: mock.Mutator{
+			Mutability: mutability.Mutable(),
+		},
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink := &mock.Sink{Discard: true}
+	line, _ := pipe.Route{
+		Pump: pump.Pump(),
+		Processors: pipe.Processors(
+			(&mock.Processor{}).Processor(),
+			(&mock.Processor{}).Processor(),
+		),
+		Sink: sink.Sink(),
+	}.Line(bufferSize)
 	for i := 0; i < b.N; i++ {
-		pump := &mock.Pump{
-			Limit:       862 * bufferSize,
-			NumChannels: 2,
-		}
-		proc1 := &mock.Processor{}
-		proc2 := &mock.Processor{}
-		sink1 := &mock.Sink{
-			Discard: true,
-		}
-		sink2 := &mock.Sink{
-			Discard: true,
-		}
-
-		l, _ := pipe.New(
-			&pipe.Line{
-				Pump:       pump,
-				Processors: pipe.Processors(proc1, proc2),
-				Sinks:      pipe.Sinks(sink1, sink2),
-			},
+		p := pipe.New(
+			context.Background(),
+			pipe.WithLines(line),
+			pipe.WithMutations(pump.Reset()),
 		)
-		pipe.Wait(l.Run(context.Background(), bufferSize))
-		pipe.Wait(l.Close())
+		_ = p.Wait()
+	}
+	b.Logf("recieved messages: %d samples: %d", sink.Messages, sink.Samples)
+}
+
+func TestLineBindingFail(t *testing.T) {
+	var (
+		errorBinding = errors.New("binding error")
+		bufferSize   = 512
+	)
+	testBinding := func(r pipe.Route) func(*testing.T) {
+		return func(t *testing.T) {
+			_, err := r.Line(bufferSize)
+			assertEqual(t, "error", errors.Is(err, errorBinding), true)
+		}
+	}
+	t.Run("pump", testBinding(
+		pipe.Route{
+			Pump: (&mock.Pump{
+				ErrorOnMake: errorBinding,
+			}).Pump(),
+			Processors: pipe.Processors(
+				(&mock.Processor{}).Processor(),
+			),
+			Sink: (&mock.Sink{}).Sink(),
+		},
+	))
+	t.Run("processor", testBinding(
+		pipe.Route{
+			Pump: (&mock.Pump{}).Pump(),
+			Processors: pipe.Processors(
+				(&mock.Processor{
+					ErrorOnMake: errorBinding,
+				}).Processor(),
+			),
+			Sink: (&mock.Sink{}).Sink(),
+		},
+	))
+	t.Run("sink", testBinding(
+		pipe.Route{
+			Pump: (&mock.Pump{}).Pump(),
+			Processors: pipe.Processors(
+				(&mock.Processor{}).Processor(),
+			),
+			Sink: (&mock.Sink{
+				ErrorOnMake: errorBinding,
+			}).Sink(),
+		},
+	))
+}
+
+func assertEqual(t *testing.T, name string, result, expected interface{}) {
+	t.Helper()
+	if !reflect.DeepEqual(expected, result) {
+		t.Fatalf("%v\nresult: \t%T\t%+v \nexpected: \t%T\t%+v", name, result, result, expected, expected)
 	}
 }
