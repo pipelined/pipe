@@ -15,7 +15,7 @@ const bufferSize = 512
 
 func TestAddRoute(t *testing.T) {
 	repeater := &repeat.Repeater{
-		Mutability: mutability.New(),
+		Mutability: mutability.Mutable(),
 	}
 	source, _ := pipe.Route{
 		Pump: (&mock.Pump{
