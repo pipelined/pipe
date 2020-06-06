@@ -189,6 +189,14 @@ func TestMutability(t *testing.T) {
 	assertEqual(t, "immutable", mut.Immutable(), true)
 	mut = mutability.Mutable()
 	assertEqual(t, "mutable", mut.Immutable(), false)
+	assertPanic(t, func() {
+		mutability.Immutable().Mutate(func() error { return nil })
+	})
+	mock := &paramMock{
+		Mutability: mutability.Mutable(),
+	}
+	mock.param().Apply()
+	assertEqual(t, "apply", mock.value, 10)
 }
 
 func assertEqual(t *testing.T, name string, result, expected interface{}) {
@@ -196,4 +204,14 @@ func assertEqual(t *testing.T, name string, result, expected interface{}) {
 	if !reflect.DeepEqual(expected, result) {
 		t.Fatalf("%v\nresult: \t%T\t%+v \nexpected: \t%T\t%+v", name, result, result, expected, expected)
 	}
+}
+
+func assertPanic(t *testing.T, fn func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic")
+		}
+	}()
+	fn()
 }
