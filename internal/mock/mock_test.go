@@ -46,7 +46,9 @@ func TestPump(t *testing.T) {
 
 	testMutations := func(test params) func(*testing.T) {
 		mockPump := &mock.Pump{
-			Mutability:  mutability.New(),
+			Mutator: mock.Mutator{
+				Mutability: mutability.Mutable(),
+			},
 			Limit:    test.bufferSize,
 			Channels: 1,
 		}
