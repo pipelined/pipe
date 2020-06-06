@@ -13,7 +13,7 @@ import (
 
 // Message is a main structure for pipe transport
 type Message struct {
-	Signal   signal.Floating   // Buffer of message.
+	Signal   signal.Floating      // Buffer of message.
 	Mutators mutability.Mutations // Mutators for pipe.
 }
 
@@ -65,7 +65,7 @@ func (r Pump) Run(ctx context.Context, mutationsChan chan mutability.Mutations) 
 	go func() {
 		defer close(out)
 		defer close(errs)
-		// Flush hook on return
+		// flush on return
 		defer func() {
 			if err := r.Flush.call(ctx); err != nil {
 				errs <- fmt.Errorf("error flushing pump: %w", err)
@@ -73,41 +73,39 @@ func (r Pump) Run(ctx context.Context, mutationsChan chan mutability.Mutations) 
 		}()
 		var (
 			read      int
-			err       error
 			mutations mutability.Mutations
-			output    signal.Floating
+			outSignal signal.Floating
+			err       error
 		)
 		for {
-			// receive new message
 			select {
 			case mutations = <-mutationsChan:
 			case <-ctx.Done():
 				return
 			default:
 			}
-			// apply Mutators
+
 			if err = mutations.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating pump: %w", err)
 				return
 			}
 
-			// allocate new buffer
-			output = r.Output.GetFloat64()
-			// pump new buffer
-			if read, err = r.Fn(output); err != nil {
+			outSignal = r.Output.GetFloat64()
+			if read, err = r.Fn(outSignal); err != nil {
 				if err != io.EOF {
 					errs <- fmt.Errorf("error running pump: %w", err)
 				}
+				// this buffer wasn't sent, free now
+				r.Output.PutFloat64(outSignal)
 				return
 			}
-			if read != output.Length() {
-				output = output.Slice(0, read)
+			if read != outSignal.Length() {
+				outSignal = outSignal.Slice(0, read)
 			}
-			meter(output.Length()) // capture metrics
+			meter(outSignal.Length())
 
-			// push message further
 			select {
-			case out <- Message{Mutators: mutations, Signal: output}:
+			case out <- Message{Mutators: mutations, Signal: outSignal}:
 				mutations = nil
 			case <-ctx.Done():
 				return
@@ -125,22 +123,21 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 	go func() {
 		defer close(out)
 		defer close(errs)
-		// Flush hook on return
+		// flush on return
 		defer func() {
 			if err := r.Flush.call(ctx); err != nil {
 				errs <- fmt.Errorf("error flushing processor: %w", err)
 			}
 		}()
 		var (
-			err    error
-			m      Message
-			ok     bool
-			output signal.Floating
+			message   Message
+			outSignal signal.Floating
+			ok        bool
+			err       error
 		)
 		for {
-			// retrieve new message
 			select {
-			case m, ok = <-in:
+			case message, ok = <-in:
 				if !ok {
 					return
 				}
@@ -148,24 +145,25 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 				return
 			}
 
-			// apply Mutators
-			if err = m.Mutators.ApplyTo(r.Mutability); err != nil {
+			if err = message.Mutators.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating processor: %w", err)
-				r.Input.PutFloat64(m.Signal) // need to free
+				r.Input.PutFloat64(message.Signal)
 				return
 			}
-			output = r.Output.GetFloat64()
-			err = r.Fn(m.Signal, output) // process new buffer
-			r.Input.PutFloat64(m.Signal) // put buffer back to the input pool
+
+			outSignal = r.Output.GetFloat64()
+			err = r.Fn(message.Signal, outSignal)
+			r.Input.PutFloat64(message.Signal)
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
+				// this buffer wasn't sent, free now
+				r.Output.PutFloat64(outSignal)
 				return
 			}
-			meter(output.Length()) // capture metrics
+			meter(outSignal.Length())
 
-			// send message further
 			select {
-			case out <- Message{Mutators: m.Mutators, Signal: output}:
+			case out <- Message{Mutators: message.Mutators, Signal: outSignal}:
 			case <-ctx.Done():
 				return
 			}
@@ -180,21 +178,21 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 	meter := r.Meter()
 	go func() {
 		defer close(errs)
-		// Flush hook on return
+		// flush on return
 		defer func() {
 			if err := r.Flush.call(ctx); err != nil {
 				errs <- fmt.Errorf("error flushing sink: %w", err)
 			}
 		}()
 		var (
-			err error
-			m   Message
-			ok  bool
+			message Message
+			ok      bool
+			err     error
 		)
 		for {
 			// receive new message
 			select {
-			case m, ok = <-in:
+			case message, ok = <-in:
 				if !ok {
 					return
 				}
@@ -203,14 +201,14 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 			}
 
 			// apply Mutators
-			if err = m.Mutators.ApplyTo(r.Mutability); err != nil {
+			if err = message.Mutators.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating sink: %w", err)
-				r.Input.PutFloat64(m.Signal) // need to free
+				r.Input.PutFloat64(message.Signal) // need to free
 				return
 			}
-			err = r.Fn(m.Signal)     // sink a buffer
-			meter(m.Signal.Length()) // capture metrics
-			r.Input.PutFloat64(m.Signal)
+			err = r.Fn(message.Signal)     // sink a buffer
+			meter(message.Signal.Length()) // capture metrics
+			r.Input.PutFloat64(message.Signal)
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)
 				return
