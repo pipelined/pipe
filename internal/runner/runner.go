@@ -13,8 +13,8 @@ import (
 
 // Message is a main structure for pipe transport
 type Message struct {
-	Signal   signal.Floating      // Buffer of message.
-	Mutators mutability.Mutations // Mutators for pipe.
+	Signal               signal.Floating // Buffer of message.
+	mutability.Mutations                 // Mutators for pipe.
 }
 
 type (
@@ -105,7 +105,7 @@ func (r Pump) Run(ctx context.Context, mutationsChan chan mutability.Mutations) 
 			meter(outSignal.Length())
 
 			select {
-			case out <- Message{Mutators: mutations, Signal: outSignal}:
+			case out <- Message{Mutations: mutations, Signal: outSignal}:
 				mutations = nil
 			case <-ctx.Done():
 				return
@@ -145,7 +145,7 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 				return
 			}
 
-			if err = message.Mutators.ApplyTo(r.Mutability); err != nil {
+			if err = message.Mutations.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating processor: %w", err)
 				r.Input.PutFloat64(message.Signal)
 				return
@@ -163,7 +163,7 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 			meter(outSignal.Length())
 
 			select {
-			case out <- Message{Mutators: message.Mutators, Signal: outSignal}:
+			case out <- Message{Mutations: message.Mutations, Signal: outSignal}:
 			case <-ctx.Done():
 				return
 			}
@@ -201,7 +201,7 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 			}
 
 			// apply Mutators
-			if err = message.Mutators.ApplyTo(r.Mutability); err != nil {
+			if err = message.Mutations.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating sink: %w", err)
 				r.Input.PutFloat64(message.Signal) // need to free
 				return
