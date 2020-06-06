@@ -87,9 +87,11 @@ func TestSimplePipe(t *testing.T) {
 
 func TestReset(t *testing.T) {
 	pump := &mock.Pump{
-		Mutability: mutability.Mutable(),
-		Limit:      862 * bufferSize,
-		Channels:   2,
+		Mutator: mock.Mutator{
+			Mutability: mutability.Mutable(),
+		},
+		Limit:    862 * bufferSize,
+		Channels: 2,
 	}
 	sink := &mock.Sink{Discard: true}
 
@@ -158,9 +160,11 @@ func TestAddLine(t *testing.T) {
 // 1 Pump, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
 	pump := &mock.Pump{
-		Mutability: mutability.Mutable(),
-		Limit:      862 * bufferSize,
-		Channels:   2,
+		Mutator: mock.Mutator{
+			Mutability: mutability.Mutable(),
+		},
+		Limit:    862 * bufferSize,
+		Channels: 2,
 	}
 	sink := &mock.Sink{Discard: true}
 	route, _ := pipe.Route{
