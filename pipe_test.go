@@ -2,6 +2,7 @@ package pipe_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -167,7 +168,7 @@ func BenchmarkSingleLine(b *testing.B) {
 		Channels: 2,
 	}
 	sink := &mock.Sink{Discard: true}
-	route, _ := pipe.Route{
+	line, _ := pipe.Route{
 		Pump: pump.Pump(),
 		Processors: pipe.Processors(
 			(&mock.Processor{}).Processor(),
@@ -178,12 +179,58 @@ func BenchmarkSingleLine(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		p := pipe.New(
 			context.Background(),
-			pipe.WithLines(route),
+			pipe.WithLines(line),
 			pipe.WithMutations(pump.Reset()),
 		)
 		_ = p.Wait()
 	}
 	b.Logf("recieved messages: %d samples: %d", sink.Messages, sink.Samples)
+}
+
+func TestLineBindingFail(t *testing.T) {
+	var (
+		errorBinding = errors.New("binding error")
+		bufferSize   = 512
+	)
+	testBinding := func(r pipe.Route) func(*testing.T) {
+		return func(t *testing.T) {
+			_, err := r.Line(bufferSize)
+			assertEqual(t, "error", errors.Is(err, errorBinding), true)
+		}
+	}
+	t.Run("pump", testBinding(
+		pipe.Route{
+			Pump: (&mock.Pump{
+				ErrorOnMake: errorBinding,
+			}).Pump(),
+			Processors: pipe.Processors(
+				(&mock.Processor{}).Processor(),
+			),
+			Sink: (&mock.Sink{}).Sink(),
+		},
+	))
+	t.Run("processor", testBinding(
+		pipe.Route{
+			Pump: (&mock.Pump{}).Pump(),
+			Processors: pipe.Processors(
+				(&mock.Processor{
+					ErrorOnMake: errorBinding,
+				}).Processor(),
+			),
+			Sink: (&mock.Sink{}).Sink(),
+		},
+	))
+	t.Run("sink", testBinding(
+		pipe.Route{
+			Pump: (&mock.Pump{}).Pump(),
+			Processors: pipe.Processors(
+				(&mock.Processor{}).Processor(),
+			),
+			Sink: (&mock.Sink{
+				ErrorOnMake: errorBinding,
+			}).Sink(),
+		},
+	))
 }
 
 func assertEqual(t *testing.T, name string, result, expected interface{}) {
