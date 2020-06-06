@@ -12,23 +12,32 @@ import (
 	"pipelined.dev/pipe/mutability"
 )
 
-// Counter counts messages, samples and can capture sinked values.
-type Counter struct {
-	Messages int
-	Samples  int
-	Values   signal.Floating
-}
+type (
+	// Counter counts messages, samples and can capture sinked values.
+	Counter struct {
+		Messages int
+		Samples  int
+		Values   signal.Floating
+	}
+
+	// Flusher allows to mock components hooks.
+	Flusher struct {
+		Flushed      bool
+		ErrorOnFlush error
+	}
+
+	// Mutator allows to mock mutations.
+	Mutator struct {
+		mutability.Mutability
+		Mutated         bool
+		ErrorOnMutation error
+	}
+)
 
 // advance counter's metrics.
 func (c *Counter) advance(size int) {
 	c.Messages++
 	c.Samples = c.Samples + size
-}
-
-// Flusher allows to mock components hooks.
-type Flusher struct {
-	Flushed      bool
-	ErrorOnFlush error
 }
 
 // Flush implements pipe.Flusher.
@@ -39,16 +48,15 @@ func (f *Flusher) Flush(ctx context.Context) error {
 
 // Pump are settings for pipe.Pump mock.
 type Pump struct {
-	mutability.Mutability
+	Mutator
 	Counter
 	Flusher
-	Interval        time.Duration
-	Limit           int
-	Value           float64
-	Channels        int
-	SampleRate      signal.SampleRate
-	ErrorOnCall     error
-	ErrorOnMutation error
+	Interval    time.Duration
+	Limit       int
+	Value       float64
+	Channels    int
+	SampleRate  signal.SampleRate
+	ErrorOnCall error
 }
 
 // Pump returns closure that creates new pumps.
@@ -94,30 +102,33 @@ func (p *Pump) Reset() mutability.Mutation {
 }
 
 // MockMutation mocks mutation, so errors can be simulated.
-func (p *Pump) MockMutation() mutability.Mutation {
+func (p *Mutator) MockMutation() mutability.Mutation {
 	return p.Mutability.Mutate(
 		func() error {
+			p.Mutated = true
 			return p.ErrorOnMutation
 		})
 }
 
 // Processor are settings for pipe.Processor mock.
 type Processor struct {
+	Mutator
 	Counter
 	Flusher
 	ErrorOnCall error
 }
 
 // Processor returns closure that creates new processors.
-func (processor *Processor) Processor() pipe.ProcessorMaker {
+func (p *Processor) Processor() pipe.ProcessorMaker {
 	return func(bufferSize int, bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
 		return pipe.Processor{
-			Flush: processor.Flusher.Flush,
+			Mutability: p.Mutator.Mutability,
+			Flush:      p.Flusher.Flush,
 			Process: func(in, out signal.Floating) error {
-				if processor.ErrorOnCall != nil {
-					return processor.ErrorOnCall
+				if p.ErrorOnCall != nil {
+					return p.ErrorOnCall
 				}
-				processor.Counter.advance(signal.FloatingAsFloating(in, out))
+				p.Counter.advance(signal.FloatingAsFloating(in, out))
 				return nil
 			},
 		}, bus, nil
@@ -126,6 +137,7 @@ func (processor *Processor) Processor() pipe.ProcessorMaker {
 
 // Sink are settings for pipe.Sink mock.
 type Sink struct {
+	Mutator
 	Counter
 	Flusher
 	Discard     bool
@@ -137,7 +149,8 @@ func (sink *Sink) Sink() pipe.SinkMaker {
 	return func(bufferSize int, b pipe.Bus) (pipe.Sink, error) {
 		sink.Counter.Values = signal.Allocator{Channels: b.Channels, Capacity: bufferSize}.Float64()
 		return pipe.Sink{
-			Flush: sink.Flusher.Flush,
+			Mutability: sink.Mutator.Mutability,
+			Flush:      sink.Flusher.Flush,
 			Sink: func(in signal.Floating) error {
 				if sink.ErrorOnCall != nil {
 					return sink.ErrorOnCall
