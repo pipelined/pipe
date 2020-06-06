@@ -19,8 +19,12 @@ import (
 
 var testError = errors.New("test runner error")
 
+const (
+	bufferSize = 1024
+	channels   = 1
+)
+
 func TestPump(t *testing.T) {
-	bufferSize := 1024
 	setupPump := func(pumpMaker pipe.PumpMaker) runner.Pump {
 		pump, bus, _ := pumpMaker(bufferSize)
 		return runner.Pump{
@@ -115,6 +119,79 @@ func TestPump(t *testing.T) {
 			Channels:        1,
 			Limit:           0,
 		},
+	))
+}
+
+func TestProcessor(t *testing.T) {
+	setupRunner := func(processorMaker pipe.ProcessorMaker, alloc signal.Allocator) runner.Processor {
+		processor, bus, _ := processorMaker(bufferSize, pipe.Bus{Channels: channels})
+		return runner.Processor{
+			Mutability: processor.Mutability,
+			Output: pool.Get(signal.Allocator{
+				Channels: bus.Channels,
+				Length:   bufferSize,
+				Capacity: bufferSize,
+			}),
+			Fn:    processor.Process,
+			Flush: runner.Flush(processor.Flush),
+			Meter: metric.Meter(processor, bus.SampleRate),
+		}
+	}
+	testProcessor := func(ctx context.Context, mockProcessor mock.Processor) func(*testing.T) {
+		return func(t *testing.T) {
+			alloc := signal.Allocator{
+				Channels: channels,
+				Length:   bufferSize,
+				Capacity: bufferSize,
+			}
+			in := make(chan runner.Message)
+
+			r := setupRunner(mockProcessor.Processor(), alloc)
+			out, errc := r.Run(ctx, in)
+
+			select {
+			case <-ctx.Done():
+			default:
+				in <- runner.Message{Signal: alloc.Float64()}
+				close(in)
+			}
+			for msg := range out {
+				assertEqual(t, "processed samples", msg.Signal.Length(), alloc.Length)
+			}
+			for err := range errc {
+				assertEqual(t, "error", errors.Unwrap(err), testError)
+			}
+			assertEqual(t, "pump flushed", mockProcessor.Flushed, true)
+			return
+		}
+	}
+
+	testContextDone := func(mockProcessor mock.Processor) func(*testing.T) {
+		t.Helper()
+		cancelCtx, cancelFn := context.WithCancel(context.Background())
+		cancelFn()
+		return testProcessor(cancelCtx, mockProcessor)
+	}
+	t.Run("ok", testProcessor(
+		context.Background(),
+		mock.Processor{},
+	))
+	t.Run("error", testProcessor(
+		context.Background(),
+		mock.Processor{
+			ErrorOnCall: testError,
+		},
+	))
+	t.Run("flush error", testProcessor(
+		context.Background(),
+		mock.Processor{
+			Flusher: mock.Flusher{
+				ErrorOnFlush: testError,
+			},
+		},
+	))
+	t.Run("context doe", testContextDone(
+		mock.Processor{},
 	))
 }
 
@@ -292,71 +369,6 @@ func TestPump(t *testing.T) {
 // 			assert.True(t, c.sink.Interrupted)
 // 		default:
 // 			assert.False(t, c.sink.Interrupted)
-// 		}
-// 	}
-// }
-
-// func TestBroadcast(t *testing.T) {
-// 	tests := []struct {
-// 		sinks    []pipe.Sink
-// 		messages int
-// 		nilHooks bool
-// 	}{
-// 		{
-// 			sinks: []pipe.Sink{
-// 				&mock.Sink{},
-// 				&mock.Sink{},
-// 			},
-// 			messages: 10,
-// 		},
-// 		{
-// 			sinks: []pipe.Sink{
-// 				&mock.Sink{},
-// 				&mock.Sink{},
-// 			},
-// 			messages: 10,
-// 			nilHooks: true,
-// 		},
-// 	}
-// 	sampleRate := signal.SampleRate(44100)
-// 	numChannels := 1
-// 	for _, test := range tests {
-
-// 		// create runners
-// 		runners := make([]runner.Sink, len(test.sinks))
-// 		for i, sink := range test.sinks {
-// 			fn, _ := sink.Sink(pipeID, sampleRate, numChannels)
-// 			r := runner.Sink{
-// 				Fn:    fn,
-// 				Meter: metric.Meter(sink, sampleRate),
-// 			}
-// 			if !test.nilHooks {
-// 				r.Hooks = pipe.BindHooks(sink)
-// 			}
-// 			runners[i] = r
-// 		}
-
-// 		cancel := make(chan struct{})
-// 		in := make(chan runner.Message)
-// 		errorsList := runner.Broadcast(
-// 			noOpPool{},
-// 			pipeID,
-// 			runners,
-// 			cancel,
-// 			in,
-// 		)
-// 		assert.Equal(t, len(runners), len(errorsList))
-// 		for i := 0; i < test.messages; i++ {
-// 			in <- runner.Message{
-// 				PipeID: pipeID,
-// 			}
-// 		}
-// 		close(in)
-// 		// _, ok := <-cancel
-// 		// assert.False(t, ok)
-// 		for _, errs := range errorsList {
-// 			_, ok := <-errs
-// 			assert.False(t, ok)
 // 		}
 // 	}
 // }
