@@ -13,6 +13,7 @@ import (
 )
 
 type (
+	// TODO: consider renaming or using values directly
 	Bus struct {
 		signal.SampleRate
 		Channels int
@@ -33,9 +34,8 @@ type (
 	// It pre-allocates all necessary buffers and structures.
 	ProcessorMaker func(int, Bus) (Processor, Bus, error)
 	// Processor defines interface for pipe processors. It receives two
-	// buffers for input and output signal data. Buffer size could be
-	// changed during execution, but only decrease allowed. Number of
-	// channels cannot be changed.
+	// buffers for input and output signal data. Number of channels cannot
+	// be changed.
 	Processor struct {
 		mutability.Mutability
 		Process func(in, out signal.Floating) error
@@ -81,15 +81,15 @@ type (
 	// through components, mixer for example.  If lines are not chained, they must be
 	// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
 	Pipe struct {
-		mutability          mutability.Mutability
-		ctx                 context.Context
-		cancelFn            context.CancelFunc
-		merger              *merger
-		lines               []Line
-		listeners           map[mutability.Mutability]chan mutability.Mutations
-		mutatorsByListeners map[chan mutability.Mutations]mutability.Mutations
-		push                chan []mutability.Mutation
-		errors              chan error
+		mutability mutability.Mutability
+		ctx        context.Context
+		cancelFn   context.CancelFunc
+		merger     *merger
+		lines      []Line
+		listeners  map[mutability.Mutability]chan mutability.Mutations
+		mutations  map[chan mutability.Mutations]mutability.Mutations
+		push       chan []mutability.Mutation
+		errors     chan error
 	}
 )
 
@@ -201,13 +201,13 @@ func New(ctx context.Context, options ...Option) Pipe {
 		merger: &merger{
 			errors: make(chan error, 1),
 		},
-		ctx:                 ctx,
-		cancelFn:            cancelFn,
-		listeners:           make(map[mutability.Mutability]chan mutability.Mutations),
-		mutatorsByListeners: make(map[chan mutability.Mutations]mutability.Mutations),
-		lines:               make([]Line, 0),
-		push:                make(chan []mutability.Mutation, 1),
-		errors:              make(chan error, 1),
+		ctx:       ctx,
+		cancelFn:  cancelFn,
+		listeners: make(map[mutability.Mutability]chan mutability.Mutations),
+		mutations: make(map[chan mutability.Mutations]mutability.Mutations),
+		lines:     make([]Line, 0),
+		push:      make(chan []mutability.Mutation, 1),
+		errors:    make(chan error, 1),
 	}
 	for _, option := range options {
 		option(&p)
@@ -216,7 +216,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 		panic("pipe without lines")
 	}
 	// push cached mutators at the start
-	push(p.mutatorsByListeners)
+	push(p.mutations)
 	p.merger.merge(start(p.ctx, p.lines)...)
 	go p.merger.wait()
 	go func() {
@@ -233,10 +233,10 @@ func New(ctx context.Context, options ...Option) Pipe {
 					} else {
 						for _, m := range mutations {
 							if c := p.listeners[m.Mutability]; c != nil {
-								p.mutatorsByListeners[c] = p.mutatorsByListeners[c].Put(m)
+								p.mutations[c] = p.mutations[c].Put(m)
 							}
 						}
-						push(p.mutatorsByListeners)
+						push(p.mutations)
 					}
 				}
 			case err, ok := <-p.merger.errors:
@@ -304,6 +304,7 @@ func (p Pipe) Push(mutations ...mutability.Mutation) {
 	p.push <- mutations
 }
 
+// AddLine adds the line to the pipe.
 func (p Pipe) AddLine(l Line) mutability.Mutation {
 	return p.mutability.Mutate(func() error {
 		addLine(&p, l)
