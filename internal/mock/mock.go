@@ -57,56 +57,58 @@ type Pump struct {
 	Channels    int
 	SampleRate  signal.SampleRate
 	ErrorOnCall error
+	ErrorOnMake error
 }
 
 // Pump returns closure that creates new pumps.
-func (p *Pump) Pump() pipe.PumpMaker {
+func (m *Pump) Pump() pipe.PumpMaker {
 	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
 		return pipe.Pump{
-				Mutability: p.Mutability,
-				Flush:      p.Flusher.Flush,
+				Mutability: m.Mutability,
+				Flush:      m.Flusher.Flush,
 				Pump: func(s signal.Floating) (int, error) {
-					if p.ErrorOnCall != nil {
-						return 0, p.ErrorOnCall
+					if m.ErrorOnCall != nil {
+						return 0, m.ErrorOnCall
 					}
-					if p.Counter.Samples == p.Limit {
+					if m.Counter.Samples == m.Limit {
 						return 0, io.EOF
 					}
-					time.Sleep(p.Interval)
+					time.Sleep(m.Interval)
 
 					read := s.Length()
 					// ensure that we have enough samples
-					if left := p.Limit - p.Counter.Samples; left < read {
+					if left := m.Limit - m.Counter.Samples; left < read {
 						read = left
 					}
-					for i := 0; i < read*p.Channels; i++ {
-						s.SetSample(i, p.Value)
+					for i := 0; i < read*m.Channels; i++ {
+						s.SetSample(i, m.Value)
 					}
-					p.Counter.advance(read)
+					m.Counter.advance(read)
 					return read, nil
 				},
 			}, pipe.Bus{
-				SampleRate: p.SampleRate,
-				Channels:   p.Channels,
-			}, nil
+				SampleRate: m.SampleRate,
+				Channels:   m.Channels,
+			},
+			m.ErrorOnMake
 	}
 }
 
 // Reset allows to reset pump.
-func (p *Pump) Reset() mutability.Mutation {
-	return p.Mutability.Mutate(
+func (m *Pump) Reset() mutability.Mutation {
+	return m.Mutability.Mutate(
 		func() error {
-			p.Counter = Counter{}
+			m.Counter = Counter{}
 			return nil
 		})
 }
 
 // MockMutation mocks mutation, so errors can be simulated.
-func (p *Mutator) MockMutation() mutability.Mutation {
-	return p.Mutability.Mutate(
+func (m *Mutator) MockMutation() mutability.Mutation {
+	return m.Mutability.Mutate(
 		func() error {
-			p.Mutated = true
-			return p.ErrorOnMutation
+			m.Mutated = true
+			return m.ErrorOnMutation
 		})
 }
 
@@ -116,22 +118,23 @@ type Processor struct {
 	Counter
 	Flusher
 	ErrorOnCall error
+	ErrorOnMake error
 }
 
 // Processor returns closure that creates new processors.
-func (p *Processor) Processor() pipe.ProcessorMaker {
+func (m *Processor) Processor() pipe.ProcessorMaker {
 	return func(bufferSize int, bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
 		return pipe.Processor{
-			Mutability: p.Mutator.Mutability,
-			Flush:      p.Flusher.Flush,
+			Mutability: m.Mutator.Mutability,
+			Flush:      m.Flusher.Flush,
 			Process: func(in, out signal.Floating) error {
-				if p.ErrorOnCall != nil {
-					return p.ErrorOnCall
+				if m.ErrorOnCall != nil {
+					return m.ErrorOnCall
 				}
-				p.Counter.advance(signal.FloatingAsFloating(in, out))
+				m.Counter.advance(signal.FloatingAsFloating(in, out))
 				return nil
 			},
-		}, bus, nil
+		}, bus, m.ErrorOnMake
 	}
 }
 
@@ -142,25 +145,26 @@ type Sink struct {
 	Flusher
 	Discard     bool
 	ErrorOnCall error
+	ErrorOnMake error
 }
 
 // Sink returns closure that creates new sinks.
-func (sink *Sink) Sink() pipe.SinkMaker {
+func (m *Sink) Sink() pipe.SinkMaker {
 	return func(bufferSize int, b pipe.Bus) (pipe.Sink, error) {
-		sink.Counter.Values = signal.Allocator{Channels: b.Channels, Capacity: bufferSize}.Float64()
+		m.Counter.Values = signal.Allocator{Channels: b.Channels, Capacity: bufferSize}.Float64()
 		return pipe.Sink{
-			Mutability: sink.Mutator.Mutability,
-			Flush:      sink.Flusher.Flush,
+			Mutability: m.Mutator.Mutability,
+			Flush:      m.Flusher.Flush,
 			Sink: func(in signal.Floating) error {
-				if sink.ErrorOnCall != nil {
-					return sink.ErrorOnCall
+				if m.ErrorOnCall != nil {
+					return m.ErrorOnCall
 				}
-				if !sink.Discard {
-					sink.Counter.Values = sink.Counter.Values.Append(in)
+				if !m.Discard {
+					m.Counter.Values = m.Counter.Values.Append(in)
 				}
-				sink.Counter.advance(in.Length())
+				m.Counter.advance(in.Length())
 				return nil
 			},
-		}, nil
+		}, m.ErrorOnMake
 	}
 }
