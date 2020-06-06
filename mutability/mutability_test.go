@@ -35,7 +35,7 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -44,7 +44,7 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
@@ -53,12 +53,12 @@ func TestAddParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
@@ -76,6 +76,7 @@ func TestAddParams(t *testing.T) {
 		for _, m := range c.mocks {
 			mutators.ApplyTo(m.Mutability)
 			assertEqual(t, "value", m.value, m.expected)
+			assertEqual(t, "mutability", m.Immutable(), false)
 		}
 	}
 }
@@ -87,7 +88,7 @@ func TestAppendParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -96,12 +97,12 @@ func TestAppendParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
@@ -130,7 +131,7 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -139,12 +140,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
@@ -153,12 +154,12 @@ func TestDetachParams(t *testing.T) {
 		{
 			mocks: []*paramMock{
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
 				&paramMock{
-					Mutability: mutability.New(),
+					Mutability: mutability.Mutable(),
 					operations: 0,
 					expected:   0,
 				},
@@ -181,6 +182,13 @@ func TestDetachParams(t *testing.T) {
 			assertEqual(t, "value after", m.value, m.expected)
 		}
 	}
+}
+
+func TestMutability(t *testing.T) {
+	mut := mutability.Immutable()
+	assertEqual(t, "immutable", mut.Immutable(), true)
+	mut = mutability.Mutable()
+	assertEqual(t, "mutable", mut.Immutable(), false)
 }
 
 func assertEqual(t *testing.T, name string, result, expected interface{}) {

@@ -24,11 +24,16 @@ type (
 	MutatorFunc func() error
 )
 
-// New returns new Mutability.
-func New() Mutability {
+// Mutable returns new mutable Mutability.
+func Mutable() Mutability {
 	var id [16]byte
 	rand.Read(id[:])
 	return id
+}
+
+// Immutable returns immutable Mutability.
+func Immutable() Mutability {
+	return immutable
 }
 
 // Mutate associates provided mutator with mutable and return mutation.
@@ -40,6 +45,11 @@ func (m Mutability) Mutate(mutator MutatorFunc) Mutation {
 		Mutability: m,
 		mutator:    mutator,
 	}
+}
+
+// Immutable returns true if object is immutable.
+func (m Mutability) Immutable() bool {
+	return m == immutable
 }
 
 // Apply mutator function.
