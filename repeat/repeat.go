@@ -28,12 +28,12 @@ type message struct {
 
 // Sink must be called once per broadcast.
 func (r *Repeater) Sink() pipe.SinkMaker {
-	return func(bufferSize int, bus pipe.Bus) (pipe.Sink, error) {
-		r.sampleRate = bus.SampleRate
-		r.channels = bus.Channels
+	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+		r.sampleRate = props.SampleRate
+		r.channels = props.Channels
 		r.bufferSize = bufferSize
 		p := pool.Get(signal.Allocator{
-			Channels: bus.Channels,
+			Channels: props.Channels,
 			Length:   bufferSize,
 			Capacity: bufferSize,
 		})
@@ -75,7 +75,7 @@ func (r *Repeater) AddLine(p pipe.Pipe, route pipe.Route) mutability.Mutation {
 
 // Pump must be called at least once per broadcast.
 func (r *Repeater) Pump() pipe.PumpMaker {
-	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
+	return func(bufferSize int) (pipe.Pump, pipe.SignalProperties, error) {
 		pump := make(chan message, 1)
 		r.pumps = append(r.pumps, pump)
 		var (
@@ -100,7 +100,7 @@ func (r *Repeater) Pump() pipe.PumpMaker {
 					return read, nil
 				},
 			},
-			pipe.Bus{
+			pipe.SignalProperties{
 				SampleRate: r.sampleRate,
 				Channels:   r.channels,
 			},

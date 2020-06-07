@@ -25,17 +25,17 @@ const (
 
 func TestPump(t *testing.T) {
 	setupPump := func(pumpMaker pipe.PumpMaker) runner.Pump {
-		pump, bus, _ := pumpMaker(bufferSize)
+		pump, props, _ := pumpMaker(bufferSize)
 		return runner.Pump{
 			Mutability: pump.Mutability,
 			Output: pool.Get(signal.Allocator{
-				Channels: bus.Channels,
+				Channels: props.Channels,
 				Length:   bufferSize,
 				Capacity: bufferSize,
 			}),
 			Fn:    pump.Pump,
 			Flush: runner.Flush(pump.Flush),
-			Meter: metric.Meter(pump, bus.SampleRate),
+			Meter: metric.Meter(pump, props.SampleRate),
 		}
 	}
 	assertPump := func(t *testing.T, mockPump *mock.Pump, out <-chan runner.Message, errs <-chan error) {
@@ -125,22 +125,22 @@ func TestPump(t *testing.T) {
 
 func TestProcessor(t *testing.T) {
 	setupRunner := func(processorMaker pipe.ProcessorMaker, alloc signal.Allocator) runner.Processor {
-		processor, bus, _ := processorMaker(bufferSize, pipe.Bus{Channels: channels})
+		processor, props, _ := processorMaker(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Processor{
 			Mutability: processor.Mutability,
 			Input: pool.Get(signal.Allocator{
-				Channels: bus.Channels,
+				Channels: props.Channels,
 				Length:   bufferSize,
 				Capacity: bufferSize,
 			}),
 			Output: pool.Get(signal.Allocator{
-				Channels: bus.Channels,
+				Channels: props.Channels,
 				Length:   bufferSize,
 				Capacity: bufferSize,
 			}),
 			Fn:    processor.Process,
 			Flush: runner.Flush(processor.Flush),
-			Meter: metric.Meter(processor, bus.SampleRate),
+			Meter: metric.Meter(processor, props.SampleRate),
 		}
 	}
 	testProcessor := func(ctx context.Context, mockProcessor mock.Processor) func(*testing.T) {
@@ -236,7 +236,7 @@ func TestProcessor(t *testing.T) {
 
 func TestSink(t *testing.T) {
 	setupRunner := func(sinkMaker pipe.SinkMaker, alloc signal.Allocator) runner.Sink {
-		sink, _ := sinkMaker(bufferSize, pipe.Bus{Channels: channels})
+		sink, _ := sinkMaker(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Sink{
 			Mutability: sink.Mutability,
 			Input: pool.Get(signal.Allocator{

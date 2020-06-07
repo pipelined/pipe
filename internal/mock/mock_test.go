@@ -24,9 +24,9 @@ func TestPump(t *testing.T) {
 	testPump := func(pump mock.Pump, test params) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			fn, bus, _ := pump.Pump()(test.bufferSize)
+			fn, props, _ := pump.Pump()(test.bufferSize)
 			buf := signal.Allocator{
-				Channels: bus.Channels,
+				Channels: props.Channels,
 				Length:   test.bufferSize,
 				Capacity: test.bufferSize,
 			}.Float64()
@@ -52,9 +52,9 @@ func TestPump(t *testing.T) {
 			Limit:    test.bufferSize,
 			Channels: 1,
 		}
-		pump, bus, _ := mockPump.Pump()(10)
+		pump, props, _ := mockPump.Pump()(10)
 		pump.Pump(signal.Allocator{
-			Channels: bus.Channels,
+			Channels: props.Channels,
 			Length:   test.bufferSize,
 			Capacity: test.bufferSize,
 		}.Float64())
@@ -109,7 +109,7 @@ func TestProcessor(t *testing.T) {
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, _ := processorMock.Processor()(0, pipe.Bus{})
+			processor, _, _ := processorMock.Processor()(0, pipe.SignalProperties{})
 
 			alloc := signal.Allocator{
 				Channels: 1,
@@ -159,7 +159,7 @@ func TestSink(t *testing.T) {
 	}
 	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, _ := sinkMock.Sink()(0, pipe.Bus{Channels: 1})
+			sink, _ := sinkMock.Sink()(0, pipe.SignalProperties{Channels: 1})
 
 			alloc := signal.Allocator{
 				Channels: 1,
