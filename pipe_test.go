@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"go.uber.org/goleak"
 
 	"pipelined.dev/pipe"
@@ -40,25 +39,25 @@ func TestPipe(t *testing.T) {
 		Processors: pipe.Processors(proc1.Processor(), proc2.Processor()),
 		Sink:       repeater.Sink(),
 	}.Line(bufferSize)
-	assert.Nil(t, err)
+	assertNil(t, "error", err)
 	out1, err := pipe.Route{
 		Pump: repeater.Pump(),
 		Sink: sink1.Sink(),
 	}.Line(bufferSize)
-	assert.Nil(t, err)
+	assertNil(t, "error", err)
 	out2, err := pipe.Route{
 		Pump: repeater.Pump(),
 		Sink: sink2.Sink(),
 	}.Line(bufferSize)
-	assert.Nil(t, err)
+	assertNil(t, "error", err)
 
 	p := pipe.New(context.Background(), pipe.WithLines(in, out1, out2))
 	// start
 	err = p.Wait()
-	assert.Nil(t, err)
+	assertNil(t, "error", err)
 
-	assert.Equal(t, 862, pump.Counter.Messages)
-	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
+	assertEqual(t, "messages", pump.Counter.Messages, 862)
+	assertEqual(t, "samples", pump.Counter.Samples, 862*bufferSize)
 }
 
 func TestSimplePipe(t *testing.T) {
@@ -75,15 +74,15 @@ func TestSimplePipe(t *testing.T) {
 		Processors: pipe.Processors(proc1.Processor()),
 		Sink:       sink1.Sink(),
 	}.Line(bufferSize)
-	assert.Nil(t, err)
+	assertNil(t, "error", err)
 
 	p := pipe.New(context.Background(), pipe.WithLines(in))
 	// start
 	err = p.Wait()
-	assert.Nil(t, err)
+	assertNil(t, "error", err)
 
-	assert.Equal(t, 862, pump.Counter.Messages)
-	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
+	assertEqual(t, "messages", pump.Counter.Messages, 862)
+	assertEqual(t, "samples", pump.Counter.Samples, 862*bufferSize)
 }
 
 func TestReset(t *testing.T) {
@@ -100,16 +99,16 @@ func TestReset(t *testing.T) {
 		Pump: pump.Pump(),
 		Sink: sink.Sink(),
 	}.Line(bufferSize)
-	assert.Nil(t, err)
+	assertNil(t, "error", err)
 	p := pipe.New(
 		context.Background(),
 		pipe.WithLines(route),
 	)
 	// start
 	err = p.Wait()
-	assert.Nil(t, err)
-	assert.Equal(t, 862, pump.Counter.Messages)
-	assert.Equal(t, 862*bufferSize, pump.Counter.Samples)
+	assertNil(t, "error", err)
+	assertEqual(t, "messages", pump.Counter.Messages, 862)
+	assertEqual(t, "samples", pump.Counter.Samples, 862*bufferSize)
 
 	p = pipe.New(
 		context.Background(),
@@ -117,9 +116,9 @@ func TestReset(t *testing.T) {
 		pipe.WithMutations(pump.Reset()),
 	)
 	_ = p.Wait()
-	assert.Nil(t, err)
-	assert.Equal(t, 2*862, sink.Counter.Messages)
-	assert.Equal(t, 2*862*bufferSize, sink.Counter.Samples)
+	assertNil(t, "error", err)
+	assertEqual(t, "messages", sink.Counter.Messages, 2*862)
+	assertEqual(t, "samples", sink.Counter.Samples, 2*862*bufferSize)
 }
 
 func TestAddLine(t *testing.T) {
@@ -131,7 +130,7 @@ func TestAddLine(t *testing.T) {
 		}).Pump(),
 		Sink: sink1.Sink(),
 	}.Line(bufferSize)
-	assert.Nil(t, err)
+	assertNil(t, "error", err)
 
 	sink2 := &mock.Sink{Discard: true}
 	route2, err := pipe.Route{
@@ -141,7 +140,7 @@ func TestAddLine(t *testing.T) {
 		}).Pump(),
 		Sink: sink2.Sink(),
 	}.Line(bufferSize)
-	assert.Nil(t, err)
+	assertNil(t, "error", err)
 
 	p := pipe.New(
 		context.Background(),
@@ -151,10 +150,10 @@ func TestAddLine(t *testing.T) {
 
 	// start
 	err = p.Wait()
-	assert.Equal(t, 862, sink1.Counter.Messages)
-	assert.Equal(t, 862*bufferSize, sink1.Counter.Samples)
-	assert.Equal(t, 862, sink2.Counter.Messages)
-	assert.Equal(t, 862*bufferSize, sink2.Counter.Samples)
+	assertEqual(t, "messages", sink1.Counter.Messages, 862)
+	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", sink2.Counter.Messages, 862)
+	assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
 }
 
 // This benchmark runs next line:
@@ -231,6 +230,11 @@ func TestLineBindingFail(t *testing.T) {
 			}).Sink(),
 		},
 	))
+}
+
+func assertNil(t *testing.T, name string, result interface{}) {
+	t.Helper()
+	assertEqual(t, name, result, nil)
 }
 
 func assertEqual(t *testing.T, name string, result, expected interface{}) {
