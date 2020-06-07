@@ -62,7 +62,7 @@ type Pump struct {
 
 // Pump returns closure that creates new pumps.
 func (m *Pump) Pump() pipe.PumpMaker {
-	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
+	return func(bufferSize int) (pipe.Pump, pipe.SignalProperties, error) {
 		return pipe.Pump{
 				Mutability: m.Mutability,
 				Flush:      m.Flusher.Flush,
@@ -86,7 +86,7 @@ func (m *Pump) Pump() pipe.PumpMaker {
 					m.Counter.advance(read)
 					return read, nil
 				},
-			}, pipe.Bus{
+			}, pipe.SignalProperties{
 				SampleRate: m.SampleRate,
 				Channels:   m.Channels,
 			},
@@ -123,7 +123,7 @@ type Processor struct {
 
 // Processor returns closure that creates new processors.
 func (m *Processor) Processor() pipe.ProcessorMaker {
-	return func(bufferSize int, bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
+	return func(bufferSize int, props pipe.SignalProperties) (pipe.Processor, pipe.SignalProperties, error) {
 		return pipe.Processor{
 			Mutability: m.Mutator.Mutability,
 			Flush:      m.Flusher.Flush,
@@ -134,7 +134,7 @@ func (m *Processor) Processor() pipe.ProcessorMaker {
 				m.Counter.advance(signal.FloatingAsFloating(in, out))
 				return nil
 			},
-		}, bus, m.ErrorOnMake
+		}, props, m.ErrorOnMake
 	}
 }
 
@@ -150,8 +150,8 @@ type Sink struct {
 
 // Sink returns closure that creates new sinks.
 func (m *Sink) Sink() pipe.SinkMaker {
-	return func(bufferSize int, b pipe.Bus) (pipe.Sink, error) {
-		m.Counter.Values = signal.Allocator{Channels: b.Channels, Capacity: bufferSize}.Float64()
+	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+		m.Counter.Values = signal.Allocator{Channels: props.Channels, Capacity: bufferSize}.Float64()
 		return pipe.Sink{
 			Mutability: m.Mutator.Mutability,
 			Flush:      m.Flusher.Flush,
