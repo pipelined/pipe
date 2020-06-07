@@ -6,8 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"go.uber.org/goleak"
-
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
 	"pipelined.dev/pipe/mutability"
@@ -17,10 +15,6 @@ import (
 const (
 	bufferSize = 512
 )
-
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
-}
 
 func TestPipe(t *testing.T) {
 	t.Skip()
