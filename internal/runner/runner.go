@@ -18,8 +18,8 @@ type Message struct {
 }
 
 type (
-	// Pump executes pipe.Pump components.
-	Pump struct {
+	// Source executes pipe.Source components.
+	Source struct {
 		Mutability [16]byte
 		Flush
 		Output *signal.Pool
@@ -57,8 +57,8 @@ func (fn Flush) call(ctx context.Context) error {
 	return fn(ctx)
 }
 
-// Run starts the Pump runner.
-func (r Pump) Run(ctx context.Context, mutationsChan chan mutability.Mutations) (<-chan Message, <-chan error) {
+// Run starts the Source runner.
+func (r Source) Run(ctx context.Context, mutationsChan chan mutability.Mutations) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
 	meter := r.Meter()
@@ -68,7 +68,7 @@ func (r Pump) Run(ctx context.Context, mutationsChan chan mutability.Mutations) 
 		// flush on return
 		defer func() {
 			if err := r.Flush.call(ctx); err != nil {
-				errs <- fmt.Errorf("error flushing pump: %w", err)
+				errs <- fmt.Errorf("error flushing source: %w", err)
 			}
 		}()
 		var (
@@ -86,14 +86,14 @@ func (r Pump) Run(ctx context.Context, mutationsChan chan mutability.Mutations) 
 			}
 
 			if err = mutations.ApplyTo(r.Mutability); err != nil {
-				errs <- fmt.Errorf("error mutating pump: %w", err)
+				errs <- fmt.Errorf("error mutating source: %w", err)
 				return
 			}
 
 			outSignal = r.Output.GetFloat64()
 			if read, err = r.Fn(outSignal); err != nil {
 				if err != io.EOF {
-					errs <- fmt.Errorf("error running pump: %w", err)
+					errs <- fmt.Errorf("error running source: %w", err)
 				}
 				// this buffer wasn't sent, free now
 				r.Output.PutFloat64(outSignal)

@@ -7,68 +7,68 @@ import (
 	"reflect"
 	"testing"
 
-	"pipelined.dev/pipe"
 	"pipelined.dev/signal"
 
+	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
 	"pipelined.dev/pipe/mutability"
 )
 
 var errTest = errors.New("Test error")
 
-func TestPump(t *testing.T) {
+func TestSource(t *testing.T) {
 	type params struct {
 		bufferSize int
 		calls      int
 	}
-	testPump := func(pump mock.Pump, test params) func(*testing.T) {
+	testSource := func(source mock.Source, test params) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			fn, bus, _ := pump.Pump()(test.bufferSize)
+			fn, props, _ := source.Source()(test.bufferSize)
 			buf := signal.Allocator{
-				Channels: bus.Channels,
+				Channels: props.Channels,
 				Length:   test.bufferSize,
 				Capacity: test.bufferSize,
 			}.Float64()
 			for {
-				if _, err := fn.Pump(buf); err != nil {
+				if _, err := fn.SourceFunc(buf); err != nil {
 					if err != io.EOF {
-						assertEqual(t, "error", err, pump.ErrorOnCall)
+						assertEqual(t, "error", err, source.ErrorOnCall)
 					}
 					break
 				}
 			}
 
-			assertEqual(t, "calls", pump.Messages, test.calls)
-			assertEqual(t, "samples", pump.Samples, pump.Limit)
+			assertEqual(t, "calls", source.Messages, test.calls)
+			assertEqual(t, "samples", source.Samples, source.Limit)
 		}
 	}
 
 	testMutations := func(test params) func(*testing.T) {
-		mockPump := &mock.Pump{
+		mockSource := &mock.Source{
 			Mutator: mock.Mutator{
 				Mutability: mutability.Mutable(),
 			},
 			Limit:    test.bufferSize,
 			Channels: 1,
 		}
-		pump, bus, _ := mockPump.Pump()(10)
-		pump.Pump(signal.Allocator{
-			Channels: bus.Channels,
+		source, props, _ := mockSource.Source()(10)
+		source.SourceFunc(signal.Allocator{
+			Channels: props.Channels,
 			Length:   test.bufferSize,
 			Capacity: test.bufferSize,
 		}.Float64())
 		return func(t *testing.T) {
 			t.Helper()
-			assertEqual(t, "counter before reset", mockPump.Counter.Samples, test.bufferSize)
-			mockPump.Reset().Apply()
-			assertEqual(t, "counter before after", mockPump.Counter.Samples, 0)
-			mockPump.MockMutation().Apply()
+			assertEqual(t, "counter before reset", mockSource.Counter.Samples, test.bufferSize)
+			mockSource.Reset().Apply()
+			assertEqual(t, "counter before after", mockSource.Counter.Samples, 0)
+			mockSource.MockMutation().Apply()
 		}
 	}
 
-	t.Run("3 calls", testPump(
-		mock.Pump{
+	t.Run("3 calls", testSource(
+		mock.Source{
 			SampleRate: 44100,
 			Channels:   2,
 			Limit:      11,
@@ -79,8 +79,8 @@ func TestPump(t *testing.T) {
 			calls:      3,
 		},
 	))
-	t.Run("500 calls", testPump(
-		mock.Pump{
+	t.Run("500 calls", testSource(
+		mock.Source{
 			SampleRate: 44100,
 			Channels:   2,
 			Limit:      2500,
@@ -91,8 +91,8 @@ func TestPump(t *testing.T) {
 			calls:      500,
 		},
 	))
-	t.Run("error on call", testPump(
-		mock.Pump{
+	t.Run("error on call", testSource(
+		mock.Source{
 			ErrorOnCall: errTest,
 		},
 		params{},
@@ -109,7 +109,7 @@ func TestProcessor(t *testing.T) {
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, _ := processorMock.Processor()(0, pipe.Bus{})
+			processor, _, _ := processorMock.Processor()(0, pipe.SignalProperties{})
 
 			alloc := signal.Allocator{
 				Channels: 1,
@@ -119,7 +119,7 @@ func TestProcessor(t *testing.T) {
 			in, out := alloc.Float64(), alloc.Float64()
 			signal.WriteFloat64(p.in, in)
 
-			err := processor.Process(in, out)
+			err := processor.ProcessFunc(in, out)
 			assertEqual(t, "error", err, processorMock.ErrorOnCall)
 			if err != nil {
 				return
@@ -159,7 +159,7 @@ func TestSink(t *testing.T) {
 	}
 	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, _ := sinkMock.Sink()(0, pipe.Bus{Channels: 1})
+			sink, _ := sinkMock.Sink()(0, pipe.SignalProperties{Channels: 1})
 
 			alloc := signal.Allocator{
 				Channels: 1,
@@ -169,7 +169,7 @@ func TestSink(t *testing.T) {
 			in := alloc.Float64()
 			signal.WriteFloat64(p.in, in)
 
-			err := sink.Sink(in)
+			err := sink.SinkFunc(in)
 			assertEqual(t, "error", err, sinkMock.ErrorOnCall)
 			if err != nil {
 				return

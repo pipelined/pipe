@@ -13,57 +13,59 @@ import (
 	"pipelined.dev/pipe/pool"
 )
 
+// Repeater sinks the signal and sources it to multiple lines.
 type Repeater struct {
 	mutability.Mutability
 	bufferSize int
 	sampleRate signal.SampleRate
 	channels   int
-	pumps      []chan message
+	sources    []chan message
 }
 
 type message struct {
-	buffer signal.Floating
-	pumps  int32
+	buffer  signal.Floating
+	sources int32
 }
 
 // Sink must be called once per broadcast.
-func (r *Repeater) Sink() pipe.SinkMaker {
-	return func(bufferSize int, bus pipe.Bus) (pipe.Sink, error) {
-		r.sampleRate = bus.SampleRate
-		r.channels = bus.Channels
+func (r *Repeater) Sink() pipe.SinkAllocatorFunc {
+	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+		r.sampleRate = props.SampleRate
+		r.channels = props.Channels
 		r.bufferSize = bufferSize
 		p := pool.Get(signal.Allocator{
-			Channels: bus.Channels,
+			Channels: props.Channels,
 			Length:   bufferSize,
 			Capacity: bufferSize,
 		})
 		return pipe.Sink{
 			Mutability: r.Mutability,
-			Sink: func(in signal.Floating) error {
-				for _, pump := range r.pumps {
+			SinkFunc: func(in signal.Floating) error {
+				for _, source := range r.sources {
 					out := p.GetFloat64()
 					signal.FloatingAsFloating(in, out)
-					pump <- message{
-						pumps:  int32(len(r.pumps)),
-						buffer: out,
+					source <- message{
+						sources: int32(len(r.sources)),
+						buffer:  out,
 					}
 				}
 				return nil
 			},
-			Flush: func(context.Context) error {
-				for i := range r.pumps {
-					close(r.pumps[i])
+			FlushFunc: func(context.Context) error {
+				for i := range r.sources {
+					close(r.sources[i])
 				}
-				r.pumps = nil
+				r.sources = nil
 				return nil
 			},
 		}, nil
 	}
 }
 
+// AddLine adds the line to the repeater.
 func (r *Repeater) AddLine(p pipe.Pipe, route pipe.Route) mutability.Mutation {
 	return r.Mutability.Mutate(func() error {
-		route.Pump = r.Pump()
+		route.Source = r.Source()
 		line, err := route.Line(r.bufferSize)
 		if err != nil {
 			return fmt.Errorf("error binding route: %w", err)
@@ -73,11 +75,11 @@ func (r *Repeater) AddLine(p pipe.Pipe, route pipe.Route) mutability.Mutation {
 	})
 }
 
-// Pump must be called at least once per broadcast.
-func (r *Repeater) Pump() pipe.PumpMaker {
-	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
-		pump := make(chan message, 1)
-		r.pumps = append(r.pumps, pump)
+// Source must be called at least once per repeater.
+func (r *Repeater) Source() pipe.SourceAllocatorFunc {
+	return func(bufferSize int) (pipe.Source, pipe.SignalProperties, error) {
+		source := make(chan message, 1)
+		r.sources = append(r.sources, source)
 		var (
 			message message
 			ok      bool
@@ -87,20 +89,20 @@ func (r *Repeater) Pump() pipe.PumpMaker {
 			Length:   bufferSize,
 			Capacity: bufferSize,
 		})
-		return pipe.Pump{
-				Pump: func(b signal.Floating) (int, error) {
-					message, ok = <-pump
+		return pipe.Source{
+				SourceFunc: func(b signal.Floating) (int, error) {
+					message, ok = <-source
 					if !ok {
 						return 0, io.EOF
 					}
 					read := signal.FloatingAsFloating(message.buffer, b)
-					if atomic.AddInt32(&message.pumps, -1) == 0 {
+					if atomic.AddInt32(&message.sources, -1) == 0 {
 						p.PutFloat64(message.buffer)
 					}
 					return read, nil
 				},
 			},
-			pipe.Bus{
+			pipe.SignalProperties{
 				SampleRate: r.sampleRate,
 				Channels:   r.channels,
 			},
