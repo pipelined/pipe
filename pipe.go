@@ -18,61 +18,78 @@ type (
 		signal.SampleRate
 		Channels int
 	}
-	// PumpMaker creates new pump structure for provided buffer size.
-	// It pre-allocates all necessary buffers and structures.
-	PumpMaker func(int) (Pump, SignalProperties, error)
-	// Pump is a source of samples. Pump method accepts a new buffer and
-	// fills it with signal data. If no data is available, io.EOF should
-	// be returned.
-	Pump struct {
+	// SourceAllocatorFunc returns source for provided buffer size. It is
+	// responsible for pre-allocation of all necessary buffers and
+	// structures.
+	SourceAllocatorFunc func(int) (Source, SignalProperties, error)
+
+	// ProcessorAllocatorFunc returns processor for provided buffer size. It is
+	// responsible for pre-allocation of all necessary buffers and
+	// structures. Along with the processor, output signal properties are
+	// returned.
+	ProcessorAllocatorFunc func(int, SignalProperties) (Processor, SignalProperties, error)
+
+	// SinkAllocatorFunc returns sink for provided buffer size. It is
+	// responsible for pre-allocation of all necessary buffers and
+	// structures.
+	SinkAllocatorFunc func(int, SignalProperties) (Sink, error)
+
+	// Source is a source of signal data. Optinaly, mutability can be
+	// provided to handle mutations and flush hook to handle resource clean
+	// up.
+	Source struct {
 		mutability.Mutability
-		Pump func(out signal.Floating) (int, error)
-		Flush
+		SourceFunc
+		FlushFunc
 	}
 
-	// ProcessorMaker creates new pump structure for provided buffer size.
-	// It pre-allocates all necessary buffers and structures.
-	ProcessorMaker func(int, SignalProperties) (Processor, SignalProperties, error)
-	// Processor defines interface for pipe processors. It receives two
-	// buffers for input and output signal data. Number of channels cannot
-	// be changed.
+	// Processor is a mutator of signal data. Optinaly, mutability can be
+	// provided to handle mutations and flush hook to handle resource clean
+	// up.
 	Processor struct {
 		mutability.Mutability
-		Process func(in, out signal.Floating) error
-		Flush
+		ProcessFunc
+		FlushFunc
 	}
 
-	// SinkMaker creates new pump structure for provided buffer size.
-	// It pre-allocates all necessary buffers and structures.
-	SinkMaker func(int, SignalProperties) (Sink, error)
-	// Sink is an interface for final stage in audio pipeline.
-	// This components must not change buffer content. Line can have
-	// multiple sinks and this will cause race condition.
+	// Sink is a destination of signal data. Optinaly, mutability can be
+	// provided to handle mutations and flush hook to handle resource clean
+	// up.
 	Sink struct {
 		mutability.Mutability
-		Sink func(in signal.Floating) error
-		Flush
+		SinkFunc
+		FlushFunc
 	}
 
-	// Flush provides a hook to flush all buffers for the component.
-	Flush func(context.Context) error
+	// SourceFunc takes the output buffer and fills it with a signal data.
+	// If no data is available, io.EOF should be returned.
+	SourceFunc func(out signal.Floating) (int, error)
+
+	// ProcessFunc takes the input buffer, applies processing logic and writes
+	// the result into output buffer.
+	ProcessFunc func(in, out signal.Floating) error
+
+	// SinkFunc takes the input buffer and writes that to the underlying destination.
+	SinkFunc func(in signal.Floating) error
+
+	// FlushFunc provides a hook to flush all buffers for the component.
+	FlushFunc func(context.Context) error
 )
 
 type (
-	// Route defines sequence of components closures.
-	// It has a single pump, zero or many processors, executed
-	// sequentially and one or many sinks executed in parallel.
+	// Route defines sequence of components closures. It has a single
+	// source, zero or many processors, executed sequentially single sik.
 	Route struct {
-		Pump       PumpMaker
-		Processors []ProcessorMaker
-		Sink       SinkMaker
+		Source     SourceAllocatorFunc
+		Processors []ProcessorAllocatorFunc
+		Sink       SinkAllocatorFunc
 	}
 
 	// Line is a sequence of DSP components.
 	Line struct {
 		numChannels int
 		mutators    chan mutability.Mutations
-		pump        runner.Pump
+		source      runner.Source
 		processors  []runner.Processor
 		sink        runner.Sink
 	}
@@ -95,7 +112,7 @@ type (
 
 // Line line components. All closures are executed and wrapped into runners.
 func (l Route) Line(bufferSize int) (Line, error) {
-	pump, input, err := l.Pump.runner(bufferSize)
+	source, input, err := l.Source.runner(bufferSize)
 	if err != nil {
 		return Line{}, fmt.Errorf("error routing %w", err)
 	}
@@ -119,39 +136,39 @@ func (l Route) Line(bufferSize int) (Line, error) {
 
 	return Line{
 		mutators:   make(chan mutability.Mutations, 1),
-		pump:       pump,
+		source:     source,
 		processors: processors,
 		sink:       sink,
 	}, nil
 }
 
 func (l Line) listeners(listeners map[mutability.Mutability]chan mutability.Mutations) {
-	listeners[l.pump.Mutability] = l.mutators
+	listeners[l.source.Mutability] = l.mutators
 	for i := range l.processors {
 		listeners[l.processors[i].Mutability] = l.mutators
 	}
 	listeners[l.sink.Mutability] = l.mutators
 }
 
-func (fn PumpMaker) runner(bufferSize int) (runner.Pump, SignalProperties, error) {
-	pump, props, err := fn(bufferSize)
+func (fn SourceAllocatorFunc) runner(bufferSize int) (runner.Source, SignalProperties, error) {
+	source, props, err := fn(bufferSize)
 	if err != nil {
-		return runner.Pump{}, SignalProperties{}, fmt.Errorf("pump: %w", err)
+		return runner.Source{}, SignalProperties{}, fmt.Errorf("source: %w", err)
 	}
-	return runner.Pump{
-		Mutability: pump.Mutability,
+	return runner.Source{
+		Mutability: source.Mutability,
 		Output: pool.Get(signal.Allocator{
 			Channels: props.Channels,
 			Length:   bufferSize,
 			Capacity: bufferSize,
 		}),
-		Fn:    pump.Pump,
-		Flush: runner.Flush(pump.Flush),
-		Meter: metric.Meter(pump, props.SampleRate),
+		Fn:    source.SourceFunc,
+		Flush: runner.Flush(source.FlushFunc),
+		Meter: metric.Meter(source, props.SampleRate),
 	}, props, nil
 }
 
-func (fn ProcessorMaker) runner(bufferSize int, input SignalProperties) (runner.Processor, SignalProperties, error) {
+func (fn ProcessorAllocatorFunc) runner(bufferSize int, input SignalProperties) (runner.Processor, SignalProperties, error) {
 	processor, output, err := fn(bufferSize, input)
 	if err != nil {
 		return runner.Processor{}, SignalProperties{}, fmt.Errorf("processor: %w", err)
@@ -168,13 +185,13 @@ func (fn ProcessorMaker) runner(bufferSize int, input SignalProperties) (runner.
 			Length:   bufferSize,
 			Capacity: bufferSize,
 		}),
-		Fn:    processor.Process,
-		Flush: runner.Flush(processor.Flush),
+		Fn:    processor.ProcessFunc,
+		Flush: runner.Flush(processor.FlushFunc),
 		Meter: metric.Meter(processor, output.SampleRate),
 	}, output, nil
 }
 
-func (fn SinkMaker) runner(bufferSize int, input SignalProperties) (runner.Sink, error) {
+func (fn SinkAllocatorFunc) runner(bufferSize int, input SignalProperties) (runner.Sink, error) {
 	sink, err := fn(bufferSize, input)
 	if err != nil {
 		return runner.Sink{}, fmt.Errorf("sink: %w", err)
@@ -186,8 +203,8 @@ func (fn SinkMaker) runner(bufferSize int, input SignalProperties) (runner.Sink,
 			Length:   bufferSize,
 			Capacity: bufferSize,
 		}),
-		Fn:    sink.Sink,
-		Flush: runner.Flush(sink.Flush),
+		Fn:    sink.SinkFunc,
+		Flush: runner.Flush(sink.FlushFunc),
 		Meter: metric.Meter(sink, input.SampleRate),
 	}, nil
 }
@@ -283,8 +300,8 @@ func start(ctx context.Context, lines []Line) []<-chan error {
 
 func (l Line) start(ctx context.Context) []<-chan error {
 	errChans := make([]<-chan error, 0, 2+len(l.processors))
-	// start pump
-	out, errs := l.pump.Run(ctx, l.mutators)
+	// start source
+	out, errs := l.source.Run(ctx, l.mutators)
 	errChans = append(errChans, errs)
 
 	// start chained processesing
@@ -319,7 +336,7 @@ func addLine(p *Pipe, l Line) {
 }
 
 // Processors is a helper function to use in line constructors.
-func Processors(processors ...ProcessorMaker) []ProcessorMaker {
+func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 	return processors
 }
 

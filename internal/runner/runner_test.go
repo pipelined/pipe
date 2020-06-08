@@ -23,22 +23,22 @@ const (
 	channels   = 1
 )
 
-func TestPump(t *testing.T) {
-	setupPump := func(pumpMaker pipe.PumpMaker) runner.Pump {
-		pump, props, _ := pumpMaker(bufferSize)
-		return runner.Pump{
-			Mutability: pump.Mutability,
+func TestSource(t *testing.T) {
+	setupSource := func(sourceAllocator pipe.SourceAllocatorFunc) runner.Source {
+		source, props, _ := sourceAllocator(bufferSize)
+		return runner.Source{
+			Mutability: source.Mutability,
 			Output: pool.Get(signal.Allocator{
 				Channels: props.Channels,
 				Length:   bufferSize,
 				Capacity: bufferSize,
 			}),
-			Fn:    pump.Pump,
-			Flush: runner.Flush(pump.Flush),
-			Meter: metric.Meter(pump, props.SampleRate),
+			Fn:    source.SourceFunc,
+			Flush: runner.Flush(source.FlushFunc),
+			Meter: metric.Meter(source, props.SampleRate),
 		}
 	}
-	assertPump := func(t *testing.T, mockPump *mock.Pump, out <-chan runner.Message, errs <-chan error) {
+	assertSource := func(t *testing.T, mockSource *mock.Source, out <-chan runner.Message, errs <-chan error) {
 		t.Helper()
 		received := 0
 		for buf := range out {
@@ -47,55 +47,55 @@ func TestPump(t *testing.T) {
 		for err := range errs {
 			assertEqual(t, "error", errors.Unwrap(err), testError)
 		}
-		assertEqual(t, "pump samples", received, mockPump.Limit)
-		assertEqual(t, "pump flushed", mockPump.Flushed, true)
+		assertEqual(t, "source samples", received, mockSource.Limit)
+		assertEqual(t, "source flushed", mockSource.Flushed, true)
 		return
 	}
-	testPump := func(ctx context.Context, mockPump mock.Pump) func(*testing.T) {
+	testSource := func(ctx context.Context, mockSource mock.Source) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			r := setupPump(mockPump.Pump())
+			r := setupSource(mockSource.Source())
 			mutations := make(chan mutability.Mutations)
 			out, errs := r.Run(ctx, mutations)
-			assertPump(t, &mockPump, out, errs)
+			assertSource(t, &mockSource, out, errs)
 		}
 	}
-	testContextDone := func(mockPump mock.Pump) func(*testing.T) {
+	testContextDone := func(mockSource mock.Source) func(*testing.T) {
 		t.Helper()
 		cancelCtx, cancelFn := context.WithCancel(context.Background())
 		cancelFn()
-		return testPump(cancelCtx, mockPump)
+		return testSource(cancelCtx, mockSource)
 	}
 
-	testMutationError := func(ctx context.Context, mockPump mock.Pump) func(*testing.T) {
+	testMutationError := func(ctx context.Context, mockSource mock.Source) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			r := setupPump(mockPump.Pump())
+			r := setupSource(mockSource.Source())
 			mutations := make(chan mutability.Mutations, 1)
-			mutations <- mutability.Mutations{}.Put(mockPump.MockMutation())
+			mutations <- mutability.Mutations{}.Put(mockSource.MockMutation())
 			out, errs := r.Run(ctx, mutations)
-			assertPump(t, &mockPump, out, errs)
+			assertSource(t, &mockSource, out, errs)
 		}
 	}
 
-	t.Run("ok", testPump(
+	t.Run("ok", testSource(
 		context.Background(),
-		mock.Pump{
+		mock.Source{
 			Channels: 1,
 			Limit:    10*bufferSize + 1,
 		},
 	))
-	t.Run("error", testPump(
+	t.Run("error", testSource(
 		context.Background(),
-		mock.Pump{
+		mock.Source{
 			ErrorOnCall: testError,
 			Channels:    1,
 			Limit:       0,
 		},
 	))
-	t.Run("flush error", testPump(
+	t.Run("flush error", testSource(
 		context.Background(),
-		mock.Pump{
+		mock.Source{
 			Flusher: mock.Flusher{
 				ErrorOnFlush: testError,
 			},
@@ -105,14 +105,14 @@ func TestPump(t *testing.T) {
 	))
 
 	t.Run("context done", testContextDone(
-		mock.Pump{
+		mock.Source{
 			Channels: 1,
 			Limit:    0,
 		},
 	))
 	t.Run("mutation error", testMutationError(
 		context.Background(),
-		mock.Pump{
+		mock.Source{
 			Mutator: mock.Mutator{
 				Mutability:      mutability.Mutable(),
 				ErrorOnMutation: testError,
@@ -124,8 +124,8 @@ func TestPump(t *testing.T) {
 }
 
 func TestProcessor(t *testing.T) {
-	setupRunner := func(processorMaker pipe.ProcessorMaker, alloc signal.Allocator) runner.Processor {
-		processor, props, _ := processorMaker(bufferSize, pipe.SignalProperties{Channels: channels})
+	setupRunner := func(processorAllocator pipe.ProcessorAllocatorFunc, alloc signal.Allocator) runner.Processor {
+		processor, props, _ := processorAllocator(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Processor{
 			Mutability: processor.Mutability,
 			Input: pool.Get(signal.Allocator{
@@ -138,8 +138,8 @@ func TestProcessor(t *testing.T) {
 				Length:   bufferSize,
 				Capacity: bufferSize,
 			}),
-			Fn:    processor.Process,
-			Flush: runner.Flush(processor.Flush),
+			Fn:    processor.ProcessFunc,
+			Flush: runner.Flush(processor.FlushFunc),
 			Meter: metric.Meter(processor, props.SampleRate),
 		}
 	}
@@ -235,8 +235,8 @@ func TestProcessor(t *testing.T) {
 }
 
 func TestSink(t *testing.T) {
-	setupRunner := func(sinkMaker pipe.SinkMaker, alloc signal.Allocator) runner.Sink {
-		sink, _ := sinkMaker(bufferSize, pipe.SignalProperties{Channels: channels})
+	setupRunner := func(sinkAllocator pipe.SinkAllocatorFunc, alloc signal.Allocator) runner.Sink {
+		sink, _ := sinkAllocator(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Sink{
 			Mutability: sink.Mutability,
 			Input: pool.Get(signal.Allocator{
@@ -244,8 +244,8 @@ func TestSink(t *testing.T) {
 				Length:   bufferSize,
 				Capacity: bufferSize,
 			}),
-			Fn:    sink.Sink,
-			Flush: runner.Flush(sink.Flush),
+			Fn:    sink.SinkFunc,
+			Flush: runner.Flush(sink.FlushFunc),
 			Meter: metric.Meter(sink, 44100),
 		}
 	}
