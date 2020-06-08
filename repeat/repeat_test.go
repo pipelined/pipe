@@ -18,17 +18,17 @@ func TestAddRoute(t *testing.T) {
 		Mutability: mutability.Mutable(),
 	}
 	source, _ := pipe.Route{
-		Pump: (&mock.Pump{
+		Source: (&mock.Source{
 			Limit:    10 * bufferSize,
 			Channels: 2,
-		}).Pump(),
+		}).Source(),
 		Sink: repeater.Sink(),
 	}.Line(bufferSize)
 
 	sink1 := &mock.Sink{}
 	destination1, _ := pipe.Route{
-		Pump: repeater.Pump(),
-		Sink: sink1.Sink(),
+		Source: repeater.Source(),
+		Sink:   sink1.Sink(),
 	}.Line(bufferSize)
 
 	p := pipe.New(
@@ -50,30 +50,30 @@ func TestAddRoute(t *testing.T) {
 }
 
 // This benchmark runs the following pipe:
-// 1 Pump is repeated to 2 Sinks
+// 1 Source is repeated to 2 Sinks
 func BenchmarkRepeat2(b *testing.B) {
-	pump := &mock.Pump{
+	source := &mock.Source{
 		Limit:    862 * bufferSize,
 		Channels: 2,
 	}
 	repeater := repeat.Repeater{}
 	l1, _ := pipe.Route{
-		Pump: pump.Pump(),
-		Sink: repeater.Sink(),
+		Source: source.Source(),
+		Sink:   repeater.Sink(),
 	}.Line(bufferSize)
 	l2, _ := pipe.Route{
-		Pump: repeater.Pump(),
-		Sink: (&mock.Sink{Discard: true}).Sink(),
+		Source: repeater.Source(),
+		Sink:   (&mock.Sink{Discard: true}).Sink(),
 	}.Line(bufferSize)
 	l3, _ := pipe.Route{
-		Pump: repeater.Pump(),
-		Sink: (&mock.Sink{Discard: true}).Sink(),
+		Source: repeater.Source(),
+		Sink:   (&mock.Sink{Discard: true}).Sink(),
 	}.Line(bufferSize)
 	for i := 0; i < b.N; i++ {
 		p := pipe.New(
 			context.Background(),
 			pipe.WithLines(l1, l2, l3),
-			pipe.WithMutations(pump.Reset()),
+			pipe.WithMutations(source.Reset()),
 		)
 		_ = p.Wait()
 	}
