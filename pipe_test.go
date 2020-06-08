@@ -18,7 +18,7 @@ const (
 
 func TestPipe(t *testing.T) {
 	t.Skip()
-	pump := &mock.Pump{
+	source := &mock.Source{
 		Limit:    862 * bufferSize,
 		Channels: 2,
 	}
@@ -29,19 +29,19 @@ func TestPipe(t *testing.T) {
 	sink2 := &mock.Sink{Discard: true}
 
 	in, err := pipe.Route{
-		Pump:       pump.Pump(),
+		Source:     source.Source(),
 		Processors: pipe.Processors(proc1.Processor(), proc2.Processor()),
 		Sink:       repeater.Sink(),
 	}.Line(bufferSize)
 	assertNil(t, "error", err)
 	out1, err := pipe.Route{
-		Pump: repeater.Pump(),
-		Sink: sink1.Sink(),
+		Source: repeater.Source(),
+		Sink:   sink1.Sink(),
 	}.Line(bufferSize)
 	assertNil(t, "error", err)
 	out2, err := pipe.Route{
-		Pump: repeater.Pump(),
-		Sink: sink2.Sink(),
+		Source: repeater.Source(),
+		Sink:   sink2.Sink(),
 	}.Line(bufferSize)
 	assertNil(t, "error", err)
 
@@ -50,12 +50,12 @@ func TestPipe(t *testing.T) {
 	err = p.Wait()
 	assertNil(t, "error", err)
 
-	assertEqual(t, "messages", pump.Counter.Messages, 862)
-	assertEqual(t, "samples", pump.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", source.Counter.Messages, 862)
+	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 }
 
 func TestSimplePipe(t *testing.T) {
-	pump := &mock.Pump{
+	source := &mock.Source{
 		Limit:    862 * bufferSize,
 		Channels: 2,
 	}
@@ -64,7 +64,7 @@ func TestSimplePipe(t *testing.T) {
 	sink1 := &mock.Sink{Discard: true}
 
 	in, err := pipe.Route{
-		Pump:       pump.Pump(),
+		Source:     source.Source(),
 		Processors: pipe.Processors(proc1.Processor()),
 		Sink:       sink1.Sink(),
 	}.Line(bufferSize)
@@ -75,12 +75,12 @@ func TestSimplePipe(t *testing.T) {
 	err = p.Wait()
 	assertNil(t, "error", err)
 
-	assertEqual(t, "messages", pump.Counter.Messages, 862)
-	assertEqual(t, "samples", pump.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", source.Counter.Messages, 862)
+	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 }
 
 func TestReset(t *testing.T) {
-	pump := &mock.Pump{
+	source := &mock.Source{
 		Mutator: mock.Mutator{
 			Mutability: mutability.Mutable(),
 		},
@@ -90,8 +90,8 @@ func TestReset(t *testing.T) {
 	sink := &mock.Sink{Discard: true}
 
 	route, err := pipe.Route{
-		Pump: pump.Pump(),
-		Sink: sink.Sink(),
+		Source: source.Source(),
+		Sink:   sink.Sink(),
 	}.Line(bufferSize)
 	assertNil(t, "error", err)
 	p := pipe.New(
@@ -101,13 +101,13 @@ func TestReset(t *testing.T) {
 	// start
 	err = p.Wait()
 	assertNil(t, "error", err)
-	assertEqual(t, "messages", pump.Counter.Messages, 862)
-	assertEqual(t, "samples", pump.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", source.Counter.Messages, 862)
+	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 
 	p = pipe.New(
 		context.Background(),
 		pipe.WithLines(route),
-		pipe.WithMutations(pump.Reset()),
+		pipe.WithMutations(source.Reset()),
 	)
 	_ = p.Wait()
 	assertNil(t, "error", err)
@@ -118,20 +118,20 @@ func TestReset(t *testing.T) {
 func TestAddLine(t *testing.T) {
 	sink1 := &mock.Sink{Discard: true}
 	route1, err := pipe.Route{
-		Pump: (&mock.Pump{
+		Source: (&mock.Source{
 			Limit:    862 * bufferSize,
 			Channels: 2,
-		}).Pump(),
+		}).Source(),
 		Sink: sink1.Sink(),
 	}.Line(bufferSize)
 	assertNil(t, "error", err)
 
 	sink2 := &mock.Sink{Discard: true}
 	route2, err := pipe.Route{
-		Pump: (&mock.Pump{
+		Source: (&mock.Source{
 			Limit:    862 * bufferSize,
 			Channels: 2,
-		}).Pump(),
+		}).Source(),
 		Sink: sink2.Sink(),
 	}.Line(bufferSize)
 	assertNil(t, "error", err)
@@ -151,9 +151,9 @@ func TestAddLine(t *testing.T) {
 }
 
 // This benchmark runs next line:
-// 1 Pump, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
+// 1 Source, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
-	pump := &mock.Pump{
+	source := &mock.Source{
 		Mutator: mock.Mutator{
 			Mutability: mutability.Mutable(),
 		},
@@ -162,7 +162,7 @@ func BenchmarkSingleLine(b *testing.B) {
 	}
 	sink := &mock.Sink{Discard: true}
 	line, _ := pipe.Route{
-		Pump: pump.Pump(),
+		Source: source.Source(),
 		Processors: pipe.Processors(
 			(&mock.Processor{}).Processor(),
 			(&mock.Processor{}).Processor(),
@@ -173,7 +173,7 @@ func BenchmarkSingleLine(b *testing.B) {
 		p := pipe.New(
 			context.Background(),
 			pipe.WithLines(line),
-			pipe.WithMutations(pump.Reset()),
+			pipe.WithMutations(source.Reset()),
 		)
 		_ = p.Wait()
 	}
@@ -191,11 +191,11 @@ func TestLineBindingFail(t *testing.T) {
 			assertEqual(t, "error", errors.Is(err, errorBinding), true)
 		}
 	}
-	t.Run("pump", testBinding(
+	t.Run("source", testBinding(
 		pipe.Route{
-			Pump: (&mock.Pump{
+			Source: (&mock.Source{
 				ErrorOnMake: errorBinding,
-			}).Pump(),
+			}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{}).Processor(),
 			),
@@ -204,7 +204,7 @@ func TestLineBindingFail(t *testing.T) {
 	))
 	t.Run("processor", testBinding(
 		pipe.Route{
-			Pump: (&mock.Pump{}).Pump(),
+			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{
 					ErrorOnMake: errorBinding,
@@ -215,7 +215,7 @@ func TestLineBindingFail(t *testing.T) {
 	))
 	t.Run("sink", testBinding(
 		pipe.Route{
-			Pump: (&mock.Pump{}).Pump(),
+			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{}).Processor(),
 			),

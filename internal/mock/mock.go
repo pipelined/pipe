@@ -46,8 +46,8 @@ func (f *Flusher) Flush(ctx context.Context) error {
 	return f.ErrorOnFlush
 }
 
-// Pump are settings for pipe.Pump mock.
-type Pump struct {
+// Source are settings for pipe.Source mock.
+type Source struct {
 	Mutator
 	Counter
 	Flusher
@@ -60,13 +60,13 @@ type Pump struct {
 	ErrorOnMake error
 }
 
-// Pump returns closure that creates new pumps.
-func (m *Pump) Pump() pipe.PumpMaker {
-	return func(bufferSize int) (pipe.Pump, pipe.Bus, error) {
-		return pipe.Pump{
+// Source returns SourceAllocatorFunc.
+func (m *Source) Source() pipe.SourceAllocatorFunc {
+	return func(bufferSize int) (pipe.Source, pipe.SignalProperties, error) {
+		return pipe.Source{
 				Mutability: m.Mutability,
-				Flush:      m.Flusher.Flush,
-				Pump: func(s signal.Floating) (int, error) {
+				FlushFunc:  m.Flusher.Flush,
+				SourceFunc: func(s signal.Floating) (int, error) {
 					if m.ErrorOnCall != nil {
 						return 0, m.ErrorOnCall
 					}
@@ -86,7 +86,7 @@ func (m *Pump) Pump() pipe.PumpMaker {
 					m.Counter.advance(read)
 					return read, nil
 				},
-			}, pipe.Bus{
+			}, pipe.SignalProperties{
 				SampleRate: m.SampleRate,
 				Channels:   m.Channels,
 			},
@@ -94,8 +94,8 @@ func (m *Pump) Pump() pipe.PumpMaker {
 	}
 }
 
-// Reset allows to reset pump.
-func (m *Pump) Reset() mutability.Mutation {
+// Reset allows to reset source.
+func (m *Source) Reset() mutability.Mutation {
 	return m.Mutability.Mutate(
 		func() error {
 			m.Counter = Counter{}
@@ -122,19 +122,19 @@ type Processor struct {
 }
 
 // Processor returns closure that creates new processors.
-func (m *Processor) Processor() pipe.ProcessorMaker {
-	return func(bufferSize int, bus pipe.Bus) (pipe.Processor, pipe.Bus, error) {
+func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
+	return func(bufferSize int, props pipe.SignalProperties) (pipe.Processor, pipe.SignalProperties, error) {
 		return pipe.Processor{
 			Mutability: m.Mutator.Mutability,
-			Flush:      m.Flusher.Flush,
-			Process: func(in, out signal.Floating) error {
+			FlushFunc:  m.Flusher.Flush,
+			ProcessFunc: func(in, out signal.Floating) error {
 				if m.ErrorOnCall != nil {
 					return m.ErrorOnCall
 				}
 				m.Counter.advance(signal.FloatingAsFloating(in, out))
 				return nil
 			},
-		}, bus, m.ErrorOnMake
+		}, props, m.ErrorOnMake
 	}
 }
 
@@ -149,13 +149,13 @@ type Sink struct {
 }
 
 // Sink returns closure that creates new sinks.
-func (m *Sink) Sink() pipe.SinkMaker {
-	return func(bufferSize int, b pipe.Bus) (pipe.Sink, error) {
-		m.Counter.Values = signal.Allocator{Channels: b.Channels, Capacity: bufferSize}.Float64()
+func (m *Sink) Sink() pipe.SinkAllocatorFunc {
+	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+		m.Counter.Values = signal.Allocator{Channels: props.Channels, Capacity: bufferSize}.Float64()
 		return pipe.Sink{
 			Mutability: m.Mutator.Mutability,
-			Flush:      m.Flusher.Flush,
-			Sink: func(in signal.Floating) error {
+			FlushFunc:  m.Flusher.Flush,
+			SinkFunc: func(in signal.Floating) error {
 				if m.ErrorOnCall != nil {
 					return m.ErrorOnCall
 				}
