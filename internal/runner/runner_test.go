@@ -9,9 +9,9 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe"
-	"pipelined.dev/pipe/internal/mock"
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/metric"
+	"pipelined.dev/pipe/mock"
 	"pipelined.dev/pipe/mutability"
 	"pipelined.dev/pipe/pool"
 )
