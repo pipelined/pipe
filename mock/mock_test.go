@@ -10,7 +10,7 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe"
-	"pipelined.dev/pipe/internal/mock"
+	"pipelined.dev/pipe/mock"
 	"pipelined.dev/pipe/mutability"
 )
 
