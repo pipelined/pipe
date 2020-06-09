@@ -9,50 +9,9 @@ import (
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/mock"
 	"pipelined.dev/pipe/mutability"
-	"pipelined.dev/pipe/repeat"
 )
 
-const (
-	bufferSize = 512
-)
-
-func TestPipe(t *testing.T) {
-	t.Skip()
-	source := &mock.Source{
-		Limit:    862 * bufferSize,
-		Channels: 2,
-	}
-	proc1 := &mock.Processor{}
-	proc2 := &mock.Processor{}
-	repeater := &repeat.Repeater{}
-	sink1 := &mock.Sink{Discard: true}
-	sink2 := &mock.Sink{Discard: true}
-
-	in, err := pipe.Route{
-		Source:     source.Source(),
-		Processors: pipe.Processors(proc1.Processor(), proc2.Processor()),
-		Sink:       repeater.Sink(),
-	}.Line(bufferSize)
-	assertNil(t, "error", err)
-	out1, err := pipe.Route{
-		Source: repeater.Source(),
-		Sink:   sink1.Sink(),
-	}.Line(bufferSize)
-	assertNil(t, "error", err)
-	out2, err := pipe.Route{
-		Source: repeater.Source(),
-		Sink:   sink2.Sink(),
-	}.Line(bufferSize)
-	assertNil(t, "error", err)
-
-	p := pipe.New(context.Background(), pipe.WithLines(in, out1, out2))
-	// start
-	err = p.Wait()
-	assertNil(t, "error", err)
-
-	assertEqual(t, "messages", source.Counter.Messages, 862)
-	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
-}
+const bufferSize = 512
 
 func TestSimplePipe(t *testing.T) {
 	source := &mock.Source{
