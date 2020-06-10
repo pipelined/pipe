@@ -22,7 +22,7 @@ func TestSimplePipe(t *testing.T) {
 	proc1 := &mock.Processor{}
 	sink1 := &mock.Sink{Discard: true}
 
-	in, err := pipe.Route{
+	in, err := pipe.Routing{
 		Source:     source.Source(),
 		Processors: pipe.Processors(proc1.Processor()),
 		Sink:       sink1.Sink(),
@@ -48,14 +48,14 @@ func TestReset(t *testing.T) {
 	}
 	sink := &mock.Sink{Discard: true}
 
-	route, err := pipe.Route{
+	line, err := pipe.Routing{
 		Source: source.Source(),
 		Sink:   sink.Sink(),
 	}.Line(bufferSize)
 	assertNil(t, "error", err)
 	p := pipe.New(
 		context.Background(),
-		pipe.WithLines(route),
+		pipe.WithLines(line),
 	)
 	// start
 	err = p.Wait()
@@ -65,7 +65,7 @@ func TestReset(t *testing.T) {
 
 	p = pipe.New(
 		context.Background(),
-		pipe.WithLines(route),
+		pipe.WithLines(line),
 		pipe.WithMutations(source.Reset()),
 	)
 	_ = p.Wait()
@@ -76,7 +76,7 @@ func TestReset(t *testing.T) {
 
 func TestAddLine(t *testing.T) {
 	sink1 := &mock.Sink{Discard: true}
-	route1, err := pipe.Route{
+	line1, err := pipe.Routing{
 		Source: (&mock.Source{
 			Limit:    862 * bufferSize,
 			Channels: 2,
@@ -86,7 +86,7 @@ func TestAddLine(t *testing.T) {
 	assertNil(t, "error", err)
 
 	sink2 := &mock.Sink{Discard: true}
-	route2, err := pipe.Route{
+	line2, err := pipe.Routing{
 		Source: (&mock.Source{
 			Limit:    862 * bufferSize,
 			Channels: 2,
@@ -97,9 +97,9 @@ func TestAddLine(t *testing.T) {
 
 	p := pipe.New(
 		context.Background(),
-		pipe.WithLines(route1),
+		pipe.WithLines(line1),
 	)
-	p.Push(p.AddLine(route2))
+	p.Push(p.AddLine(line2))
 
 	// start
 	err = p.Wait()
@@ -120,7 +120,7 @@ func BenchmarkSingleLine(b *testing.B) {
 		Channels: 2,
 	}
 	sink := &mock.Sink{Discard: true}
-	line, _ := pipe.Route{
+	line, _ := pipe.Routing{
 		Source: source.Source(),
 		Processors: pipe.Processors(
 			(&mock.Processor{}).Processor(),
@@ -144,14 +144,14 @@ func TestLineBindingFail(t *testing.T) {
 		errorBinding = errors.New("binding error")
 		bufferSize   = 512
 	)
-	testBinding := func(r pipe.Route) func(*testing.T) {
+	testBinding := func(r pipe.Routing) func(*testing.T) {
 		return func(t *testing.T) {
 			_, err := r.Line(bufferSize)
 			assertEqual(t, "error", errors.Is(err, errorBinding), true)
 		}
 	}
 	t.Run("source", testBinding(
-		pipe.Route{
+		pipe.Routing{
 			Source: (&mock.Source{
 				ErrorOnMake: errorBinding,
 			}).Source(),
@@ -162,7 +162,7 @@ func TestLineBindingFail(t *testing.T) {
 		},
 	))
 	t.Run("processor", testBinding(
-		pipe.Route{
+		pipe.Routing{
 			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{
@@ -173,7 +173,7 @@ func TestLineBindingFail(t *testing.T) {
 		},
 	))
 	t.Run("sink", testBinding(
-		pipe.Route{
+		pipe.Routing{
 			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{}).Processor(),

@@ -77,9 +77,9 @@ type (
 )
 
 type (
-	// Route defines sequence of components closures. It has a single
+	// Routing defines sequence of components closures. It has a single
 	// source, zero or many processors, executed sequentially single sik.
-	Route struct {
+	Routing struct {
 		Source     SourceAllocatorFunc
 		Processors []ProcessorAllocatorFunc
 		Sink       SinkAllocatorFunc
@@ -111,8 +111,8 @@ type (
 )
 
 // Line line components. All closures are executed and wrapped into runners.
-func (l Route) Line(bufferSize int) (Line, error) {
-	source, input, err := l.Source.runner(bufferSize)
+func (r Routing) Line(bufferSize int) (Line, error) {
+	source, input, err := r.Source.runner(bufferSize)
 	if err != nil {
 		return Line{}, fmt.Errorf("error routing %w", err)
 	}
@@ -121,7 +121,7 @@ func (l Route) Line(bufferSize int) (Line, error) {
 		processors []runner.Processor
 		processor  runner.Processor
 	)
-	for _, fn := range l.Processors {
+	for _, fn := range r.Processors {
 		processor, input, err = fn.runner(bufferSize, input)
 		if err != nil {
 			return Line{}, fmt.Errorf("error routing %w", err)
@@ -129,9 +129,9 @@ func (l Route) Line(bufferSize int) (Line, error) {
 		processors = append(processors, processor)
 	}
 
-	sink, err := l.Sink.runner(bufferSize, input)
+	sink, err := r.Sink.runner(bufferSize, input)
 	if err != nil {
-		return Line{}, fmt.Errorf("error routing sink: %w", err)
+		return Line{}, fmt.Errorf("error routing: %w", err)
 	}
 
 	return Line{
