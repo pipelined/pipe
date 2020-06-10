@@ -1,3 +1,4 @@
+// Package mutability provides types to make DSP components mutable.
 package mutability
 
 import (
