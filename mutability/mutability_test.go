@@ -34,7 +34,7 @@ func TestAddParams(t *testing.T) {
 	}{
 		{
 			mocks: []*paramMock{
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 1,
 					expected:   10,
@@ -43,7 +43,7 @@ func TestAddParams(t *testing.T) {
 		},
 		{
 			mocks: []*paramMock{
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 2,
 					expected:   20,
@@ -52,12 +52,12 @@ func TestAddParams(t *testing.T) {
 		},
 		{
 			mocks: []*paramMock{
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 4,
 					expected:   40,
@@ -87,7 +87,7 @@ func TestAppendParams(t *testing.T) {
 	}{
 		{
 			mocks: []*paramMock{
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 1,
 					expected:   10,
@@ -96,12 +96,12 @@ func TestAppendParams(t *testing.T) {
 		},
 		{
 			mocks: []*paramMock{
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 3,
 					expected:   30,
@@ -130,7 +130,7 @@ func TestDetachParams(t *testing.T) {
 	}{
 		{
 			mocks: []*paramMock{
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 1,
 					expected:   10,
@@ -139,12 +139,12 @@ func TestDetachParams(t *testing.T) {
 		},
 		{
 			mocks: []*paramMock{
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 3,
 					expected:   30,
@@ -153,12 +153,12 @@ func TestDetachParams(t *testing.T) {
 		},
 		{
 			mocks: []*paramMock{
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
-				&paramMock{
+				{
 					Mutability: mutability.Mutable(),
 					operations: 0,
 					expected:   0,
