@@ -1,3 +1,4 @@
+// Package metric provides expvar metrics for DSP components.
 package metric
 
 import (
