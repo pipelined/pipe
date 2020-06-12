@@ -40,10 +40,10 @@ hook is triggered when pipe is done or interruped by error or timeout. It
 enables to execute proper clean up logic. For mutability, refer to
 mutability package documentation.
 
-Routing
+Routing and binding
 
-In order to run the pipeline, you first need to build one. It is done by
-creating the routing:
+To run the pipeline, one first need to build one. It is done by creating
+the routing:
 
     route := pipe.Routing{
         Source: &wav.Source{Reader: reader},
@@ -55,12 +55,26 @@ creating the routing:
     }
 
 Routing defines the order in which DSP components form the pipeline. Once
-routing is defined, components can be bound together:
+routing is defined, components can be bound together. It's done by creating
+a line:
 
     line, err := route.Line(bufferSize)
 
-Line executes all allocators provided in routing. It's where components
-should allocate all needed resources, so additional allocations can be
-avoided during execution.
+Line executes all allocators provided in routing and binds components
+together.
+
+Execution
+
+Once components are routed and bound to line, they can be executed. To do
+that pipe should be created:
+
+    p := pipe.New(
+        context.Background(),
+        pipe.WithLines(line),
+	)
+	err := p.Wait()
+
+Pipe will asynchronously run all DSP components until either source or
+context is done.
 */
 package pipe
