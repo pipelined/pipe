@@ -77,15 +77,15 @@ type (
 )
 
 type (
-	// Routing defines sequence of components closures. It has a single
-	// source, zero or many processors, executed sequentially single sik.
+	// Routing defines sequence of DSP components allocators. It has a
+	// single source, zero or many processors and single sink.
 	Routing struct {
 		Source     SourceAllocatorFunc
 		Processors []ProcessorAllocatorFunc
 		Sink       SinkAllocatorFunc
 	}
 
-	// Line is a sequence of DSP components.
+	// Line is a sequence of bound DSP components.
 	Line struct {
 		numChannels int
 		mutators    chan mutability.Mutations
@@ -95,8 +95,8 @@ type (
 	}
 
 	// Pipe listeners the execution of multiple chained lines. Lines might be chained
-	// through components, mixer for example.  If lines are not chained, they must be
-	// controlled by separate Pipes. Use New constructor to instantiate new Pipes.
+	// through components, mixer for example. If lines are not chained, they must be
+	// controlled by separate Pipes.
 	Pipe struct {
 		mutability mutability.Mutability
 		ctx        context.Context
@@ -110,7 +110,9 @@ type (
 	}
 )
 
-// Line line components. All closures are executed and wrapped into runners.
+// Line binds components. All allocators are executed and wrapped into
+// runners. If any of allocators failed, the error will be returned and
+// flush hooks won't be triggered.
 func (r Routing) Line(bufferSize int) (Line, error) {
 	source, input, err := r.Source.runner(bufferSize)
 	if err != nil {
@@ -209,8 +211,7 @@ func (fn SinkAllocatorFunc) runner(bufferSize int, input SignalProperties) (runn
 	}, nil
 }
 
-// New creates a new pipeline.
-// Returned pipeline is in Ready state.
+// New creates and starts new pipe.
 func New(ctx context.Context, options ...Option) Pipe {
 	ctx, cancelFn := context.WithCancel(ctx)
 	p := Pipe{
