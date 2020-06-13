@@ -23,7 +23,7 @@ func (m *mutableMock) AddDelta(delta int) mutability.Mutation {
 	})
 }
 
-func TestAddParams(t *testing.T) {
+func TestPutMutations(t *testing.T) {
 	var tests = []struct {
 		mocks []*mutableMock
 	}{
@@ -62,22 +62,22 @@ func TestAddParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutability.Mutations
+		var mutations mutability.Mutations
 		delta := 10
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Put(m.AddDelta(delta))
+				mutations = mutations.Put(m.AddDelta(delta))
 			}
 		}
 		for _, m := range c.mocks {
-			mutators.ApplyTo(m.Mutability)
+			mutations.ApplyTo(m.Mutability)
 			assertEqual(t, "value", m.value, m.expected)
 			assertEqual(t, "mutability", m.Immutable(), false)
 		}
 	}
 }
 
-func TestAppendParams(t *testing.T) {
+func TestAppendMutations(t *testing.T) {
 	var tests = []struct {
 		mocks []*mutableMock
 	}{
@@ -107,21 +107,22 @@ func TestAppendParams(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutability.Mutations
+		var mutations mutability.Mutations
 		delta := 10
 		for _, m := range c.mocks {
+			var mockMutations mutability.Mutations
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Put(m.AddDelta(delta))
+				mutations = mutations.Append(mockMutations.Put(m.AddDelta(delta)))
 			}
 		}
 		for _, m := range c.mocks {
-			mutators.ApplyTo(m.Mutability)
+			mutations.ApplyTo(m.Mutability)
 			assertEqual(t, "value", m.value, m.expected)
 		}
 	}
 }
 
-func TestDetachParams(t *testing.T) {
+func TestDetachMutations(t *testing.T) {
 	var tests = []struct {
 		mocks []*mutableMock
 	}{
