@@ -7,33 +7,28 @@ import (
 	"pipelined.dev/pipe/mutability"
 )
 
-// paramMock used to set up test cases for mutators
-type paramMock struct {
+// mutableMock used to set up test cases for mutators
+type mutableMock struct {
 	mutability.Mutability
 	value      int
 	operations int
 	expected   int
 }
 
-func (m *paramMock) mutators() mutability.Mutations {
-	var p mutability.Mutations
-	return p.Put(m.param())
-}
-
 // mutators closure to mutability.value
-func (m *paramMock) param() mutability.Mutation {
+func (m *mutableMock) AddDelta(delta int) mutability.Mutation {
 	return m.Mutate(func() error {
-		m.value += 10
+		m.value += delta
 		return nil
 	})
 }
 
 func TestAddParams(t *testing.T) {
 	var tests = []struct {
-		mocks []*paramMock
+		mocks []*mutableMock
 	}{
 		{
-			mocks: []*paramMock{
+			mocks: []*mutableMock{
 				{
 					Mutability: mutability.Mutable(),
 					operations: 1,
@@ -42,7 +37,7 @@ func TestAddParams(t *testing.T) {
 			},
 		},
 		{
-			mocks: []*paramMock{
+			mocks: []*mutableMock{
 				{
 					Mutability: mutability.Mutable(),
 					operations: 2,
@@ -51,7 +46,7 @@ func TestAddParams(t *testing.T) {
 			},
 		},
 		{
-			mocks: []*paramMock{
+			mocks: []*mutableMock{
 				{
 					Mutability: mutability.Mutable(),
 					operations: 3,
@@ -68,9 +63,10 @@ func TestAddParams(t *testing.T) {
 
 	for _, c := range tests {
 		var mutators mutability.Mutations
+		delta := 10
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Put(m.param())
+				mutators = mutators.Put(m.AddDelta(delta))
 			}
 		}
 		for _, m := range c.mocks {
@@ -83,10 +79,10 @@ func TestAddParams(t *testing.T) {
 
 func TestAppendParams(t *testing.T) {
 	var tests = []struct {
-		mocks []*paramMock
+		mocks []*mutableMock
 	}{
 		{
-			mocks: []*paramMock{
+			mocks: []*mutableMock{
 				{
 					Mutability: mutability.Mutable(),
 					operations: 1,
@@ -95,7 +91,7 @@ func TestAppendParams(t *testing.T) {
 			},
 		},
 		{
-			mocks: []*paramMock{
+			mocks: []*mutableMock{
 				{
 					Mutability: mutability.Mutable(),
 					operations: 2,
@@ -112,9 +108,10 @@ func TestAppendParams(t *testing.T) {
 
 	for _, c := range tests {
 		var mutators mutability.Mutations
+		delta := 10
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Append(m.mutators())
+				mutators = mutators.Put(m.AddDelta(delta))
 			}
 		}
 		for _, m := range c.mocks {
@@ -126,10 +123,10 @@ func TestAppendParams(t *testing.T) {
 
 func TestDetachParams(t *testing.T) {
 	var tests = []struct {
-		mocks []*paramMock
+		mocks []*mutableMock
 	}{
 		{
-			mocks: []*paramMock{
+			mocks: []*mutableMock{
 				{
 					Mutability: mutability.Mutable(),
 					operations: 1,
@@ -138,7 +135,7 @@ func TestDetachParams(t *testing.T) {
 			},
 		},
 		{
-			mocks: []*paramMock{
+			mocks: []*mutableMock{
 				{
 					Mutability: mutability.Mutable(),
 					operations: 2,
@@ -152,7 +149,7 @@ func TestDetachParams(t *testing.T) {
 			},
 		},
 		{
-			mocks: []*paramMock{
+			mocks: []*mutableMock{
 				{
 					Mutability: mutability.Mutable(),
 					operations: 4,
@@ -169,9 +166,10 @@ func TestDetachParams(t *testing.T) {
 
 	for _, c := range tests {
 		var mutators mutability.Mutations
+		delta := 10
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
-				mutators = mutators.Put(m.param())
+				mutators = mutators.Put(m.AddDelta(delta))
 			}
 		}
 		for _, m := range c.mocks {
@@ -192,11 +190,12 @@ func TestMutability(t *testing.T) {
 	assertPanic(t, func() {
 		mutability.Immutable().Mutate(func() error { return nil })
 	})
-	mock := &paramMock{
+	mock := &mutableMock{
 		Mutability: mutability.Mutable(),
 	}
-	mock.param().Apply()
-	assertEqual(t, "apply", mock.value, 10)
+	delta := 10
+	mock.AddDelta(delta).Apply()
+	assertEqual(t, "apply", mock.value, delta)
 }
 
 func assertEqual(t *testing.T, name string, result, expected interface{}) {
