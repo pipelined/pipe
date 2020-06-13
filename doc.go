@@ -42,8 +42,7 @@ mutability package documentation.
 
 Routing and binding
 
-To run the pipeline, one first need to build one. It is done by creating
-the routing:
+To run the pipeline, one first need to build it. It starts with a routing:
 
     route := pipe.Routing{
         Source: &wav.Source{Reader: reader},
