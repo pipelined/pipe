@@ -1,10 +1,10 @@
 /*
-Package pool provides cache for signal pools.
+Package pooling provides cache for signal pools.
 
 The main use case for this package is to utilise pools with the same
 allocators across multiple DSP components.
 */
-package pool
+package pooling
 
 import (
 	"sync"

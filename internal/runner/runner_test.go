@@ -6,14 +6,14 @@ import (
 	"reflect"
 	"testing"
 
-	"pipelined.dev/signal"
-
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mock"
 	"pipelined.dev/pipe/mutability"
-	"pipelined.dev/pipe/pool"
+	"pipelined.dev/pipe/pooling"
+
+	"pipelined.dev/signal"
 )
 
 var testError = errors.New("test runner error")
@@ -28,7 +28,7 @@ func TestSource(t *testing.T) {
 		source, props, _ := sourceAllocator(bufferSize)
 		return runner.Source{
 			Mutability: source.Mutability,
-			Output: pool.Get(signal.Allocator{
+			Output: pooling.Get(signal.Allocator{
 				Channels: props.Channels,
 				Length:   bufferSize,
 				Capacity: bufferSize,
@@ -128,12 +128,12 @@ func TestProcessor(t *testing.T) {
 		processor, props, _ := processorAllocator(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Processor{
 			Mutability: processor.Mutability,
-			Input: pool.Get(signal.Allocator{
+			Input: pooling.Get(signal.Allocator{
 				Channels: props.Channels,
 				Length:   bufferSize,
 				Capacity: bufferSize,
 			}),
-			Output: pool.Get(signal.Allocator{
+			Output: pooling.Get(signal.Allocator{
 				Channels: props.Channels,
 				Length:   bufferSize,
 				Capacity: bufferSize,
@@ -239,7 +239,7 @@ func TestSink(t *testing.T) {
 		sink, _ := sinkAllocator(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Sink{
 			Mutability: sink.Mutability,
-			Input: pool.Get(signal.Allocator{
+			Input: pooling.Get(signal.Allocator{
 				Channels: channels,
 				Length:   bufferSize,
 				Capacity: bufferSize,
