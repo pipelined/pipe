@@ -9,7 +9,7 @@ import (
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mutability"
-	"pipelined.dev/pipe/pool"
+	"pipelined.dev/pipe/pooling"
 )
 
 type (
@@ -159,7 +159,7 @@ func (fn SourceAllocatorFunc) runner(bufferSize int) (runner.Source, SignalPrope
 	}
 	return runner.Source{
 		Mutability: source.Mutability,
-		Output: pool.Get(signal.Allocator{
+		Output: pooling.Get(signal.Allocator{
 			Channels: props.Channels,
 			Length:   bufferSize,
 			Capacity: bufferSize,
@@ -177,12 +177,12 @@ func (fn ProcessorAllocatorFunc) runner(bufferSize int, input SignalProperties) 
 	}
 	return runner.Processor{
 		Mutability: processor.Mutability,
-		Input: pool.Get(signal.Allocator{
+		Input: pooling.Get(signal.Allocator{
 			Channels: input.Channels,
 			Length:   bufferSize,
 			Capacity: bufferSize,
 		}),
-		Output: pool.Get(signal.Allocator{
+		Output: pooling.Get(signal.Allocator{
 			Channels: output.Channels,
 			Length:   bufferSize,
 			Capacity: bufferSize,
@@ -200,7 +200,7 @@ func (fn SinkAllocatorFunc) runner(bufferSize int, input SignalProperties) (runn
 	}
 	return runner.Sink{
 		Mutability: sink.Mutability,
-		Input: pool.Get(signal.Allocator{
+		Input: pooling.Get(signal.Allocator{
 			Channels: input.Channels,
 			Length:   bufferSize,
 			Capacity: bufferSize,
