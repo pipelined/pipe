@@ -76,30 +76,30 @@ func TestReset(t *testing.T) {
 
 func TestAddLine(t *testing.T) {
 	sink1 := &mock.Sink{Discard: true}
-	line1, err := pipe.Routing{
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-		}).Source(),
-		Sink: sink1.Sink(),
-	}.Line(bufferSize)
-	assertNil(t, "error", err)
-
 	sink2 := &mock.Sink{Discard: true}
-	line2, err := pipe.Routing{
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-		}).Source(),
-		Sink: sink2.Sink(),
-	}.Line(bufferSize)
+	lines, err := pipe.Lines(bufferSize,
+		pipe.Routing{
+			Source: (&mock.Source{
+				Limit:    862 * bufferSize,
+				Channels: 2,
+			}).Source(),
+			Sink: sink1.Sink(),
+		},
+		pipe.Routing{
+			Source: (&mock.Source{
+				Limit:    862 * bufferSize,
+				Channels: 2,
+			}).Source(),
+			Sink: sink2.Sink(),
+		},
+	)
 	assertNil(t, "error", err)
 
 	p := pipe.New(
 		context.Background(),
-		pipe.WithLines(line1),
+		pipe.WithLines(lines[0]),
 	)
-	p.Push(p.AddLine(line2))
+	p.Push(p.AddLine(lines[1]))
 
 	// start
 	err = p.Wait()

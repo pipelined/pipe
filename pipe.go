@@ -110,6 +110,20 @@ type (
 	}
 )
 
+// Lines is a helper function that allows to bind multiple routes with
+// using same buffer size.
+func Lines(bufferSize int, routes ...Routing) ([]Line, error) {
+	var lines []Line
+	for i := range routes {
+		l, err := routes[i].Line(bufferSize)
+		if err != nil {
+			return nil, err
+		}
+		lines = append(lines, l)
+	}
+	return lines, nil
+}
+
 // Line binds components. All allocators are executed and wrapped into
 // runners. If any of allocators failed, the error will be returned and
 // flush hooks won't be triggered.
