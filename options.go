@@ -8,8 +8,8 @@ type Option func(*Pipe)
 // WithLines provides lines for the pipe.
 func WithLines(lines ...Line) Option {
 	return func(p *Pipe) {
-		for _, l := range lines {
-			addLine(p, l)
+		for i := range lines {
+			addLine(p, lines[i])
 		}
 	}
 }

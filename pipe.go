@@ -9,7 +9,6 @@ import (
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mutability"
-	"pipelined.dev/pipe/pooling"
 )
 
 type (
@@ -167,21 +166,17 @@ func (l Line) listeners(listeners map[mutability.Mutability]chan mutability.Muta
 }
 
 func (fn SourceAllocatorFunc) runner(bufferSize int) (runner.Source, SignalProperties, error) {
-	source, props, err := fn(bufferSize)
+	source, output, err := fn(bufferSize)
 	if err != nil {
 		return runner.Source{}, SignalProperties{}, fmt.Errorf("source: %w", err)
 	}
 	return runner.Source{
 		Mutability: source.Mutability,
-		Output: pooling.Get(signal.Allocator{
-			Channels: props.Channels,
-			Length:   bufferSize,
-			Capacity: bufferSize,
-		}),
-		Fn:    source.SourceFunc,
-		Flush: runner.Flush(source.FlushFunc),
-		Meter: metric.Meter(source, props.SampleRate),
-	}, props, nil
+		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
+		Fn:         source.SourceFunc,
+		Flush:      runner.Flush(source.FlushFunc),
+		Meter:      metric.Meter(source, output.SampleRate),
+	}, output, nil
 }
 
 func (fn ProcessorAllocatorFunc) runner(bufferSize int, input SignalProperties) (runner.Processor, SignalProperties, error) {
@@ -191,19 +186,11 @@ func (fn ProcessorAllocatorFunc) runner(bufferSize int, input SignalProperties) 
 	}
 	return runner.Processor{
 		Mutability: processor.Mutability,
-		Input: pooling.Get(signal.Allocator{
-			Channels: input.Channels,
-			Length:   bufferSize,
-			Capacity: bufferSize,
-		}),
-		Output: pooling.Get(signal.Allocator{
-			Channels: output.Channels,
-			Length:   bufferSize,
-			Capacity: bufferSize,
-		}),
-		Fn:    processor.ProcessFunc,
-		Flush: runner.Flush(processor.FlushFunc),
-		Meter: metric.Meter(processor, output.SampleRate),
+		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
+		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
+		Fn:         processor.ProcessFunc,
+		Flush:      runner.Flush(processor.FlushFunc),
+		Meter:      metric.Meter(processor, output.SampleRate),
 	}, output, nil
 }
 
@@ -214,14 +201,10 @@ func (fn SinkAllocatorFunc) runner(bufferSize int, input SignalProperties) (runn
 	}
 	return runner.Sink{
 		Mutability: sink.Mutability,
-		Input: pooling.Get(signal.Allocator{
-			Channels: input.Channels,
-			Length:   bufferSize,
-			Capacity: bufferSize,
-		}),
-		Fn:    sink.SinkFunc,
-		Flush: runner.Flush(sink.FlushFunc),
-		Meter: metric.Meter(sink, input.SampleRate),
+		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
+		Fn:         sink.SinkFunc,
+		Flush:      runner.Flush(sink.FlushFunc),
+		Meter:      metric.Meter(sink, input.SampleRate),
 	}, nil
 }
 
@@ -307,8 +290,8 @@ func start(ctx context.Context, lines []Line) []<-chan error {
 	// start all runners
 	// error channel for each component
 	errChans := make([]<-chan error, 0, 2*len(lines))
-	for _, l := range lines {
-		errChans = append(errChans, l.start(ctx)...)
+	for i := range lines {
+		errChans = append(errChans, lines[i].start(ctx)...)
 	}
 	return errChans
 }

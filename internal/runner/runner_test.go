@@ -11,7 +11,6 @@ import (
 	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mock"
 	"pipelined.dev/pipe/mutability"
-	"pipelined.dev/pipe/pooling"
 
 	"pipelined.dev/signal"
 )
@@ -28,14 +27,10 @@ func TestSource(t *testing.T) {
 		source, props, _ := sourceAllocator(bufferSize)
 		return runner.Source{
 			Mutability: source.Mutability,
-			Output: pooling.Get(signal.Allocator{
-				Channels: props.Channels,
-				Length:   bufferSize,
-				Capacity: bufferSize,
-			}),
-			Fn:    source.SourceFunc,
-			Flush: runner.Flush(source.FlushFunc),
-			Meter: metric.Meter(source, props.SampleRate),
+			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
+			Fn:         source.SourceFunc,
+			Flush:      runner.Flush(source.FlushFunc),
+			Meter:      metric.Meter(source, props.SampleRate),
 		}
 	}
 	assertSource := func(t *testing.T, mockSource *mock.Source, out <-chan runner.Message, errs <-chan error) {
@@ -128,19 +123,11 @@ func TestProcessor(t *testing.T) {
 		processor, props, _ := processorAllocator(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Processor{
 			Mutability: processor.Mutability,
-			Input: pooling.Get(signal.Allocator{
-				Channels: props.Channels,
-				Length:   bufferSize,
-				Capacity: bufferSize,
-			}),
-			Output: pooling.Get(signal.Allocator{
-				Channels: props.Channels,
-				Length:   bufferSize,
-				Capacity: bufferSize,
-			}),
-			Fn:    processor.ProcessFunc,
-			Flush: runner.Flush(processor.FlushFunc),
-			Meter: metric.Meter(processor, props.SampleRate),
+			InPool:     signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
+			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
+			Fn:         processor.ProcessFunc,
+			Flush:      runner.Flush(processor.FlushFunc),
+			Meter:      metric.Meter(processor, props.SampleRate),
 		}
 	}
 	testProcessor := func(ctx context.Context, mockProcessor mock.Processor) func(*testing.T) {
@@ -239,14 +226,10 @@ func TestSink(t *testing.T) {
 		sink, _ := sinkAllocator(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Sink{
 			Mutability: sink.Mutability,
-			Input: pooling.Get(signal.Allocator{
-				Channels: channels,
-				Length:   bufferSize,
-				Capacity: bufferSize,
-			}),
-			Fn:    sink.SinkFunc,
-			Flush: runner.Flush(sink.FlushFunc),
-			Meter: metric.Meter(sink, 44100),
+			InPool:     signal.GetPoolAllocator(channels, bufferSize, bufferSize),
+			Fn:         sink.SinkFunc,
+			Flush:      runner.Flush(sink.FlushFunc),
+			Meter:      metric.Meter(sink, 44100),
 		}
 	}
 	testSink := func(ctx context.Context, mockSink mock.Sink) func(*testing.T) {

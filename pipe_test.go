@@ -146,6 +146,7 @@ func TestLineBindingFail(t *testing.T) {
 	)
 	testBinding := func(r pipe.Routing) func(*testing.T) {
 		return func(t *testing.T) {
+			t.Helper()
 			_, err := r.Line(bufferSize)
 			assertEqual(t, "error", errors.Is(err, errorBinding), true)
 		}

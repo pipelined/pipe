@@ -9,7 +9,7 @@ type merger struct {
 
 // merge error channels from all components into one.
 func (m *merger) merge(errcList ...<-chan error) {
-	//function to wait for error channel
+	// function to wait for error channel
 	m.wg.Add(len(errcList))
 	for _, ec := range errcList {
 		go m.done(ec)
@@ -17,7 +17,7 @@ func (m *merger) merge(errcList ...<-chan error) {
 }
 
 func (m *merger) wait() {
-	//wait and close out
+	// wait and close out
 	m.wg.Wait()
 	close(m.errors)
 }

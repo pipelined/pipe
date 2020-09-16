@@ -22,28 +22,28 @@ type (
 	Source struct {
 		Mutability [16]byte
 		Flush
-		Output *signal.Pool
-		Fn     func(out signal.Floating) (int, error)
-		Meter  metric.ResetFunc
+		OutPool *signal.PoolAllocator
+		Fn      func(out signal.Floating) (int, error)
+		Meter   metric.ResetFunc
 	}
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
 		Mutability [16]byte
 		Flush
-		Input  *signal.Pool
-		Output *signal.Pool
-		Fn     func(in, out signal.Floating) error
-		Meter  metric.ResetFunc
+		InPool  *signal.PoolAllocator
+		OutPool *signal.PoolAllocator
+		Fn      func(in, out signal.Floating) error
+		Meter   metric.ResetFunc
 	}
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
 		Mutability [16]byte
 		Flush
-		Input *signal.Pool
-		Fn    func(in signal.Floating) error
-		Meter metric.ResetFunc
+		InPool *signal.PoolAllocator
+		Fn     func(in signal.Floating) error
+		Meter  metric.ResetFunc
 	}
 )
 
@@ -90,13 +90,13 @@ func (r Source) Run(ctx context.Context, mutationsChan chan mutability.Mutations
 				return
 			}
 
-			outSignal = r.Output.GetFloat64()
+			outSignal = r.OutPool.GetFloat64()
 			if read, err = r.Fn(outSignal); err != nil {
 				if err != io.EOF {
 					errs <- fmt.Errorf("error running source: %w", err)
 				}
 				// this buffer wasn't sent, free now
-				r.Output.PutFloat64(outSignal)
+				outSignal.Free(r.OutPool)
 				return
 			}
 			if read != outSignal.Length() {
@@ -147,17 +147,17 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 
 			if err = message.Mutations.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating processor: %w", err)
-				r.Input.PutFloat64(message.Signal)
+				message.Signal.Free(r.InPool)
 				return
 			}
 
-			outSignal = r.Output.GetFloat64()
+			outSignal = r.OutPool.GetFloat64()
 			err = r.Fn(message.Signal, outSignal)
-			r.Input.PutFloat64(message.Signal)
+			message.Signal.Free(r.InPool)
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
 				// this buffer wasn't sent, free now
-				r.Output.PutFloat64(outSignal)
+				outSignal.Free(r.OutPool)
 				return
 			}
 			meter(outSignal.Length())
@@ -203,12 +203,12 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 			// apply Mutators
 			if err = message.Mutations.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating sink: %w", err)
-				r.Input.PutFloat64(message.Signal) // need to free
+				message.Signal.Free(r.InPool) // need to free
 				return
 			}
 			err = r.Fn(message.Signal)     // sink a buffer
 			meter(message.Signal.Length()) // capture metrics
-			r.Input.PutFloat64(message.Signal)
+			message.Signal.Free(r.InPool)
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)
 				return

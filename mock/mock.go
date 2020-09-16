@@ -151,7 +151,9 @@ type Sink struct {
 // Sink returns closure that creates new sinks.
 func (m *Sink) Sink() pipe.SinkAllocatorFunc {
 	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
-		m.Counter.Values = signal.Allocator{Channels: props.Channels, Capacity: bufferSize}.Float64()
+		if !m.Discard {
+			m.Counter.Values = signal.Allocator{Channels: props.Channels, Capacity: bufferSize}.Float64()
+		}
 		return pipe.Sink{
 			Mutability: m.Mutator.Mutability,
 			FlushFunc:  m.Flusher.Flush,
@@ -160,7 +162,7 @@ func (m *Sink) Sink() pipe.SinkAllocatorFunc {
 					return m.ErrorOnCall
 				}
 				if !m.Discard {
-					m.Counter.Values = m.Counter.Values.Append(in)
+					m.Counter.Values.Append(in)
 				}
 				m.Counter.advance(in.Length())
 				return nil
