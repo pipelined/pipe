@@ -7,7 +7,6 @@ import (
 
 	"pipelined.dev/signal"
 
-	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mutability"
 )
 
@@ -22,28 +21,25 @@ type (
 	Source struct {
 		Mutability [16]byte
 		Flush
-		Output *signal.Pool
-		Fn     func(out signal.Floating) (int, error)
-		Meter  metric.ResetFunc
+		OutPool *signal.PoolAllocator
+		Fn      func(out signal.Floating) (int, error)
 	}
 
 	// Processor executes pipe.Processor components.
 	Processor struct {
 		Mutability [16]byte
 		Flush
-		Input  *signal.Pool
-		Output *signal.Pool
-		Fn     func(in, out signal.Floating) error
-		Meter  metric.ResetFunc
+		InPool  *signal.PoolAllocator
+		OutPool *signal.PoolAllocator
+		Fn      func(in, out signal.Floating) error
 	}
 
 	// Sink executes pipe.Sink components.
 	Sink struct {
 		Mutability [16]byte
 		Flush
-		Input *signal.Pool
-		Fn    func(in signal.Floating) error
-		Meter metric.ResetFunc
+		InPool *signal.PoolAllocator
+		Fn     func(in signal.Floating) error
 	}
 )
 
@@ -61,7 +57,6 @@ func (fn Flush) call(ctx context.Context) error {
 func (r Source) Run(ctx context.Context, mutationsChan chan mutability.Mutations) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
-	meter := r.Meter()
 	go func() {
 		defer close(out)
 		defer close(errs)
@@ -90,19 +85,18 @@ func (r Source) Run(ctx context.Context, mutationsChan chan mutability.Mutations
 				return
 			}
 
-			outSignal = r.Output.GetFloat64()
+			outSignal = r.OutPool.GetFloat64()
 			if read, err = r.Fn(outSignal); err != nil {
 				if err != io.EOF {
 					errs <- fmt.Errorf("error running source: %w", err)
 				}
 				// this buffer wasn't sent, free now
-				r.Output.PutFloat64(outSignal)
+				outSignal.Free(r.OutPool)
 				return
 			}
 			if read != outSignal.Length() {
 				outSignal = outSignal.Slice(0, read)
 			}
-			meter(outSignal.Length())
 
 			select {
 			case out <- Message{Mutations: mutations, Signal: outSignal}:
@@ -119,7 +113,6 @@ func (r Source) Run(ctx context.Context, mutationsChan chan mutability.Mutations
 func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, <-chan error) {
 	errs := make(chan error, 1)
 	out := make(chan Message, 1)
-	meter := r.Meter()
 	go func() {
 		defer close(out)
 		defer close(errs)
@@ -147,20 +140,19 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 
 			if err = message.Mutations.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating processor: %w", err)
-				r.Input.PutFloat64(message.Signal)
+				message.Signal.Free(r.InPool)
 				return
 			}
 
-			outSignal = r.Output.GetFloat64()
+			outSignal = r.OutPool.GetFloat64()
 			err = r.Fn(message.Signal, outSignal)
-			r.Input.PutFloat64(message.Signal)
+			message.Signal.Free(r.InPool)
 			if err != nil {
 				errs <- fmt.Errorf("error running processor: %w", err)
 				// this buffer wasn't sent, free now
-				r.Output.PutFloat64(outSignal)
+				outSignal.Free(r.OutPool)
 				return
 			}
-			meter(outSignal.Length())
 
 			select {
 			case out <- Message{Mutations: message.Mutations, Signal: outSignal}:
@@ -175,7 +167,6 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 // Run starts the sink runner.
 func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 	errs := make(chan error, 1)
-	meter := r.Meter()
 	go func() {
 		defer close(errs)
 		// flush on return
@@ -203,12 +194,11 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 			// apply Mutators
 			if err = message.Mutations.ApplyTo(r.Mutability); err != nil {
 				errs <- fmt.Errorf("error mutating sink: %w", err)
-				r.Input.PutFloat64(message.Signal) // need to free
+				message.Signal.Free(r.InPool) // need to free
 				return
 			}
-			err = r.Fn(message.Signal)     // sink a buffer
-			meter(message.Signal.Length()) // capture metrics
-			r.Input.PutFloat64(message.Signal)
+			err = r.Fn(message.Signal) // sink a buffer
+			message.Signal.Free(r.InPool)
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)
 				return
