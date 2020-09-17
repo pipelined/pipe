@@ -7,7 +7,6 @@ import (
 
 	"pipelined.dev/signal"
 
-	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mutability"
 )
 
@@ -24,7 +23,6 @@ type (
 		Flush
 		OutPool *signal.PoolAllocator
 		Fn      func(out signal.Floating) (int, error)
-		Meter   metric.ResetFunc
 	}
 
 	// Processor executes pipe.Processor components.
@@ -34,7 +32,6 @@ type (
 		InPool  *signal.PoolAllocator
 		OutPool *signal.PoolAllocator
 		Fn      func(in, out signal.Floating) error
-		Meter   metric.ResetFunc
 	}
 
 	// Sink executes pipe.Sink components.
@@ -43,7 +40,6 @@ type (
 		Flush
 		InPool *signal.PoolAllocator
 		Fn     func(in signal.Floating) error
-		Meter  metric.ResetFunc
 	}
 )
 
@@ -61,7 +57,6 @@ func (fn Flush) call(ctx context.Context) error {
 func (r Source) Run(ctx context.Context, mutationsChan chan mutability.Mutations) (<-chan Message, <-chan error) {
 	out := make(chan Message, 1)
 	errs := make(chan error, 1)
-	meter := r.Meter()
 	go func() {
 		defer close(out)
 		defer close(errs)
@@ -102,7 +97,6 @@ func (r Source) Run(ctx context.Context, mutationsChan chan mutability.Mutations
 			if read != outSignal.Length() {
 				outSignal = outSignal.Slice(0, read)
 			}
-			meter(outSignal.Length())
 
 			select {
 			case out <- Message{Mutations: mutations, Signal: outSignal}:
@@ -119,7 +113,6 @@ func (r Source) Run(ctx context.Context, mutationsChan chan mutability.Mutations
 func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, <-chan error) {
 	errs := make(chan error, 1)
 	out := make(chan Message, 1)
-	meter := r.Meter()
 	go func() {
 		defer close(out)
 		defer close(errs)
@@ -160,7 +153,6 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 				outSignal.Free(r.OutPool)
 				return
 			}
-			meter(outSignal.Length())
 
 			select {
 			case out <- Message{Mutations: message.Mutations, Signal: outSignal}:
@@ -175,7 +167,6 @@ func (r Processor) Run(ctx context.Context, in <-chan Message) (<-chan Message, 
 // Run starts the sink runner.
 func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 	errs := make(chan error, 1)
-	meter := r.Meter()
 	go func() {
 		defer close(errs)
 		// flush on return
@@ -206,8 +197,7 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 				message.Signal.Free(r.InPool) // need to free
 				return
 			}
-			err = r.Fn(message.Signal)     // sink a buffer
-			meter(message.Signal.Length()) // capture metrics
+			err = r.Fn(message.Signal) // sink a buffer
 			message.Signal.Free(r.InPool)
 			if err != nil {
 				errs <- fmt.Errorf("error running sink: %w", err)

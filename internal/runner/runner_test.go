@@ -8,7 +8,6 @@ import (
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/runner"
-	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mock"
 	"pipelined.dev/pipe/mutability"
 
@@ -30,7 +29,6 @@ func TestSource(t *testing.T) {
 			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
 			Fn:         source.SourceFunc,
 			Flush:      runner.Flush(source.FlushFunc),
-			Meter:      metric.Meter(source, props.SampleRate),
 		}
 	}
 	assertSource := func(t *testing.T, mockSource *mock.Source, out <-chan runner.Message, errs <-chan error) {
@@ -127,7 +125,6 @@ func TestProcessor(t *testing.T) {
 			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
 			Fn:         processor.ProcessFunc,
 			Flush:      runner.Flush(processor.FlushFunc),
-			Meter:      metric.Meter(processor, props.SampleRate),
 		}
 	}
 	testProcessor := func(ctx context.Context, mockProcessor mock.Processor) func(*testing.T) {
@@ -229,7 +226,6 @@ func TestSink(t *testing.T) {
 			InPool:     signal.GetPoolAllocator(channels, bufferSize, bufferSize),
 			Fn:         sink.SinkFunc,
 			Flush:      runner.Flush(sink.FlushFunc),
-			Meter:      metric.Meter(sink, 44100),
 		}
 	}
 	testSink := func(ctx context.Context, mockSink mock.Sink) func(*testing.T) {

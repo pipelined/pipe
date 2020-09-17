@@ -7,7 +7,6 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe/internal/runner"
-	"pipelined.dev/pipe/metric"
 	"pipelined.dev/pipe/mutability"
 )
 
@@ -175,7 +174,6 @@ func (fn SourceAllocatorFunc) runner(bufferSize int) (runner.Source, SignalPrope
 		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
 		Fn:         source.SourceFunc,
 		Flush:      runner.Flush(source.FlushFunc),
-		Meter:      metric.Meter(source, output.SampleRate),
 	}, output, nil
 }
 
@@ -190,7 +188,6 @@ func (fn ProcessorAllocatorFunc) runner(bufferSize int, input SignalProperties) 
 		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
 		Fn:         processor.ProcessFunc,
 		Flush:      runner.Flush(processor.FlushFunc),
-		Meter:      metric.Meter(processor, output.SampleRate),
 	}, output, nil
 }
 
@@ -204,7 +201,6 @@ func (fn SinkAllocatorFunc) runner(bufferSize int, input SignalProperties) (runn
 		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
 		Fn:         sink.SinkFunc,
 		Flush:      runner.Flush(sink.FlushFunc),
-		Meter:      metric.Meter(sink, input.SampleRate),
 	}, nil
 }
 
