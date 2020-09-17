@@ -100,7 +100,7 @@ type (
 		ctx        context.Context
 		cancelFn   context.CancelFunc
 		merger     *merger
-		lines      []Line
+		lines      []*Line
 		listeners  map[mutability.Mutability]chan mutability.Mutations
 		mutations  map[chan mutability.Mutations]mutability.Mutations
 		push       chan []mutability.Mutation
@@ -110,8 +110,8 @@ type (
 
 // Lines is a helper function that allows to bind multiple routes with
 // using same buffer size.
-func Lines(bufferSize int, routes ...Routing) ([]Line, error) {
-	var lines []Line
+func Lines(bufferSize int, routes ...Routing) ([]*Line, error) {
+	var lines []*Line
 	for i := range routes {
 		l, err := routes[i].Line(bufferSize)
 		if err != nil {
@@ -125,10 +125,10 @@ func Lines(bufferSize int, routes ...Routing) ([]Line, error) {
 // Line binds components. All allocators are executed and wrapped into
 // runners. If any of allocators failed, the error will be returned and
 // flush hooks won't be triggered.
-func (r Routing) Line(bufferSize int) (Line, error) {
+func (r Routing) Line(bufferSize int) (*Line, error) {
 	source, input, err := r.Source.runner(bufferSize)
 	if err != nil {
-		return Line{}, fmt.Errorf("error routing %w", err)
+		return nil, fmt.Errorf("error routing %w", err)
 	}
 
 	var (
@@ -138,17 +138,17 @@ func (r Routing) Line(bufferSize int) (Line, error) {
 	for _, fn := range r.Processors {
 		processor, input, err = fn.runner(bufferSize, input)
 		if err != nil {
-			return Line{}, fmt.Errorf("error routing %w", err)
+			return nil, fmt.Errorf("error routing %w", err)
 		}
 		processors = append(processors, processor)
 	}
 
 	sink, err := r.Sink.runner(bufferSize, input)
 	if err != nil {
-		return Line{}, fmt.Errorf("error routing: %w", err)
+		return nil, fmt.Errorf("error routing: %w", err)
 	}
 
-	return Line{
+	return &Line{
 		mutators:   make(chan mutability.Mutations, 1),
 		source:     source,
 		processors: processors,
@@ -156,7 +156,7 @@ func (r Routing) Line(bufferSize int) (Line, error) {
 	}, nil
 }
 
-func (l Line) listeners(listeners map[mutability.Mutability]chan mutability.Mutations) {
+func (l *Line) listeners(listeners map[mutability.Mutability]chan mutability.Mutations) {
 	listeners[l.source.Mutability] = l.mutators
 	for i := range l.processors {
 		listeners[l.processors[i].Mutability] = l.mutators
@@ -205,7 +205,7 @@ func (fn SinkAllocatorFunc) runner(bufferSize int, input SignalProperties) (runn
 }
 
 // New creates and starts new pipe.
-func New(ctx context.Context, options ...Option) Pipe {
+func New(ctx context.Context, options ...Option) *Pipe {
 	ctx, cancelFn := context.WithCancel(ctx)
 	p := Pipe{
 		mutability: mutability.Mutable(),
@@ -216,7 +216,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 		cancelFn:  cancelFn,
 		listeners: make(map[mutability.Mutability]chan mutability.Mutations),
 		mutations: make(map[chan mutability.Mutations]mutability.Mutations),
-		lines:     make([]Line, 0),
+		lines:     make([]*Line, 0),
 		push:      make(chan []mutability.Mutation, 1),
 		errors:    make(chan error, 1),
 	}
@@ -260,7 +260,7 @@ func New(ctx context.Context, options ...Option) Pipe {
 			}
 		}
 	}()
-	return p
+	return &p
 }
 
 func push(mutators map[chan mutability.Mutations]mutability.Mutations) {
@@ -269,7 +269,7 @@ func push(mutators map[chan mutability.Mutations]mutability.Mutations) {
 	}
 }
 
-func (p Pipe) interrupt(err error) {
+func (p *Pipe) interrupt(err error) {
 	p.cancelFn()
 	// wait until all groutines stop.
 	for {
@@ -282,7 +282,7 @@ func (p Pipe) interrupt(err error) {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, lines []Line) []<-chan error {
+func start(ctx context.Context, lines []*Line) []<-chan error {
 	// start all runners
 	// error channel for each component
 	errChans := make([]<-chan error, 0, 2*len(lines))
@@ -292,7 +292,7 @@ func start(ctx context.Context, lines []Line) []<-chan error {
 	return errChans
 }
 
-func (l Line) start(ctx context.Context) []<-chan error {
+func (l *Line) start(ctx context.Context) []<-chan error {
 	errChans := make([]<-chan error, 0, 2+len(l.processors))
 	// start source
 	out, errs := l.source.Run(ctx, l.mutators)
@@ -311,20 +311,20 @@ func (l Line) start(ctx context.Context) []<-chan error {
 
 // Push new mutators into pipe.
 // Calling this method after pipe is done will cause a panic.
-func (p Pipe) Push(mutations ...mutability.Mutation) {
+func (p *Pipe) Push(mutations ...mutability.Mutation) {
 	p.push <- mutations
 }
 
 // AddLine adds the line to the pipe.
-func (p Pipe) AddLine(l Line) mutability.Mutation {
+func (p *Pipe) AddLine(l *Line) mutability.Mutation {
 	return p.mutability.Mutate(func() error {
-		addLine(&p, l)
+		addLine(p, l)
 		p.merger.merge(l.start(p.ctx)...)
 		return nil
 	})
 }
 
-func addLine(p *Pipe, l Line) {
+func addLine(p *Pipe, l *Line) {
 	p.lines = append(p.lines, l)
 	l.listeners(p.listeners)
 }
@@ -335,7 +335,7 @@ func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 }
 
 // Wait for state transition or first error to occur.
-func (p Pipe) Wait() error {
+func (p *Pipe) Wait() error {
 	for err := range p.errors {
 		if err != nil {
 			return err

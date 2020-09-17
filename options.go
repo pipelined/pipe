@@ -6,7 +6,7 @@ import "pipelined.dev/pipe/mutability"
 type Option func(*Pipe)
 
 // WithLines provides lines for the pipe.
-func WithLines(lines ...Line) Option {
+func WithLines(lines ...*Line) Option {
 	return func(p *Pipe) {
 		for i := range lines {
 			addLine(p, lines[i])
