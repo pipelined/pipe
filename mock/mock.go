@@ -55,7 +55,7 @@ type Source struct {
 	Limit       int
 	Value       float64
 	Channels    int
-	SampleRate  signal.SampleRate
+	SampleRate  signal.Frequency
 	ErrorOnCall error
 	ErrorOnMake error
 }
