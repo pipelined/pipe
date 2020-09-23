@@ -13,9 +13,10 @@ import (
 type (
 	// SignalProperties contains information about input/output signal.
 	SignalProperties struct {
-		signal.SampleRate
-		Channels int
+		SampleRate signal.Frequency
+		Channels   int
 	}
+
 	// SourceAllocatorFunc returns source for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
