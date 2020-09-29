@@ -105,8 +105,8 @@ type (
 	}
 )
 
-// New is a helper function that allows to bind multiple routes with
-// using same buffer size.
+// New returns a new Pipe that binds multiple lines using the same context
+// and buffer size.
 func New(ctx context.Context, bufferSize int, lines ...*Line) (*Pipe, error) {
 	ctx, cancelFn := context.WithCancel(ctx)
 	if len(lines) == 0 {
@@ -222,7 +222,7 @@ func (p *Pipe) Run(initializers ...mutability.Mutation) *Runner {
 	// cancel is required to stop the pipe in case of error
 	errcs := start(p.ctx, p.runners)
 	merger := merger{
-		errors: make(chan error, 1),
+		errorChan: make(chan error, 1),
 	}
 	merger.merge(errcs...)
 	go merger.wait()
@@ -252,7 +252,7 @@ func (p *Pipe) Run(initializers ...mutability.Mutation) *Runner {
 						push(mutations)
 					}
 				}
-			case err, ok := <-merger.errors:
+			case err, ok := <-merger.errorChan:
 				// merger has buffer of one error,
 				// if more errors happen, they will be ignored.
 				if ok {
@@ -287,7 +287,7 @@ func (m *merger) await() {
 	// wait until all groutines stop.
 	for {
 		// only the first error is propagated.
-		if _, ok := <-m.errors; !ok {
+		if _, ok := <-m.errorChan; !ok {
 			break
 		}
 	}
