@@ -17,6 +17,14 @@ type Message struct {
 }
 
 type (
+	// Runner defines the sequence of executors.
+	Runner struct {
+		Mutators chan mutability.Mutations
+		Source
+		Processors []Processor
+		Sink
+	}
+
 	// Source executes pipe.Source components.
 	Source struct {
 		Mutability [16]byte
@@ -207,4 +215,22 @@ func (r Sink) Run(ctx context.Context, in <-chan Message) <-chan error {
 	}()
 
 	return errs
+}
+
+// Run starts the runners.
+func (r *Runner) Run(ctx context.Context) []<-chan error {
+	errChans := make([]<-chan error, 0, 2+len(r.Processors))
+	// start source
+	out, errs := r.Source.Run(ctx, r.Mutators)
+	errChans = append(errChans, errs)
+
+	// start chained processesing
+	for _, proc := range r.Processors {
+		out, errs = proc.Run(ctx, out)
+		errChans = append(errChans, errs)
+	}
+
+	errs = r.Sink.Run(ctx, out)
+	errChans = append(errChans, errs)
+	return errChans
 }

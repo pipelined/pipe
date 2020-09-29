@@ -24,7 +24,7 @@ func TestSource(t *testing.T) {
 	testSource := func(source mock.Source, test params) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			fn, props, _ := source.Source()(test.bufferSize)
+			fn, props, _ := source.Source()(context.Background(), test.bufferSize)
 			buf := signal.Allocator{
 				Channels: props.Channels,
 				Length:   test.bufferSize,
@@ -52,7 +52,7 @@ func TestSource(t *testing.T) {
 			Limit:    test.bufferSize,
 			Channels: 1,
 		}
-		source, props, _ := mockSource.Source()(10)
+		source, props, _ := mockSource.Source()(context.Background(), 10)
 		source.SourceFunc(signal.Allocator{
 			Channels: props.Channels,
 			Length:   test.bufferSize,
@@ -109,7 +109,7 @@ func TestProcessor(t *testing.T) {
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, _ := processorMock.Processor()(0, pipe.SignalProperties{})
+			processor, _, _ := processorMock.Processor()(context.Background(), 0, pipe.SignalProperties{})
 
 			alloc := signal.Allocator{
 				Channels: 1,
@@ -159,7 +159,7 @@ func TestSink(t *testing.T) {
 	}
 	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, _ := sinkMock.Sink()(0, pipe.SignalProperties{Channels: 1})
+			sink, _ := sinkMock.Sink()(context.Background(), 0, pipe.SignalProperties{Channels: 1})
 
 			alloc := signal.Allocator{
 				Channels: 1,
