@@ -41,7 +41,7 @@ func (c *Counter) advance(size int) {
 }
 
 // Flush implements pipe.Flusher.
-func (f *Flusher) Flush(ctx context.Context) error {
+func (f *Flusher) Flush() error {
 	f.Flushed = true
 	return f.ErrorOnFlush
 }

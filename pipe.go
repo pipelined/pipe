@@ -72,7 +72,7 @@ type (
 	SinkFunc func(in signal.Floating) error
 
 	// FlushFunc provides a hook to flush all buffers for the component.
-	FlushFunc func(context.Context) error
+	FlushFunc func() error
 )
 
 type (
@@ -173,7 +173,7 @@ func (fn SourceAllocatorFunc) runner(ctx context.Context, bufferSize int) (runne
 		Mutability: source.Mutability,
 		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
 		Fn:         source.SourceFunc,
-		Flush:      runner.Flush(source.FlushFunc),
+		Flush:      runner.FlushFunc(source.FlushFunc),
 	}, output, nil
 }
 
@@ -187,7 +187,7 @@ func (fn ProcessorAllocatorFunc) runner(ctx context.Context, bufferSize int, inp
 		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
 		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
 		Fn:         processor.ProcessFunc,
-		Flush:      runner.Flush(processor.FlushFunc),
+		Flush:      runner.FlushFunc(processor.FlushFunc),
 	}, output, nil
 }
 
@@ -200,7 +200,7 @@ func (fn SinkAllocatorFunc) runner(ctx context.Context, bufferSize int, input Si
 		Mutability: sink.Mutability,
 		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
 		Fn:         sink.SinkFunc,
-		Flush:      runner.Flush(sink.FlushFunc),
+		Flush:      runner.FlushFunc(sink.FlushFunc),
 	}, nil
 }
 

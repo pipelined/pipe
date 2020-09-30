@@ -210,7 +210,7 @@ func TestSink(t *testing.T) {
 func TestHooks(t *testing.T) {
 	testFlush := func(f *mock.Flusher, expected error) func(*testing.T) {
 		return func(t *testing.T) {
-			err := f.Flush(context.Background())
+			err := f.Flush()
 			assertEqual(t, "error", err, expected)
 		}
 	}

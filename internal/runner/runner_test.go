@@ -28,7 +28,7 @@ func TestSource(t *testing.T) {
 			Mutability: source.Mutability,
 			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
 			Fn:         source.SourceFunc,
-			Flush:      runner.Flush(source.FlushFunc),
+			Flush:      runner.FlushFunc(source.FlushFunc),
 		}
 	}
 	assertSource := func(t *testing.T, mockSource *mock.Source, out <-chan runner.Message, errs <-chan error) {
@@ -124,7 +124,7 @@ func TestProcessor(t *testing.T) {
 			InPool:     signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
 			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
 			Fn:         processor.ProcessFunc,
-			Flush:      runner.Flush(processor.FlushFunc),
+			Flush:      runner.FlushFunc(processor.FlushFunc),
 		}
 	}
 	testProcessor := func(ctx context.Context, mockProcessor mock.Processor) func(*testing.T) {
@@ -225,7 +225,7 @@ func TestSink(t *testing.T) {
 			Mutability: sink.Mutability,
 			InPool:     signal.GetPoolAllocator(channels, bufferSize, bufferSize),
 			Fn:         sink.SinkFunc,
-			Flush:      runner.Flush(sink.FlushFunc),
+			Flush:      runner.FlushFunc(sink.FlushFunc),
 		}
 	}
 	testSink := func(ctx context.Context, mockSink mock.Sink) func(*testing.T) {
