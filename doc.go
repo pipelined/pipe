@@ -42,38 +42,35 @@ mutability package documentation.
 
 Routing and binding
 
-To run the pipeline, one first need to build it. It starts with a routing:
+To run the pipeline, one first need to build it. It starts with a line:
 
-    route := pipe.Routing{
-        Source: &wav.Source{Reader: reader},
+    line := pipe.Line{
+        Source: wav.Source(reader),
         Processors: pipe.Processors(
             vst2.Open(vstPath1),
             vst2.Open(vstPath2),
         ),
-        Sink: &wav.Sink{Writer: writer},
+        Sink: wav.Sink(writer),
     }
 
-Routing defines the order in which DSP components form the pipeline. Once
-routing is defined, components can be bound together. It's done by creating
-a line:
+Line defines the order in which DSP components form the pipeline. Once line
+is defined, components can be bound together. It's done by creating a pipe:
 
-    line, err := route.Line(bufferSize)
+    p, err := pipe.New(context.Background(), bufferSize, line)
 
-Line executes all allocators provided in routing and binds components
+New executes all allocators provided in routing and binds components
 together.
 
 Execution
 
-Once components are routed and bound to line, they can be executed. To do
-that pipe should be created:
+Once pipelined is built, it can be executed. To do that Run method should
+be called:
 
-    p := pipe.New(
-        context.Background(),
-        pipe.WithLines(line),
-	)
-	err := p.Wait()
+    r := p.Run()
+    err := r.Wait()
 
-Pipe will asynchronously run all DSP components until either source or
-context is done.
+Run will start and asynchronously run all DSP components until either any
+of the following things happen: source is done; context is done; error
+occured.
 */
 package pipe
