@@ -79,6 +79,7 @@ type (
 	// Line defines sequence of DSP components allocators. It has a
 	// single source, zero or many processors and single sink.
 	Line struct {
+		mutability mutability.Mutability
 		Source     SourceAllocatorFunc
 		Processors []ProcessorAllocatorFunc
 		Sink       SinkAllocatorFunc
@@ -89,13 +90,14 @@ type (
 		ctx        context.Context
 		cancelFn   context.CancelFunc
 		bufferSize int
-		runners    []*runner.Runner
+		runners    map[mutability.Mutability]*runner.Runner
 	}
 
 	// Runner executes the pipe.
 	Runner struct {
-		pipe          *Pipe
 		mutability    mutability.Mutability
+		pipe          *Pipe
+		bufferSize    int
 		merger        *merger
 		listeners     map[mutability.Mutability]chan mutability.Mutations
 		mutations     map[chan mutability.Mutations]mutability.Mutations
@@ -111,14 +113,14 @@ func New(ctx context.Context, bufferSize int, lines ...Line) (*Pipe, error) {
 	if len(lines) == 0 {
 		panic("pipe without lines")
 	}
-	var runners []*runner.Runner
+	runners := make(map[mutability.Mutability]*runner.Runner)
 	for i := range lines {
 		r, err := lines[i].runner(ctx, bufferSize)
 		if err != nil {
 			cancelFn()
 			return nil, err
 		}
-		runners = append(runners, r)
+		runners[lines[i].mutability] = r
 	}
 
 	return &Pipe{
@@ -156,7 +158,6 @@ func (r Line) runner(ctx context.Context, bufferSize int) (*runner.Runner, error
 	}
 
 	return &runner.Runner{
-		Mutators:   make(chan mutability.Mutations, 1),
 		Source:     source,
 		Processors: processors,
 		Sink:       sink,
@@ -169,6 +170,7 @@ func (fn SourceAllocatorFunc) runner(ctx context.Context, bufferSize int) (runne
 		return runner.Source{}, SignalProperties{}, fmt.Errorf("source: %w", err)
 	}
 	return runner.Source{
+		Mutations:  make(chan mutability.Mutations, 1),
 		Mutability: source.Mutability,
 		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
 		Fn:         source.SourceFunc,
@@ -294,7 +296,7 @@ func (m *merger) await() {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, runners []*runner.Runner) []<-chan error {
+func start(ctx context.Context, runners map[mutability.Mutability]*runner.Runner) []<-chan error {
 	// start all runners
 	// error channel for each component
 	errChans := make([]<-chan error, 0, 2*len(runners))
@@ -317,15 +319,11 @@ func (r *Runner) AddLine(l Line) mutability.Mutation {
 		if err != nil {
 			return err
 		}
-		addLine(r, runner)
+		r.pipe.runners[l.mutability] = runner
+		addListeners(r.listeners, runner)
 		r.merger.merge(runner.Run(r.pipe.ctx)...)
 		return nil
 	})
-}
-
-func addLine(rn *Runner, r *runner.Runner) {
-	rn.pipe.runners = append(rn.pipe.runners, r)
-	addListeners(rn.listeners, r)
 }
 
 // Processors is a helper function to use in line constructors.
@@ -344,9 +342,9 @@ func (r *Runner) Wait() error {
 }
 
 func addListeners(listeners map[mutability.Mutability]chan mutability.Mutations, r *runner.Runner) {
-	listeners[r.Source.Mutability] = r.Mutators
+	listeners[r.Source.Mutability] = r.Mutations
 	for i := range r.Processors {
-		listeners[r.Processors[i].Mutability] = r.Mutators
+		listeners[r.Processors[i].Mutability] = r.Mutations
 	}
-	listeners[r.Sink.Mutability] = r.Mutators
+	listeners[r.Sink.Mutability] = r.Mutations
 }
