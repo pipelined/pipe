@@ -25,7 +25,7 @@ func TestSimplePipe(t *testing.T) {
 	p, err := pipe.New(
 		context.Background(),
 		bufferSize,
-		&pipe.Line{
+		pipe.Line{
 			Source:     source.Source(),
 			Processors: pipe.Processors(proc1.Processor()),
 			Sink:       sink1.Sink(),
@@ -55,7 +55,7 @@ func TestReset(t *testing.T) {
 	p, err := pipe.New(
 		context.Background(),
 		bufferSize,
-		&pipe.Line{
+		pipe.Line{
 			Source: source.Source(),
 			Sink:   sink.Sink(),
 		},
@@ -79,7 +79,7 @@ func TestAddLine(t *testing.T) {
 	sink1 := &mock.Sink{Discard: true}
 	sink2 := &mock.Sink{Discard: true}
 
-	lines := []*pipe.Line{
+	lines := []pipe.Line{
 		{
 			Source: (&mock.Source{
 				Limit:    862 * bufferSize,
@@ -124,7 +124,7 @@ func BenchmarkSingleLine(b *testing.B) {
 		Channels: 2,
 	}
 	sink := &mock.Sink{Discard: true}
-	p, _ := pipe.New(context.Background(), bufferSize, &pipe.Line{
+	p, _ := pipe.New(context.Background(), bufferSize, pipe.Line{
 		Source: source.Source(),
 		Processors: pipe.Processors(
 			(&mock.Processor{}).Processor(),
@@ -146,7 +146,7 @@ func TestLineBindingFail(t *testing.T) {
 	testBinding := func(l pipe.Line) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			_, err := pipe.New(context.Background(), bufferSize, &l)
+			_, err := pipe.New(context.Background(), bufferSize, l)
 			assertEqual(t, "error", errors.Is(err, errorBinding), true)
 		}
 	}

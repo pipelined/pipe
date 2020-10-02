@@ -96,7 +96,6 @@ type (
 	Runner struct {
 		pipe          *Pipe
 		mutability    mutability.Mutability
-		bufferSize    int
 		merger        *merger
 		listeners     map[mutability.Mutability]chan mutability.Mutations
 		mutations     map[chan mutability.Mutations]mutability.Mutations
@@ -107,7 +106,7 @@ type (
 
 // New returns a new Pipe that binds multiple lines using the same context
 // and buffer size.
-func New(ctx context.Context, bufferSize int, lines ...*Line) (*Pipe, error) {
+func New(ctx context.Context, bufferSize int, lines ...Line) (*Pipe, error) {
 	ctx, cancelFn := context.WithCancel(ctx)
 	if len(lines) == 0 {
 		panic("pipe without lines")
@@ -275,9 +274,10 @@ func (p *Pipe) Run(initializers ...mutability.Mutation) *Runner {
 	}
 }
 
-func push(mutators map[chan mutability.Mutations]mutability.Mutations) {
-	for c, m := range mutators {
+func push(mutations map[chan mutability.Mutations]mutability.Mutations) {
+	for c, m := range mutations {
 		c <- m
+		delete(mutations, c)
 	}
 }
 
@@ -311,7 +311,7 @@ func (r *Runner) Push(mutations ...mutability.Mutation) {
 }
 
 // AddLine adds the line to the pipe.
-func (r *Runner) AddLine(l *Line) mutability.Mutation {
+func (r *Runner) AddLine(l Line) mutability.Mutation {
 	return r.mutability.Mutate(func() error {
 		runner, err := l.runner(r.pipe.ctx, r.pipe.bufferSize)
 		if err != nil {
