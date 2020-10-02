@@ -94,8 +94,8 @@ type (
 
 	// Runner executes the pipe.
 	Runner struct {
-		pipe          *Pipe
 		mutability    mutability.Mutability
+		pipe          *Pipe
 		merger        *merger
 		listeners     map[mutability.Mutability]chan mutability.Mutations
 		mutations     map[chan mutability.Mutations]mutability.Mutations
@@ -111,7 +111,7 @@ func New(ctx context.Context, bufferSize int, lines ...Line) (*Pipe, error) {
 	if len(lines) == 0 {
 		panic("pipe without lines")
 	}
-	var runners []*runner.Runner
+	runners := make([]*runner.Runner, 0, len(lines))
 	for i := range lines {
 		r, err := lines[i].runner(ctx, bufferSize)
 		if err != nil {
@@ -156,7 +156,6 @@ func (r Line) runner(ctx context.Context, bufferSize int) (*runner.Runner, error
 	}
 
 	return &runner.Runner{
-		Mutators:   make(chan mutability.Mutations, 1),
 		Source:     source,
 		Processors: processors,
 		Sink:       sink,
@@ -169,6 +168,7 @@ func (fn SourceAllocatorFunc) runner(ctx context.Context, bufferSize int) (runne
 		return runner.Source{}, SignalProperties{}, fmt.Errorf("source: %w", err)
 	}
 	return runner.Source{
+		Mutations:  make(chan mutability.Mutations, 1),
 		Mutability: source.Mutability,
 		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
 		Fn:         source.SourceFunc,
@@ -317,15 +317,11 @@ func (r *Runner) AddLine(l Line) mutability.Mutation {
 		if err != nil {
 			return err
 		}
-		addLine(r, runner)
+		r.pipe.runners = append(r.pipe.runners, runner)
+		addListeners(r.listeners, runner)
 		r.merger.merge(runner.Run(r.pipe.ctx)...)
 		return nil
 	})
-}
-
-func addLine(rn *Runner, r *runner.Runner) {
-	rn.pipe.runners = append(rn.pipe.runners, r)
-	addListeners(rn.listeners, r)
 }
 
 // Processors is a helper function to use in line constructors.
@@ -344,9 +340,9 @@ func (r *Runner) Wait() error {
 }
 
 func addListeners(listeners map[mutability.Mutability]chan mutability.Mutations, r *runner.Runner) {
-	listeners[r.Source.Mutability] = r.Mutators
+	listeners[r.Source.Mutability] = r.Mutations
 	for i := range r.Processors {
-		listeners[r.Processors[i].Mutability] = r.Mutators
+		listeners[r.Processors[i].Mutability] = r.Mutations
 	}
-	listeners[r.Sink.Mutability] = r.Mutators
+	listeners[r.Sink.Mutability] = r.Mutations
 }
