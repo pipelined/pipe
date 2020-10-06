@@ -23,11 +23,11 @@ const (
 
 func TestSource(t *testing.T) {
 	setupSource := func(sourceAllocator pipe.SourceAllocatorFunc) runner.Source {
-		source, props, _ := sourceAllocator(context.Background(), bufferSize)
+		source, _ := sourceAllocator(context.Background(), bufferSize)
 		return runner.Source{
 			Mutations:  make(chan mutability.Mutations, 1),
 			Mutability: source.Mutability,
-			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
+			OutPool:    signal.GetPoolAllocator(source.Output.Channels, bufferSize, bufferSize),
 			Fn:         source.SourceFunc,
 			Flush:      runner.FlushFunc(source.FlushFunc),
 			Out:        make(chan runner.Message, 1),
@@ -118,11 +118,11 @@ func TestSource(t *testing.T) {
 
 func TestProcessor(t *testing.T) {
 	setupRunner := func(processorAllocator pipe.ProcessorAllocatorFunc, alloc signal.Allocator) runner.Processor {
-		processor, props, _ := processorAllocator(context.Background(), bufferSize, pipe.SignalProperties{Channels: channels})
+		processor, _ := processorAllocator(context.Background(), bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Processor{
 			Mutability: processor.Mutability,
-			InPool:     signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
-			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
+			InPool:     signal.GetPoolAllocator(processor.Output.Channels, bufferSize, bufferSize),
+			OutPool:    signal.GetPoolAllocator(processor.Output.Channels, bufferSize, bufferSize),
 			Fn:         processor.ProcessFunc,
 			Flush:      runner.FlushFunc(processor.FlushFunc),
 			In:         make(chan runner.Message, 1),

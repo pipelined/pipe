@@ -62,10 +62,14 @@ type Source struct {
 
 // Source returns SourceAllocatorFunc.
 func (m *Source) Source() pipe.SourceAllocatorFunc {
-	return func(ctx context.Context, bufferSize int) (pipe.Source, pipe.SignalProperties, error) {
+	return func(ctx context.Context, bufferSize int) (pipe.Source, error) {
 		return pipe.Source{
 				Mutability: m.Mutability,
-				FlushFunc:  m.Flusher.Flush,
+				Output: pipe.SignalProperties{
+					SampleRate: m.SampleRate,
+					Channels:   m.Channels,
+				},
+				FlushFunc: m.Flusher.Flush,
 				SourceFunc: func(s signal.Floating) (int, error) {
 					if m.ErrorOnCall != nil {
 						return 0, m.ErrorOnCall
@@ -86,9 +90,6 @@ func (m *Source) Source() pipe.SourceAllocatorFunc {
 					m.Counter.advance(read)
 					return read, nil
 				},
-			}, pipe.SignalProperties{
-				SampleRate: m.SampleRate,
-				Channels:   m.Channels,
 			},
 			m.ErrorOnMake
 	}
@@ -123,9 +124,10 @@ type Processor struct {
 
 // Processor returns closure that creates new processors.
 func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
-	return func(ctx context.Context, bufferSize int, props pipe.SignalProperties) (pipe.Processor, pipe.SignalProperties, error) {
+	return func(ctx context.Context, bufferSize int, props pipe.SignalProperties) (pipe.Processor, error) {
 		return pipe.Processor{
 			Mutability: m.Mutator.Mutability,
+			Output:     props,
 			FlushFunc:  m.Flusher.Flush,
 			ProcessFunc: func(in, out signal.Floating) error {
 				if m.ErrorOnCall != nil {
@@ -134,7 +136,7 @@ func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
 				m.Counter.advance(signal.FloatingAsFloating(in, out))
 				return nil
 			},
-		}, props, m.ErrorOnMake
+		}, m.ErrorOnMake
 	}
 }
 

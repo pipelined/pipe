@@ -24,14 +24,14 @@ func TestSource(t *testing.T) {
 	testSource := func(source mock.Source, test params) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			fn, props, _ := source.Source()(context.Background(), test.bufferSize)
+			src, _ := source.Source()(context.Background(), test.bufferSize)
 			buf := signal.Allocator{
-				Channels: props.Channels,
+				Channels: src.Output.Channels,
 				Length:   test.bufferSize,
 				Capacity: test.bufferSize,
 			}.Float64()
 			for {
-				if _, err := fn.SourceFunc(buf); err != nil {
+				if _, err := src.SourceFunc(buf); err != nil {
 					if err != io.EOF {
 						assertEqual(t, "error", err, source.ErrorOnCall)
 					}
@@ -52,9 +52,9 @@ func TestSource(t *testing.T) {
 			Limit:    test.bufferSize,
 			Channels: 1,
 		}
-		source, props, _ := mockSource.Source()(context.Background(), 10)
+		source, _ := mockSource.Source()(context.Background(), 10)
 		source.SourceFunc(signal.Allocator{
-			Channels: props.Channels,
+			Channels: source.Output.Channels,
 			Length:   test.bufferSize,
 			Capacity: test.bufferSize,
 		}.Float64())
@@ -109,7 +109,7 @@ func TestProcessor(t *testing.T) {
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, _ := processorMock.Processor()(context.Background(), 0, pipe.SignalProperties{})
+			processor, _ := processorMock.Processor()(context.Background(), 0, pipe.SignalProperties{})
 
 			alloc := signal.Allocator{
 				Channels: 1,

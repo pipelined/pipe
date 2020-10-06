@@ -17,46 +17,52 @@ type (
 		Channels   int
 	}
 
+	// Routing defines sequence of DSP components allocators. It has a
+	// single source, zero or many processors and single sink.
+	Routing struct {
+		Source     SourceAllocatorFunc
+		Processors []ProcessorAllocatorFunc
+		Sink       SinkAllocatorFunc
+	}
+
 	// SourceAllocatorFunc returns source for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SourceAllocatorFunc func(ctx context.Context, bufferSize int) (Source, SignalProperties, error)
+	SourceAllocatorFunc func(ctx context.Context, bufferSize int) (Source, error)
 
 	// ProcessorAllocatorFunc returns processor for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures. Along with the processor, output signal properties are
 	// returned.
-	ProcessorAllocatorFunc func(ctx context.Context, bufferSize int, sp SignalProperties) (Processor, SignalProperties, error)
+	ProcessorAllocatorFunc func(ctx context.Context, bufferSize int, output SignalProperties) (Processor, error)
 
 	// SinkAllocatorFunc returns sink for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SinkAllocatorFunc func(ctx context.Context, bufferSize int, sp SignalProperties) (Sink, error)
+	SinkAllocatorFunc func(ctx context.Context, bufferSize int, output SignalProperties) (Sink, error)
+)
 
+type (
+	// Pipe is a sequence of bound DSP components.
+	Pipe struct {
+		ctx        context.Context
+		cancelFn   context.CancelFunc
+		bufferSize int
+		lines      []Line
+	}
+
+	Line struct {
+		Source
+		Processors []Processor
+		Sink
+	}
 	// Source is a source of signal data. Optinaly, mutability can be
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
 		mutability.Mutability
+		Output SignalProperties
 		SourceFunc
-		FlushFunc
-	}
-
-	// Processor is a mutator of signal data. Optinaly, mutability can be
-	// provided to handle mutations and flush hook to handle resource clean
-	// up.
-	Processor struct {
-		mutability.Mutability
-		ProcessFunc
-		FlushFunc
-	}
-
-	// Sink is a destination of signal data. Optinaly, mutability can be
-	// provided to handle mutations and flush hook to handle resource clean
-	// up.
-	Sink struct {
-		mutability.Mutability
-		SinkFunc
 		FlushFunc
 	}
 
@@ -64,9 +70,29 @@ type (
 	// If no data is available, io.EOF should be returned.
 	SourceFunc func(out signal.Floating) (int, error)
 
+	// Processor is a mutator of signal data. Optinaly, mutability can be
+	// provided to handle mutations and flush hook to handle resource clean
+	// up.
+	Processor struct {
+		mutability.Mutability
+		Output SignalProperties
+		ProcessFunc
+		FlushFunc
+	}
+
 	// ProcessFunc takes the input buffer, applies processing logic and writes
 	// the result into output buffer.
 	ProcessFunc func(in, out signal.Floating) error
+
+	// Sink is a destination of signal data. Optinaly, mutability can be
+	// provided to handle mutations and flush hook to handle resource clean
+	// up.
+	Sink struct {
+		mutability.Mutability
+		Output SignalProperties
+		SinkFunc
+		FlushFunc
+	}
 
 	// SinkFunc takes the input buffer and writes that to the underlying destination.
 	SinkFunc func(in signal.Floating) error
@@ -76,22 +102,6 @@ type (
 )
 
 type (
-	// Line defines sequence of DSP components allocators. It has a
-	// single source, zero or many processors and single sink.
-	Line struct {
-		Source     SourceAllocatorFunc
-		Processors []ProcessorAllocatorFunc
-		Sink       SinkAllocatorFunc
-	}
-
-	// Pipe is a sequence of bound DSP components.
-	Pipe struct {
-		ctx        context.Context
-		cancelFn   context.CancelFunc
-		bufferSize int
-		runners    []*runner.Runner
-	}
-
 	// Runner executes the pipe.
 	Runner struct {
 		mutability    mutability.Mutability
@@ -101,113 +111,122 @@ type (
 		mutations     map[chan mutability.Mutations]mutability.Mutations
 		mutationsChan chan []mutability.Mutation
 		errorChan     chan error
+		runners       []runner.Runner
 	}
 )
 
 // New returns a new Pipe that binds multiple lines using the same context
 // and buffer size.
-func New(ctx context.Context, bufferSize int, lines ...Line) (*Pipe, error) {
+func New(ctx context.Context, bufferSize int, routes ...Routing) (*Pipe, error) {
 	ctx, cancelFn := context.WithCancel(ctx)
-	if len(lines) == 0 {
+	if len(routes) == 0 {
 		panic("pipe without lines")
 	}
-	runners := make([]*runner.Runner, 0, len(lines))
-	for i := range lines {
-		r, err := lines[i].runner(ctx, bufferSize)
+	lines := make([]Line, 0, len(routes))
+	for i := range routes {
+		l, err := routes[i].line(ctx, bufferSize)
 		if err != nil {
 			cancelFn()
 			return nil, err
 		}
-		runners = append(runners, r)
+		lines = append(lines, l)
 	}
 
 	return &Pipe{
 		ctx:        ctx,
 		cancelFn:   cancelFn,
 		bufferSize: bufferSize,
-		runners:    runners,
+		lines:      lines,
 	}, nil
 }
 
-// Line binds components. All allocators are executed and wrapped into
-// runners. If any of allocators failed, the error will be returned and
-// flush hooks won't be triggered.
-func (r Line) runner(ctx context.Context, bufferSize int) (*runner.Runner, error) {
-	source, input, err := r.Source.runner(ctx, bufferSize)
+func (r Routing) line(ctx context.Context, bufferSize int) (Line, error) {
+	source, err := r.Source(ctx, bufferSize)
 	if err != nil {
-		return nil, fmt.Errorf("error routing %w", err)
+		return Line{}, fmt.Errorf("source: %w", err)
 	}
 
-	var (
-		processors []runner.Processor
-		processor  runner.Processor
-	)
-	for _, fn := range r.Processors {
-		processor, input, err = fn.runner(ctx, bufferSize, input)
+	input := source.Output
+	processors := make([]Processor, 0, len(r.Processors))
+	for i := range r.Processors {
+		processor, err := r.Processors[i](ctx, bufferSize, input)
 		if err != nil {
-			return nil, fmt.Errorf("error routing %w", err)
+			return Line{}, fmt.Errorf("processor: %w", err)
 		}
 		processors = append(processors, processor)
+		input = processor.Output
 	}
 
-	sink, err := r.Sink.runner(ctx, bufferSize, input)
+	sink, err := r.Sink(ctx, bufferSize, input)
 	if err != nil {
-		return nil, fmt.Errorf("error routing: %w", err)
+		return Line{}, fmt.Errorf("sink: %w", err)
 	}
 
-	return &runner.Runner{
+	return Line{
 		Source:     source,
 		Processors: processors,
 		Sink:       sink,
 	}, nil
 }
 
-func (fn SourceAllocatorFunc) runner(ctx context.Context, bufferSize int) (runner.Source, SignalProperties, error) {
-	source, output, err := fn(ctx, bufferSize)
-	if err != nil {
-		return runner.Source{}, SignalProperties{}, fmt.Errorf("source: %w", err)
+// Line binds components. All allocators are executed and wrapped into
+// runners. If any of allocators failed, the error will be returned and
+// flush hooks won't be triggered.
+func (l Line) runner(bufferSize int) runner.Runner {
+	source, input := l.Source.runner(bufferSize)
+
+	processors := make([]runner.Processor, 0, len(l.Processors))
+	var processor runner.Processor
+	for i := range l.Processors {
+		processor, input = l.Processors[i].runner(bufferSize, input)
+		processors = append(processors, processor)
 	}
+
+	sink := l.Sink.runner(bufferSize, input)
+	return runner.Runner{
+		Source:     source,
+		Processors: processors,
+		Sink:       sink,
+	}
+}
+
+func (s Source) runner(bufferSize int) (runner.Source, SignalProperties) {
 	return runner.Source{
 		Mutations:  make(chan mutability.Mutations, 1),
-		Mutability: source.Mutability,
-		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
-		Fn:         source.SourceFunc,
-		Flush:      runner.FlushFunc(source.FlushFunc),
-	}, output, nil
+		Mutability: s.Mutability,
+		OutPool:    signal.GetPoolAllocator(s.Output.Channels, bufferSize, bufferSize),
+		Fn:         s.SourceFunc,
+		Flush:      runner.FlushFunc(s.FlushFunc),
+	}, s.Output
 }
 
-func (fn ProcessorAllocatorFunc) runner(ctx context.Context, bufferSize int, input SignalProperties) (runner.Processor, SignalProperties, error) {
-	processor, output, err := fn(ctx, bufferSize, input)
-	if err != nil {
-		return runner.Processor{}, SignalProperties{}, fmt.Errorf("processor: %w", err)
-	}
+func (p Processor) runner(bufferSize int, input SignalProperties) (runner.Processor, SignalProperties) {
 	return runner.Processor{
-		Mutability: processor.Mutability,
+		Mutability: p.Mutability,
 		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
-		OutPool:    signal.GetPoolAllocator(output.Channels, bufferSize, bufferSize),
-		Fn:         processor.ProcessFunc,
-		Flush:      runner.FlushFunc(processor.FlushFunc),
-	}, output, nil
+		OutPool:    signal.GetPoolAllocator(p.Output.Channels, bufferSize, bufferSize),
+		Fn:         p.ProcessFunc,
+		Flush:      runner.FlushFunc(p.FlushFunc),
+	}, p.Output
 }
 
-func (fn SinkAllocatorFunc) runner(ctx context.Context, bufferSize int, input SignalProperties) (runner.Sink, error) {
-	sink, err := fn(ctx, bufferSize, input)
-	if err != nil {
-		return runner.Sink{}, fmt.Errorf("sink: %w", err)
-	}
+func (s Sink) runner(bufferSize int, input SignalProperties) runner.Sink {
 	return runner.Sink{
-		Mutability: sink.Mutability,
+		Mutability: s.Mutability,
 		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
-		Fn:         sink.SinkFunc,
-		Flush:      runner.FlushFunc(sink.FlushFunc),
-	}, nil
+		Fn:         s.SinkFunc,
+		Flush:      runner.FlushFunc(s.FlushFunc),
+	}
 }
 
 // Run creates and starts new pipe.
 func (p *Pipe) Run(initializers ...mutability.Mutation) *Runner {
+	runners := make([]runner.Runner, 0, len(p.lines))
 	listeners := make(map[mutability.Mutability]chan mutability.Mutations)
-	for i := range p.runners {
-		addListeners(listeners, p.runners[i])
+	for i := range p.lines {
+		r := p.lines[i].runner(p.bufferSize)
+		runners = append(runners, r)
+		addListeners(listeners, r)
 	}
 	mutations := make(map[chan mutability.Mutations]mutability.Mutations)
 	for i := range initializers {
@@ -219,7 +238,7 @@ func (p *Pipe) Run(initializers ...mutability.Mutation) *Runner {
 	push(mutations)
 	// start the pipe execution with new context
 	// cancel is required to stop the pipe in case of error
-	errcs := start(p.ctx, p.runners)
+	errcs := start(p.ctx, runners)
 	merger := merger{
 		errorChan: make(chan error, 1),
 	}
@@ -271,6 +290,7 @@ func (p *Pipe) Run(initializers ...mutability.Mutation) *Runner {
 		errorChan:     errc,
 		merger:        &merger,
 		listeners:     listeners,
+		runners:       runners,
 	}
 }
 
@@ -294,7 +314,7 @@ func (m *merger) await() {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, runners []*runner.Runner) []<-chan error {
+func start(ctx context.Context, runners []runner.Runner) []<-chan error {
 	// start all runners
 	// error channel for each component
 	errChans := make([]<-chan error, 0, 2*len(runners))
@@ -311,13 +331,14 @@ func (r *Runner) Push(mutations ...mutability.Mutation) {
 }
 
 // AddLine adds the line to the pipe.
-func (r *Runner) AddLine(l Line) mutability.Mutation {
+func (r *Runner) AddLine(route Routing) mutability.Mutation {
 	return r.mutability.Mutate(func() error {
-		runner, err := l.runner(r.pipe.ctx, r.pipe.bufferSize)
+		l, err := route.line(r.pipe.ctx, r.pipe.bufferSize)
 		if err != nil {
 			return err
 		}
-		r.pipe.runners = append(r.pipe.runners, runner)
+		runner := l.runner(r.pipe.bufferSize)
+		r.pipe.lines = append(r.pipe.lines, l)
 		addListeners(r.listeners, runner)
 		r.merger.merge(runner.Run(r.pipe.ctx)...)
 		return nil
@@ -339,7 +360,7 @@ func (r *Runner) Wait() error {
 	return nil
 }
 
-func addListeners(listeners map[mutability.Mutability]chan mutability.Mutations, r *runner.Runner) {
+func addListeners(listeners map[mutability.Mutability]chan mutability.Mutations, r runner.Runner) {
 	listeners[r.Source.Mutability] = r.Mutations
 	for i := range r.Processors {
 		listeners[r.Processors[i].Mutability] = r.Mutations
