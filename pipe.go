@@ -43,7 +43,7 @@ type (
 )
 
 type (
-	// Pipe is a sequence of bound DSP components.
+	// Pipe is a graph formed with multiple lines of bound DSP components.
 	Pipe struct {
 		ctx        context.Context
 		cancelFn   context.CancelFunc
@@ -51,6 +51,7 @@ type (
 		lines      []Line
 	}
 
+	// Line bounds the routing to the context and buffer size.
 	Line struct {
 		Source
 		Processors []Processor
