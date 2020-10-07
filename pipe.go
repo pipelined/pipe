@@ -145,8 +145,8 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 	}, nil
 }
 
-// AddLine adds the line to already bound pipe.
-func (p *Pipe) AddLine(r Routing) (Line, error) {
+// AddRoute adds the route to already bound pipe.
+func (p *Pipe) AddRoute(r Routing) (Line, error) {
 	// For every added line new child context is created. It allows to
 	// cancel it without cancelling parent context of already bound
 	// components. If pipe is bound successfully, context is not cancelled.

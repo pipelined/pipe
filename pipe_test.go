@@ -100,7 +100,7 @@ func TestAddLine(t *testing.T) {
 	)
 	assertNil(t, "error", err)
 	r := p.Run(context.Background())
-	l, _ := p.AddLine(routes[1])
+	l, _ := p.AddRoute(routes[1])
 	r.Push(r.AddLine(l))
 
 	// start
