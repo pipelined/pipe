@@ -28,7 +28,8 @@ type (
 	Source struct {
 		Mutations  chan mutability.Mutations
 		Mutability [16]byte
-		Flush      FlushFunc
+		Start      HookFunc
+		Flush      HookFunc
 		OutPool    *signal.PoolAllocator
 		Fn         func(out signal.Floating) (int, error)
 		Out        chan Message
@@ -37,7 +38,8 @@ type (
 	// Processor executes pipe.Processor components.
 	Processor struct {
 		Mutability [16]byte
-		Flush      FlushFunc
+		Start      HookFunc
+		Flush      HookFunc
 		InPool     *signal.PoolAllocator
 		OutPool    *signal.PoolAllocator
 		Fn         func(in, out signal.Floating) error
@@ -48,21 +50,22 @@ type (
 	// Sink executes pipe.Sink components.
 	Sink struct {
 		Mutability [16]byte
-		Flush      FlushFunc
+		Start      HookFunc
+		Flush      HookFunc
 		InPool     *signal.PoolAllocator
 		Fn         func(in signal.Floating) error
 		In         chan Message
 	}
 )
 
-// FlushFunc is a closure that triggers pipe component flush function.
-type FlushFunc func() error
+// HookFunc is a closure that triggers pipe component hook function.
+type HookFunc func(ctx context.Context) error
 
-func (fn FlushFunc) call() error {
+func (fn HookFunc) call(ctx context.Context) error {
 	if fn == nil {
 		return nil
 	}
-	return fn()
+	return fn(ctx)
 }
 
 // Run starts the Source runner.
@@ -73,7 +76,7 @@ func (r Source) Run(ctx context.Context) <-chan error {
 		defer close(errc)
 		// flush on return
 		defer func() {
-			if err := r.Flush.call(); err != nil {
+			if err := r.Flush.call(ctx); err != nil {
 				errc <- fmt.Errorf("error flushing source: %w", err)
 			}
 		}()
@@ -128,7 +131,7 @@ func (r Processor) Run(ctx context.Context) <-chan error {
 		defer close(errc)
 		// flush on return
 		defer func() {
-			if err := r.Flush.call(); err != nil {
+			if err := r.Flush.call(ctx); err != nil {
 				errc <- fmt.Errorf("error flushing processor: %w", err)
 			}
 		}()
@@ -181,7 +184,7 @@ func (r Sink) Run(ctx context.Context) <-chan error {
 		defer close(errc)
 		// flush on return
 		defer func() {
-			if err := r.Flush.call(); err != nil {
+			if err := r.Flush.call(ctx); err != nil {
 				errc <- fmt.Errorf("error flushing sink: %w", err)
 			}
 		}()

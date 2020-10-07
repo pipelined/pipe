@@ -1,6 +1,8 @@
 package pipe
 
-import "sync"
+import (
+	"sync"
+)
 
 type merger struct {
 	wg        sync.WaitGroup

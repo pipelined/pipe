@@ -41,7 +41,7 @@ func (c *Counter) advance(size int) {
 }
 
 // Flush implements pipe.Flusher.
-func (f *Flusher) Flush() error {
+func (f *Flusher) Flush(context.Context) error {
 	f.Flushed = true
 	return f.ErrorOnFlush
 }
@@ -62,7 +62,7 @@ type Source struct {
 
 // Source returns SourceAllocatorFunc.
 func (m *Source) Source() pipe.SourceAllocatorFunc {
-	return func(ctx context.Context, bufferSize int) (pipe.Source, error) {
+	return func(bufferSize int) (pipe.Source, error) {
 		return pipe.Source{
 				Mutability: m.Mutability,
 				Output: pipe.SignalProperties{
@@ -124,7 +124,7 @@ type Processor struct {
 
 // Processor returns closure that creates new processors.
 func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
-	return func(ctx context.Context, bufferSize int, props pipe.SignalProperties) (pipe.Processor, error) {
+	return func(bufferSize int, props pipe.SignalProperties) (pipe.Processor, error) {
 		return pipe.Processor{
 			Mutability: m.Mutator.Mutability,
 			Output:     props,
@@ -152,7 +152,7 @@ type Sink struct {
 
 // Sink returns closure that creates new sinks.
 func (m *Sink) Sink() pipe.SinkAllocatorFunc {
-	return func(ctx context.Context, bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
 		if !m.Discard {
 			m.Counter.Values = signal.Allocator{Channels: props.Channels, Capacity: bufferSize}.Float64()
 		}

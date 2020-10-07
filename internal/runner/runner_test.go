@@ -23,13 +23,13 @@ const (
 
 func TestSource(t *testing.T) {
 	setupSource := func(sourceAllocator pipe.SourceAllocatorFunc) runner.Source {
-		source, _ := sourceAllocator(context.Background(), bufferSize)
+		source, _ := sourceAllocator(bufferSize)
 		return runner.Source{
 			Mutations:  make(chan mutability.Mutations, 1),
 			Mutability: source.Mutability,
 			OutPool:    signal.GetPoolAllocator(source.Output.Channels, bufferSize, bufferSize),
 			Fn:         source.SourceFunc,
-			Flush:      runner.FlushFunc(source.FlushFunc),
+			Flush:      runner.HookFunc(source.FlushFunc),
 			Out:        make(chan runner.Message, 1),
 		}
 	}
@@ -118,13 +118,13 @@ func TestSource(t *testing.T) {
 
 func TestProcessor(t *testing.T) {
 	setupRunner := func(processorAllocator pipe.ProcessorAllocatorFunc, alloc signal.Allocator) runner.Processor {
-		processor, _ := processorAllocator(context.Background(), bufferSize, pipe.SignalProperties{Channels: channels})
+		processor, _ := processorAllocator(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Processor{
 			Mutability: processor.Mutability,
 			InPool:     signal.GetPoolAllocator(processor.Output.Channels, bufferSize, bufferSize),
 			OutPool:    signal.GetPoolAllocator(processor.Output.Channels, bufferSize, bufferSize),
 			Fn:         processor.ProcessFunc,
-			Flush:      runner.FlushFunc(processor.FlushFunc),
+			Flush:      runner.HookFunc(processor.FlushFunc),
 			In:         make(chan runner.Message, 1),
 			Out:        make(chan runner.Message, 1),
 		}
@@ -221,12 +221,12 @@ func TestProcessor(t *testing.T) {
 
 func TestSink(t *testing.T) {
 	setupRunner := func(sinkAllocator pipe.SinkAllocatorFunc, alloc signal.Allocator) runner.Sink {
-		sink, _ := sinkAllocator(context.Background(), bufferSize, pipe.SignalProperties{Channels: channels})
+		sink, _ := sinkAllocator(bufferSize, pipe.SignalProperties{Channels: channels})
 		return runner.Sink{
 			Mutability: sink.Mutability,
 			InPool:     signal.GetPoolAllocator(channels, bufferSize, bufferSize),
 			Fn:         sink.SinkFunc,
-			Flush:      runner.FlushFunc(sink.FlushFunc),
+			Flush:      runner.HookFunc(sink.FlushFunc),
 			In:         make(chan runner.Message, 1),
 		}
 	}
