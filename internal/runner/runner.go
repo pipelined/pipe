@@ -74,7 +74,10 @@ func (r Source) Run(ctx context.Context) <-chan error {
 	go func() {
 		defer close(r.Out)
 		defer close(errc)
-		// flush on return
+		if err := r.Start.call(ctx); err != nil {
+			errc <- fmt.Errorf("error starting source: %w", err)
+		}
+		// flush shouldn't be executed if start has failed.
 		defer func() {
 			if err := r.Flush.call(ctx); err != nil {
 				errc <- fmt.Errorf("error flushing source: %w", err)
@@ -129,7 +132,10 @@ func (r Processor) Run(ctx context.Context) <-chan error {
 	go func() {
 		defer close(r.Out)
 		defer close(errc)
-		// flush on return
+		if err := r.Start.call(ctx); err != nil {
+			errc <- fmt.Errorf("error starting source: %w", err)
+		}
+		// flush shouldn't be executed if start has failed.
 		defer func() {
 			if err := r.Flush.call(ctx); err != nil {
 				errc <- fmt.Errorf("error flushing processor: %w", err)
@@ -182,7 +188,10 @@ func (r Sink) Run(ctx context.Context) <-chan error {
 	errc := make(chan error, 1)
 	go func() {
 		defer close(errc)
-		// flush on return
+		if err := r.Start.call(ctx); err != nil {
+			errc <- fmt.Errorf("error starting source: %w", err)
+		}
+		// flush shouldn't be executed if start has failed.
 		defer func() {
 			if err := r.Flush.call(ctx); err != nil {
 				errc <- fmt.Errorf("error flushing sink: %w", err)

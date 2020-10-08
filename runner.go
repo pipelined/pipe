@@ -139,6 +139,7 @@ func (p Processor) runner(bufferSize int, input SignalProperties) (runner.Proces
 		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
 		OutPool:    signal.GetPoolAllocator(p.Output.Channels, bufferSize, bufferSize),
 		Fn:         p.ProcessFunc,
+		Start:      runner.HookFunc(p.StartFunc),
 		Flush:      runner.HookFunc(p.FlushFunc),
 	}, p.Output
 }
@@ -148,6 +149,7 @@ func (s Sink) runner(bufferSize int, input SignalProperties) runner.Sink {
 		Mutability: s.Mutability,
 		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
 		Fn:         s.SinkFunc,
+		Start:      runner.HookFunc(s.StartFunc),
 		Flush:      runner.HookFunc(s.FlushFunc),
 	}
 }
