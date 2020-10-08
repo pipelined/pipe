@@ -44,11 +44,10 @@ func (p *Pipe) Run(ctx context.Context, initializers ...mutability.Mutation) *Ru
 	push(mutations)
 	// start the pipe execution with new context
 	// cancel is required to stop the pipe in case of error
-	errcs := start(ctx, runners)
 	merger := merger{
 		errorChan: make(chan error, 1),
 	}
-	merger.merge(errcs...)
+	merger.merge(start(ctx, runners)...)
 	go merger.wait()
 
 	errc := make(chan error, 1)
@@ -73,9 +72,9 @@ func (p *Pipe) Run(ctx context.Context, initializers ...mutability.Mutation) *Ru
 								mutations[c] = mutations[c].Put(ms[i])
 							}
 						}
-						push(mutations)
 					}
 				}
+				push(mutations)
 			case err, ok := <-merger.errorChan:
 				// merger has buffer of one error,
 				// if more errors happen, they will be ignored.
