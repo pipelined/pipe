@@ -34,3 +34,15 @@ func (m *merger) done(ec <-chan error) {
 	}
 	m.wg.Done()
 }
+
+// TODO: merge all errors
+// TODO: distinguish context timeout error
+func (m *merger) await() {
+	// wait until all groutines stop.
+	for {
+		// only the first error is propagated.
+		if _, ok := <-m.errorChan; !ok {
+			break
+		}
+	}
+}
