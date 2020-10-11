@@ -8,7 +8,7 @@ import (
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mock"
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 )
 
 const bufferSize = 512
@@ -44,7 +44,7 @@ func TestSimplePipe(t *testing.T) {
 func TestReset(t *testing.T) {
 	source := &mock.Source{
 		Mutator: mock.Mutator{
-			Mutability: mutability.Mutable(),
+			Mutability: mutable.Mutable(),
 		},
 		Limit:    862 * bufferSize,
 		Channels: 2,
@@ -82,7 +82,7 @@ func TestAddLine(t *testing.T) {
 	}
 	source2 := &mock.Source{
 		Mutator: mock.Mutator{
-			Mutability: mutability.Mutable(),
+			Mutability: mutable.Mutable(),
 		},
 		Limit:    862 * bufferSize,
 		Channels: 2,
@@ -121,7 +121,7 @@ func TestAddLine(t *testing.T) {
 func BenchmarkSingleLine(b *testing.B) {
 	source := &mock.Source{
 		Mutator: mock.Mutator{
-			Mutability: mutability.Mutable(),
+			Mutability: mutable.Mutable(),
 		},
 		Limit:    862 * bufferSize,
 		Channels: 2,

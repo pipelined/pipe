@@ -9,7 +9,7 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe"
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 )
 
 type (
@@ -28,7 +28,7 @@ type (
 
 	// Mutator allows to mock mutations.
 	Mutator struct {
-		Mutability      mutability.Context
+		Mutability      mutable.Context
 		Mutated         bool
 		ErrorOnMutation error
 	}
@@ -62,7 +62,7 @@ type Source struct {
 
 // Source returns SourceAllocatorFunc.
 func (m *Source) Source() pipe.SourceAllocatorFunc {
-	return func(mut mutability.Context, bufferSize int) (pipe.Source, error) {
+	return func(mut mutable.Context, bufferSize int) (pipe.Source, error) {
 		m.Mutator.Mutability = mut
 		return pipe.Source{
 				Output: pipe.SignalProperties{
@@ -96,8 +96,8 @@ func (m *Source) Source() pipe.SourceAllocatorFunc {
 }
 
 // Reset allows to reset source.
-func (m *Source) Reset() mutability.Mutation {
-	return m.Mutability.Mutate(
+func (m *Source) Reset() mutable.Mutation {
+	return m.Mutator.Mutability.Mutate(
 		func() error {
 			m.Counter = Counter{}
 			return nil
@@ -105,7 +105,7 @@ func (m *Source) Reset() mutability.Mutation {
 }
 
 // MockMutation mocks mutation, so errors can be simulated.
-func (m *Mutator) MockMutation() mutability.Mutation {
+func (m *Mutator) MockMutation() mutable.Mutation {
 	return m.Mutability.Mutate(
 		func() error {
 			m.Mutated = true
@@ -124,7 +124,7 @@ type Processor struct {
 
 // Processor returns closure that creates new processors.
 func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
-	return func(mut mutability.Context, bufferSize int, props pipe.SignalProperties) (pipe.Processor, error) {
+	return func(mut mutable.Context, bufferSize int, props pipe.SignalProperties) (pipe.Processor, error) {
 		m.Mutator.Mutability = mut
 		return pipe.Processor{
 			Output:    props,
@@ -152,7 +152,7 @@ type Sink struct {
 
 // Sink returns closure that creates new sinks.
 func (m *Sink) Sink() pipe.SinkAllocatorFunc {
-	return func(mut mutability.Context, bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+	return func(mut mutable.Context, bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
 		m.Mutator.Mutability = mut
 		if !m.Discard {
 			m.Counter.Values = signal.Allocator{Channels: props.Channels, Capacity: bufferSize}.Float64()

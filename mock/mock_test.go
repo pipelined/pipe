@@ -11,7 +11,7 @@ import (
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mock"
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 )
 
 var errTest = errors.New("Test error")
@@ -24,7 +24,7 @@ func TestSource(t *testing.T) {
 	testSource := func(source mock.Source, test params) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			m := mutability.Mutable()
+			m := mutable.Mutable()
 			src, _ := source.Source()(m, test.bufferSize)
 			buf := signal.Allocator{
 				Channels: src.Output.Channels,
@@ -50,7 +50,7 @@ func TestSource(t *testing.T) {
 			Limit:    test.bufferSize,
 			Channels: 1,
 		}
-		m := mutability.Mutable()
+		m := mutable.Mutable()
 		source, _ := mockSource.Source()(m, 10)
 		source.SourceFunc(signal.Allocator{
 			Channels: source.Output.Channels,
@@ -108,7 +108,7 @@ func TestProcessor(t *testing.T) {
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			m := mutability.Mutable()
+			m := mutable.Mutable()
 			processor, _ := processorMock.Processor()(m, 0, pipe.SignalProperties{})
 
 			alloc := signal.Allocator{
@@ -159,7 +159,7 @@ func TestSink(t *testing.T) {
 	}
 	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			m := mutability.Mutable()
+			m := mutable.Mutable()
 			sink, _ := sinkMock.Sink()(m, 0, pipe.SignalProperties{Channels: 1})
 
 			alloc := signal.Allocator{

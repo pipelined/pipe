@@ -9,7 +9,7 @@ import (
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/async"
 	"pipelined.dev/pipe/mock"
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 
 	"pipelined.dev/signal"
 )
@@ -22,8 +22,8 @@ const (
 )
 
 func TestSource(t *testing.T) {
-	setupSource := func(sourceAllocator pipe.SourceAllocatorFunc, mutationsChan chan mutability.Mutations) async.Runner {
-		m := mutability.Mutable()
+	setupSource := func(sourceAllocator pipe.SourceAllocatorFunc, mutationsChan chan mutable.Mutations) async.Runner {
+		m := mutable.Mutable()
 		source, _ := sourceAllocator(m, bufferSize)
 		return async.Source(
 			mutationsChan,
@@ -65,9 +65,9 @@ func TestSource(t *testing.T) {
 	testMutationError := func(ctx context.Context, mockSource mock.Source) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			mutationsChan := make(chan mutability.Mutations, 1)
+			mutationsChan := make(chan mutable.Mutations, 1)
 			r := setupSource(mockSource.Source(), mutationsChan)
-			mutationsChan <- mutability.Mutations{}.Put(mockSource.MockMutation())
+			mutationsChan <- mutable.Mutations{}.Put(mockSource.MockMutation())
 			errs := r.Run(ctx)
 			assertSource(t, &mockSource, r.Out(), errs)
 		}
@@ -109,7 +109,7 @@ func TestSource(t *testing.T) {
 		context.Background(),
 		mock.Source{
 			Mutator: mock.Mutator{
-				Mutability:      mutability.Mutable(),
+				Mutability:      mutable.Mutable(),
 				ErrorOnMutation: testError,
 			},
 			Channels: 1,
@@ -120,7 +120,7 @@ func TestSource(t *testing.T) {
 
 func TestProcessor(t *testing.T) {
 	setupRunner := func(processorAllocator pipe.ProcessorAllocatorFunc, alloc signal.Allocator) (async.Runner, chan<- async.Message) {
-		m := mutability.Mutable()
+		m := mutable.Mutable()
 		processor, _ := processorAllocator(m, bufferSize, pipe.SignalProperties{Channels: channels})
 		in := make(chan async.Message, 1)
 		return async.Processor(
@@ -147,7 +147,7 @@ func TestProcessor(t *testing.T) {
 			// test mutations only for mutable
 			in <- async.Message{
 				Signal:    alloc.Float64(),
-				Mutations: mutability.Mutations{}.Put(mockProcessor.MockMutation()),
+				Mutations: mutable.Mutations{}.Put(mockProcessor.MockMutation()),
 			}
 			close(in)
 			for msg := range r.Out() {
@@ -185,7 +185,7 @@ func TestProcessor(t *testing.T) {
 		context.Background(),
 		mock.Processor{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 		},
 	))
@@ -193,7 +193,7 @@ func TestProcessor(t *testing.T) {
 		context.Background(),
 		mock.Processor{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 			ErrorOnCall: testError,
 		},
@@ -202,7 +202,7 @@ func TestProcessor(t *testing.T) {
 		context.Background(),
 		mock.Processor{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 			Flusher: mock.Flusher{
 				ErrorOnFlush: testError,
@@ -216,7 +216,7 @@ func TestProcessor(t *testing.T) {
 		context.Background(),
 		mock.Processor{
 			Mutator: mock.Mutator{
-				Mutability:      mutability.Mutable(),
+				Mutability:      mutable.Mutable(),
 				ErrorOnMutation: testError,
 			},
 		},
@@ -225,7 +225,7 @@ func TestProcessor(t *testing.T) {
 
 func TestSink(t *testing.T) {
 	setupRunner := func(sinkAllocator pipe.SinkAllocatorFunc, alloc signal.Allocator) (async.Runner, chan<- async.Message) {
-		m := mutability.Mutable()
+		m := mutable.Mutable()
 		sink, _ := sinkAllocator(m, bufferSize, pipe.SignalProperties{Channels: channels})
 		in := make(chan async.Message, 1)
 		return async.Sink(
@@ -249,7 +249,7 @@ func TestSink(t *testing.T) {
 			errc := r.Run(ctx)
 			in <- async.Message{
 				Signal:    alloc.Float64(),
-				Mutations: mutability.Mutations{}.Put(mockSink.MockMutation()),
+				Mutations: mutable.Mutations{}.Put(mockSink.MockMutation()),
 			}
 			close(in)
 			for err := range errc {
@@ -282,7 +282,7 @@ func TestSink(t *testing.T) {
 		context.Background(),
 		mock.Sink{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 		},
 	))
@@ -290,7 +290,7 @@ func TestSink(t *testing.T) {
 		context.Background(),
 		mock.Sink{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 			ErrorOnCall: testError,
 		},
@@ -299,7 +299,7 @@ func TestSink(t *testing.T) {
 		context.Background(),
 		mock.Sink{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 			Flusher: mock.Flusher{
 				ErrorOnFlush: testError,
@@ -313,7 +313,7 @@ func TestSink(t *testing.T) {
 		context.Background(),
 		mock.Sink{
 			Mutator: mock.Mutator{
-				Mutability:      mutability.Mutable(),
+				Mutability:      mutable.Mutable(),
 				ErrorOnMutation: testError,
 			},
 		},

@@ -7,13 +7,13 @@ import (
 
 	"pipelined.dev/signal"
 
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 )
 
 // Message is a main structure for pipe transport
 type Message struct {
-	Signal               signal.Floating // Buffer of message.
-	mutability.Mutations                 // Mutators for pipe.
+	Signal            signal.Floating // Buffer of message.
+	mutable.Mutations                 // Mutators for pipe.
 }
 
 type (
@@ -32,8 +32,8 @@ type (
 
 	// source executes pipe.source components.
 	source struct {
-		mutations  chan mutability.Mutations
-		mutability mutability.Context
+		mutations  chan mutable.Mutations
+		mutability mutable.Context
 		Start      HookFunc
 		Flush      HookFunc
 		OutPool    *signal.PoolAllocator
@@ -43,7 +43,7 @@ type (
 
 	// processor executes pipe.processor components.
 	processor struct {
-		mutability mutability.Context
+		mutability mutable.Context
 		Start      HookFunc
 		Flush      HookFunc
 		InPool     *signal.PoolAllocator
@@ -55,7 +55,7 @@ type (
 
 	// sink executes pipe.sink components.
 	sink struct {
-		mutability mutability.Context
+		mutability mutable.Context
 		Start      HookFunc
 		Flush      HookFunc
 		InPool     *signal.PoolAllocator
@@ -86,7 +86,7 @@ func (fn HookFunc) call(ctx context.Context) error {
 	return fn(ctx)
 }
 
-func Source(mc chan mutability.Mutations, m mutability.Context, p *signal.PoolAllocator, fn SourceFunc, start, flush HookFunc) Runner {
+func Source(mc chan mutable.Mutations, m mutable.Context, p *signal.PoolAllocator, fn SourceFunc, start, flush HookFunc) Runner {
 	return &source{
 		mutations:  mc,
 		mutability: m,
@@ -98,7 +98,7 @@ func Source(mc chan mutability.Mutations, m mutability.Context, p *signal.PoolAl
 	}
 }
 
-func Processor(m mutability.Context, in <-chan Message, inp, outp *signal.PoolAllocator, fn ProcessFunc, start, flush HookFunc) Runner {
+func Processor(m mutable.Context, in <-chan Message, inp, outp *signal.PoolAllocator, fn ProcessFunc, start, flush HookFunc) Runner {
 	return &processor{
 		mutability: m,
 		In:         in,
@@ -111,7 +111,7 @@ func Processor(m mutability.Context, in <-chan Message, inp, outp *signal.PoolAl
 	}
 }
 
-func Sink(m mutability.Context, in <-chan Message, p *signal.PoolAllocator, fn SinkFunc, start, flush HookFunc) Runner {
+func Sink(m mutable.Context, in <-chan Message, p *signal.PoolAllocator, fn SinkFunc, start, flush HookFunc) Runner {
 	return &sink{
 		mutability: m,
 		In:         in,
@@ -139,7 +139,7 @@ func (r *source) Run(ctx context.Context) <-chan error {
 		}()
 		var (
 			read      int
-			mutations mutability.Mutations
+			mutations mutable.Mutations
 			outSignal signal.Floating
 			err       error
 		)

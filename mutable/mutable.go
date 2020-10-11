@@ -1,4 +1,4 @@
-package mutability
+package mutable
 
 import (
 	"crypto/rand"
@@ -24,14 +24,14 @@ type (
 	MutatorFunc func() error
 )
 
-// Mutable returns new mutable Mutability.
+// Mutable returns new mutable mutable.
 func Mutable() Context {
 	var id [16]byte
 	rand.Read(id[:])
 	return id
 }
 
-// Immutable returns immutable Mutability.
+// Immutable returns immutable mutable.
 func Immutable() Context {
 	return immutable
 }

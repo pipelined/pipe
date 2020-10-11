@@ -6,7 +6,7 @@ import (
 
 	"pipelined.dev/signal"
 
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 )
 
 type (
@@ -27,18 +27,18 @@ type (
 	// SourceAllocatorFunc returns source for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SourceAllocatorFunc func(mut mutability.Context, bufferSize int) (Source, error)
+	SourceAllocatorFunc func(mut mutable.Context, bufferSize int) (Source, error)
 
 	// ProcessorAllocatorFunc returns processor for provided buffer size.
 	// It is responsible for pre-allocation of all necessary buffers and
 	// structures. Along with the processor, output signal properties are
 	// returned.
-	ProcessorAllocatorFunc func(mut mutability.Context, bufferSize int, output SignalProperties) (Processor, error)
+	ProcessorAllocatorFunc func(mut mutable.Context, bufferSize int, output SignalProperties) (Processor, error)
 
 	// SinkAllocatorFunc returns sink for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SinkAllocatorFunc func(mut mutability.Context, bufferSize int, output SignalProperties) (Sink, error)
+	SinkAllocatorFunc func(mut mutable.Context, bufferSize int, output SignalProperties) (Sink, error)
 )
 
 type (
@@ -58,7 +58,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
-		mutability mutability.Context
+		mutability mutable.Context
 		Output     SignalProperties
 		SourceFunc
 		StartFunc
@@ -73,7 +73,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Processor struct {
-		mutability mutability.Context
+		mutability mutable.Context
 		Output     SignalProperties
 		ProcessFunc
 		StartFunc
@@ -88,7 +88,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Sink struct {
-		mutability mutability.Context
+		mutability mutable.Context
 		Output     SignalProperties
 		SinkFunc
 		StartFunc
@@ -143,7 +143,7 @@ func (p *Pipe) AddRoute(r Routing) (*Line, error) {
 }
 
 func (r Routing) line(bufferSize int) (*Line, error) {
-	m := mutability.Mutable()
+	m := mutable.Mutable()
 	source, err := r.Source(m, bufferSize)
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)
@@ -153,7 +153,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 	input := source.Output
 	processors := make([]Processor, 0, len(r.Processors))
 	for i := range r.Processors {
-		m = mutability.Mutable()
+		m = mutable.Mutable()
 		processor, err := r.Processors[i](m, bufferSize, input)
 		if err != nil {
 			return nil, fmt.Errorf("processor: %w", err)
@@ -163,7 +163,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 		input = processor.Output
 	}
 
-	m = mutability.Mutable()
+	m = mutable.Mutable()
 	sink, err := r.Sink(m, bufferSize, input)
 	if err != nil {
 		return nil, fmt.Errorf("sink: %w", err)
