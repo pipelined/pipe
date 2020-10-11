@@ -1,4 +1,4 @@
-package runner
+package async
 
 import (
 	"context"

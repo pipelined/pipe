@@ -3,30 +3,30 @@ package pipe
 import (
 	"context"
 
-	"pipelined.dev/pipe/internal/runner"
+	"pipelined.dev/pipe/internal/async"
 	"pipelined.dev/pipe/mutability"
 )
 
 type (
-	// Runner executes the pipe.
-	Runner struct {
+	// Async executes the pipe.
+	Async struct {
 		ctx           context.Context
 		cancelFn      context.CancelFunc
 		mutability    mutability.Mutability
 		bufferSize    int
 		merger        *merger
 		listeners     map[mutability.Mutability]chan mutability.Mutations
-		runners       map[mutability.Mutability]runner.Runner
+		runners       map[mutability.Mutability]async.Runner
 		mutations     map[chan mutability.Mutations]mutability.Mutations
 		mutationsChan chan []mutability.Mutation
 		errorChan     chan error
 	}
 )
 
-// Run creates and starts new pipe.
-func (p *Pipe) Run(ctx context.Context, initializers ...mutability.Mutation) *Runner {
+// Async creates and starts new pipe.
+func (p *Pipe) Async(ctx context.Context, initializers ...mutability.Mutation) *Async {
 	ctx, cancelFn := context.WithCancel(ctx)
-	runners := make([]runner.Runner, 0, len(p.Lines)*3)
+	runners := make([]async.Runner, 0, len(p.Lines)*3)
 	listeners := make(map[mutability.Mutability]chan mutability.Mutations)
 	for i := range p.Lines {
 		mutationsChan := make(chan mutability.Mutations, 1)
@@ -88,7 +88,7 @@ func (p *Pipe) Run(ctx context.Context, initializers ...mutability.Mutation) *Ru
 			}
 		}
 	}()
-	return &Runner{
+	return &Async{
 		ctx:           ctx,
 		cancelFn:      cancelFn,
 		bufferSize:    p.bufferSize,
@@ -104,31 +104,31 @@ func (p *Pipe) Run(ctx context.Context, initializers ...mutability.Mutation) *Ru
 // Line binds components. All allocators are executed and wrapped into
 // runners. If any of allocators failed, the error will be returned and
 // flush hooks won't be triggered.
-func (l *Line) runners(ctx context.Context, bufferSize int, ms chan mutability.Mutations) []runner.Runner {
-	runners := make([]runner.Runner, 0, 2+len(l.Processors))
+func (l *Line) runners(ctx context.Context, bufferSize int, ms chan mutability.Mutations) []async.Runner {
+	runners := make([]async.Runner, 0, 2+len(l.Processors))
 
-	var r runner.Runner
-	r = runner.Source(
+	var r async.Runner
+	r = async.Source(
 		ms,
 		l.Source.mutability,
 		l.Source.Output.poolAllocator(bufferSize),
-		runner.SourceFunc(l.Source.SourceFunc),
-		runner.HookFunc(l.Source.StartFunc),
-		runner.HookFunc(l.Source.FlushFunc),
+		async.SourceFunc(l.Source.SourceFunc),
+		async.HookFunc(l.Source.StartFunc),
+		async.HookFunc(l.Source.FlushFunc),
 	)
 	runners = append(runners, r)
 
 	in := r.Out()
 	props := l.Source.Output
 	for i := range l.Processors {
-		r = runner.Processor(
+		r = async.Processor(
 			l.Processors[i].mutability,
 			in,
 			props.poolAllocator(bufferSize),
 			l.Processors[i].Output.poolAllocator(bufferSize),
-			runner.ProcessFunc(l.Processors[i].ProcessFunc),
-			runner.HookFunc(l.Processors[i].StartFunc),
-			runner.HookFunc(l.Processors[i].FlushFunc),
+			async.ProcessFunc(l.Processors[i].ProcessFunc),
+			async.HookFunc(l.Processors[i].StartFunc),
+			async.HookFunc(l.Processors[i].FlushFunc),
 		)
 		runners = append(runners, r)
 		in = r.Out()
@@ -136,13 +136,13 @@ func (l *Line) runners(ctx context.Context, bufferSize int, ms chan mutability.M
 	}
 
 	runners = append(runners,
-		runner.Sink(
+		async.Sink(
 			l.Sink.mutability,
 			in,
 			props.poolAllocator(bufferSize),
-			runner.SinkFunc(l.Sink.SinkFunc),
-			runner.HookFunc(l.Sink.StartFunc),
-			runner.HookFunc(l.Sink.FlushFunc),
+			async.SinkFunc(l.Sink.SinkFunc),
+			async.HookFunc(l.Sink.StartFunc),
+			async.HookFunc(l.Sink.FlushFunc),
 		),
 	)
 
@@ -157,7 +157,7 @@ func push(mutations map[chan mutability.Mutations]mutability.Mutations) {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, runners []runner.Runner) []<-chan error {
+func start(ctx context.Context, runners []async.Runner) []<-chan error {
 	// start all runners
 	// error channel for each component
 	errChans := make([]<-chan error, 0, len(runners))
@@ -169,12 +169,12 @@ func start(ctx context.Context, runners []runner.Runner) []<-chan error {
 
 // Push new mutators into pipe.
 // Calling this method after pipe is done will cause a panic.
-func (r *Runner) Push(mutations ...mutability.Mutation) {
+func (r *Async) Push(mutations ...mutability.Mutation) {
 	r.mutationsChan <- mutations
 }
 
 // AddLine adds the line to the pipe.
-func (r *Runner) AddLine(l *Line) mutability.Mutation {
+func (r *Async) AddLine(l *Line) mutability.Mutation {
 	ms := make(chan mutability.Mutations, 1)
 	rs := l.runners(r.ctx, r.bufferSize, ms)
 	// r.runners[l] = lineRunner
@@ -185,7 +185,7 @@ func (r *Runner) AddLine(l *Line) mutability.Mutation {
 	})
 }
 
-func (r *Runner) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) (mutability.Mutation, error) {
+func (r *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) (mutability.Mutation, error) {
 	panic("not implemented")
 	// lineRunner, ok := r.runners[l]
 	// if !ok {
@@ -216,17 +216,17 @@ func (r *Runner) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) (muta
 	l.Processors[pos] = proc
 
 	// procRunner, _ := proc.runner(r.bufferSize, input)
-	// lineRunner.AddProcessor(pos, procRunner)
-	// r.listeners[proc.mutability] = lineRunner.Mutations
+	// lineasync.AddProcessor(pos, procRunner)
+	// r.listeners[proc.mutability] = lineasync.Mutations
 	return proc.mutability.Mutate(func() error {
 		// TODO: add magic here
-		// r.merger.merge(procRunner.Run(r.ctx))
+		// r.merger.merge(procasync.Run(r.ctx))
 		return nil
 	}), nil
 }
 
-// Wait for state transition or first error to occur.
-func (r *Runner) Wait() error {
+// Await for successful finish or first error to occur.
+func (r *Async) Await() error {
 	for err := range r.errorChan {
 		if err != nil {
 			return err

@@ -33,8 +33,8 @@ func TestSimplePipe(t *testing.T) {
 	assertNil(t, "error", err)
 
 	// start
-	r := p.Run(context.Background())
-	err = r.Wait()
+	r := p.Async(context.Background())
+	err = r.Await()
 	assertNil(t, "error", err)
 
 	assertEqual(t, "messages", source.Counter.Messages, 862)
@@ -59,15 +59,15 @@ func TestReset(t *testing.T) {
 		},
 	)
 	assertNil(t, "error", err)
-	r := p.Run(context.Background())
+	r := p.Async(context.Background())
 	// start
-	err = r.Wait()
+	err = r.Await()
 	assertNil(t, "error", err)
 	assertEqual(t, "messages", source.Counter.Messages, 862)
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 
-	r = p.Run(context.Background(), source.Reset())
-	_ = r.Wait()
+	r = p.Async(context.Background(), source.Reset())
+	_ = r.Await()
 	assertNil(t, "error", err)
 	assertEqual(t, "messages", sink.Counter.Messages, 2*862)
 	assertEqual(t, "samples", sink.Counter.Samples, 2*862*bufferSize)
@@ -102,14 +102,14 @@ func TestAddLine(t *testing.T) {
 		route1,
 	)
 	assertNil(t, "error", err)
-	r := p.Run(context.Background())
+	r := p.Async(context.Background())
 	l, err := p.AddRoute(route2)
 	assertNil(t, "error", err)
 	r.Push(source2.Reset())
 	r.Push(r.AddLine(l))
 
 	// start
-	err = r.Wait()
+	err = r.Await()
 	assertEqual(t, "messages", sink1.Counter.Messages, 862)
 	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
 	assertEqual(t, "messages", sink2.Counter.Messages, 862)
@@ -136,7 +136,7 @@ func BenchmarkSingleLine(b *testing.B) {
 		Sink: sink.Sink(),
 	})
 	for i := 0; i < b.N; i++ {
-		_ = p.Run(context.Background(), source.Reset()).Wait()
+		_ = p.Async(context.Background(), source.Reset()).Await()
 	}
 	b.Logf("recieved messages: %d samples: %d", sink.Messages, sink.Samples)
 }
