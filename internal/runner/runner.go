@@ -68,6 +68,33 @@ func (fn HookFunc) call(ctx context.Context) error {
 	return fn(ctx)
 }
 
+// Run starts the runners.
+func (r *Runner) Run(ctx context.Context) []<-chan error {
+	bindChannels(r)
+	errcs := make([]<-chan error, 0, 2+len(r.Processors))
+	// start source
+	errcs = append(errcs, r.Source.Run(ctx))
+
+	// start chained processesing
+	for _, proc := range r.Processors {
+		errcs = append(errcs, proc.Run(ctx))
+	}
+
+	errcs = append(errcs, r.Sink.Run(ctx))
+	return errcs
+}
+
+func bindChannels(r *Runner) {
+	r.Source.Out = make(chan Message, 1)
+	in := r.Source.Out
+	for i := range r.Processors {
+		r.Processors[i].In = in
+		r.Processors[i].Out = make(chan Message, 1)
+		in = r.Processors[i].Out
+	}
+	r.Sink.In = in
+}
+
 // Run starts the Source runner.
 func (r Source) Run(ctx context.Context) <-chan error {
 	errc := make(chan error, 1)
@@ -229,31 +256,4 @@ func (r Sink) Run(ctx context.Context) <-chan error {
 	}()
 
 	return errc
-}
-
-// Run starts the runners.
-func (r *Runner) Run(ctx context.Context) []<-chan error {
-	bindChannels(r)
-	errcs := make([]<-chan error, 0, 2+len(r.Processors))
-	// start source
-	errcs = append(errcs, r.Source.Run(ctx))
-
-	// start chained processesing
-	for _, proc := range r.Processors {
-		errcs = append(errcs, proc.Run(ctx))
-	}
-
-	errcs = append(errcs, r.Sink.Run(ctx))
-	return errcs
-}
-
-func bindChannels(r *Runner) {
-	r.Source.Out = make(chan Message, 1)
-	in := r.Source.Out
-	for i := range r.Processors {
-		r.Processors[i].In = in
-		r.Processors[i].Out = make(chan Message, 1)
-		in = r.Processors[i].Out
-	}
-	r.Sink.In = in
 }

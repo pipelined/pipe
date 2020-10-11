@@ -62,9 +62,9 @@ type Source struct {
 
 // Source returns SourceAllocatorFunc.
 func (m *Source) Source() pipe.SourceAllocatorFunc {
-	return func(bufferSize int) (pipe.Source, error) {
+	return func(mut mutability.Mutability, bufferSize int) (pipe.Source, error) {
+		m.Mutator.Mutability = mut
 		return pipe.Source{
-				Mutability: m.Mutability,
 				Output: pipe.SignalProperties{
 					SampleRate: m.SampleRate,
 					Channels:   m.Channels,
@@ -124,11 +124,11 @@ type Processor struct {
 
 // Processor returns closure that creates new processors.
 func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
-	return func(bufferSize int, props pipe.SignalProperties) (pipe.Processor, error) {
+	return func(mut mutability.Mutability, bufferSize int, props pipe.SignalProperties) (pipe.Processor, error) {
+		m.Mutator.Mutability = mut
 		return pipe.Processor{
-			Mutability: m.Mutator.Mutability,
-			Output:     props,
-			FlushFunc:  m.Flusher.Flush,
+			Output:    props,
+			FlushFunc: m.Flusher.Flush,
 			ProcessFunc: func(in, out signal.Floating) error {
 				if m.ErrorOnCall != nil {
 					return m.ErrorOnCall
@@ -152,13 +152,13 @@ type Sink struct {
 
 // Sink returns closure that creates new sinks.
 func (m *Sink) Sink() pipe.SinkAllocatorFunc {
-	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+	return func(mut mutability.Mutability, bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+		m.Mutator.Mutability = mut
 		if !m.Discard {
 			m.Counter.Values = signal.Allocator{Channels: props.Channels, Capacity: bufferSize}.Float64()
 		}
 		return pipe.Sink{
-			Mutability: m.Mutator.Mutability,
-			FlushFunc:  m.Flusher.Flush,
+			FlushFunc: m.Flusher.Flush,
 			SinkFunc: func(in signal.Floating) error {
 				if m.ErrorOnCall != nil {
 					return m.ErrorOnCall

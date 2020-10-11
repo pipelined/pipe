@@ -27,25 +27,25 @@ type (
 	// SourceAllocatorFunc returns source for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SourceAllocatorFunc func(bufferSize int) (Source, error)
+	SourceAllocatorFunc func(mut mutability.Mutability, bufferSize int) (Source, error)
 
 	// ProcessorAllocatorFunc returns processor for provided buffer size.
 	// It is responsible for pre-allocation of all necessary buffers and
 	// structures. Along with the processor, output signal properties are
 	// returned.
-	ProcessorAllocatorFunc func(bufferSize int, output SignalProperties) (Processor, error)
+	ProcessorAllocatorFunc func(mut mutability.Mutability, bufferSize int, output SignalProperties) (Processor, error)
 
 	// SinkAllocatorFunc returns sink for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SinkAllocatorFunc func(bufferSize int, output SignalProperties) (Sink, error)
+	SinkAllocatorFunc func(mut mutability.Mutability, bufferSize int, output SignalProperties) (Sink, error)
 )
 
 type (
 	// Pipe is a graph formed with multiple lines of bound DSP components.
 	Pipe struct {
 		bufferSize int
-		lines      []Line
+		Lines      []*Line
 	}
 
 	// Line bounds the routing to the context and buffer size.
@@ -58,8 +58,8 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
-		mutability.Mutability
-		Output SignalProperties
+		mutability mutability.Mutability
+		Output     SignalProperties
 		SourceFunc
 		StartFunc
 		FlushFunc
@@ -73,8 +73,8 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Processor struct {
-		mutability.Mutability
-		Output SignalProperties
+		mutability mutability.Mutability
+		Output     SignalProperties
 		ProcessFunc
 		StartFunc
 		FlushFunc
@@ -88,8 +88,8 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Sink struct {
-		mutability.Mutability
-		Output SignalProperties
+		mutability mutability.Mutability
+		Output     SignalProperties
 		SinkFunc
 		StartFunc
 		FlushFunc
@@ -114,7 +114,7 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 	}
 	// context for pipe binding.
 	// will be cancelled if any binding failes.
-	lines := make([]Line, 0, len(routes))
+	lines := make([]*Line, 0, len(routes))
 	for i := range routes {
 		l, err := routes[i].line(bufferSize)
 		if err != nil {
@@ -125,46 +125,52 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 
 	return &Pipe{
 		bufferSize: bufferSize,
-		lines:      lines,
+		Lines:      lines,
 	}, nil
 }
 
 // AddRoute adds the route to already bound pipe.
-func (p *Pipe) AddRoute(r Routing) (Line, error) {
+func (p *Pipe) AddRoute(r Routing) (*Line, error) {
 	// For every added line new child context is created. It allows to
 	// cancel it without cancelling parent context of already bound
 	// components. If pipe is bound successfully, context is not cancelled.
 	l, err := r.line(p.bufferSize)
 	if err != nil {
-		return Line{}, err
+		return nil, err
 	}
-	p.lines = append(p.lines, l)
+	p.Lines = append(p.Lines, l)
 	return l, nil
 }
 
-func (r Routing) line(bufferSize int) (Line, error) {
-	source, err := r.Source(bufferSize)
+func (r Routing) line(bufferSize int) (*Line, error) {
+	m := mutability.Mutable()
+	source, err := r.Source(m, bufferSize)
 	if err != nil {
-		return Line{}, fmt.Errorf("source: %w", err)
+		return nil, fmt.Errorf("source: %w", err)
 	}
+	source.mutability = m
 
 	input := source.Output
 	processors := make([]Processor, 0, len(r.Processors))
 	for i := range r.Processors {
-		processor, err := r.Processors[i](bufferSize, input)
+		m = mutability.Mutable()
+		processor, err := r.Processors[i](m, bufferSize, input)
 		if err != nil {
-			return Line{}, fmt.Errorf("processor: %w", err)
+			return nil, fmt.Errorf("processor: %w", err)
 		}
+		processor.mutability = m
 		processors = append(processors, processor)
 		input = processor.Output
 	}
 
-	sink, err := r.Sink(bufferSize, input)
+	m = mutability.Mutable()
+	sink, err := r.Sink(m, bufferSize, input)
 	if err != nil {
-		return Line{}, fmt.Errorf("sink: %w", err)
+		return nil, fmt.Errorf("sink: %w", err)
 	}
+	sink.mutability = m
 
-	return Line{
+	return &Line{
 		Source:     source,
 		Processors: processors,
 		Sink:       sink,
