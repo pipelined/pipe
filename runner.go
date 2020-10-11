@@ -5,7 +5,6 @@ import (
 
 	"pipelined.dev/pipe/internal/runner"
 	"pipelined.dev/pipe/mutability"
-	"pipelined.dev/signal"
 )
 
 type (
@@ -17,22 +16,24 @@ type (
 		bufferSize    int
 		merger        *merger
 		listeners     map[mutability.Mutability]chan mutability.Mutations
+		runners       map[mutability.Mutability]runner.Runner
 		mutations     map[chan mutability.Mutations]mutability.Mutations
 		mutationsChan chan []mutability.Mutation
 		errorChan     chan error
-		runners       map[*Line]*runner.Line
 	}
 )
 
 // Run creates and starts new pipe.
 func (p *Pipe) Run(ctx context.Context, initializers ...mutability.Mutation) *Runner {
 	ctx, cancelFn := context.WithCancel(ctx)
-	runners := make(map[*Line]*runner.Line)
+	runners := make([]runner.Runner, 0, len(p.Lines)*3)
 	listeners := make(map[mutability.Mutability]chan mutability.Mutations)
 	for i := range p.Lines {
-		r := p.Lines[i].runner(ctx, p.bufferSize)
-		runners[p.Lines[i]] = r
-		addListeners(listeners, r)
+		mutationsChan := make(chan mutability.Mutations, 1)
+		runners = append(runners,
+			p.Lines[i].runners(ctx, p.bufferSize, mutationsChan)...,
+		)
+		addListeners(listeners, p.Lines[i], mutationsChan)
 	}
 	mutations := make(map[chan mutability.Mutations]mutability.Mutations)
 	for i := range initializers {
@@ -88,70 +89,64 @@ func (p *Pipe) Run(ctx context.Context, initializers ...mutability.Mutation) *Ru
 		}
 	}()
 	return &Runner{
-		bufferSize:    p.bufferSize,
 		ctx:           ctx,
 		cancelFn:      cancelFn,
+		bufferSize:    p.bufferSize,
 		mutability:    runnerMutability,
 		mutations:     mutations,
 		mutationsChan: mutationsChan,
 		errorChan:     errc,
 		merger:        &merger,
 		listeners:     listeners,
-		runners:       runners,
 	}
 }
 
 // Line binds components. All allocators are executed and wrapped into
 // runners. If any of allocators failed, the error will be returned and
 // flush hooks won't be triggered.
-func (l *Line) runner(ctx context.Context, bufferSize int) *runner.Line {
-	source, input := l.Source.runner(bufferSize)
+func (l *Line) runners(ctx context.Context, bufferSize int, ms chan mutability.Mutations) []runner.Runner {
+	runners := make([]runner.Runner, 0, 2+len(l.Processors))
 
-	processors := make([]runner.Processor, 0, len(l.Processors))
-	var processor runner.Processor
+	var r runner.Runner
+	r = runner.Source(
+		ms,
+		l.Source.mutability,
+		l.Source.Output.poolAllocator(bufferSize),
+		runner.SourceFunc(l.Source.SourceFunc),
+		runner.HookFunc(l.Source.StartFunc),
+		runner.HookFunc(l.Source.FlushFunc),
+	)
+	runners = append(runners, r)
+
+	in := r.Out()
+	props := l.Source.Output
 	for i := range l.Processors {
-		processor, input = l.Processors[i].runner(bufferSize, input)
-		processors = append(processors, processor)
+		r = runner.Processor(
+			l.Processors[i].mutability,
+			in,
+			props.poolAllocator(bufferSize),
+			l.Processors[i].Output.poolAllocator(bufferSize),
+			runner.ProcessFunc(l.Processors[i].ProcessFunc),
+			runner.HookFunc(l.Processors[i].StartFunc),
+			runner.HookFunc(l.Processors[i].FlushFunc),
+		)
+		runners = append(runners, r)
+		in = r.Out()
+		props = l.Processors[i].Output
 	}
 
-	sink := l.Sink.runner(bufferSize, input)
-	return &runner.Line{
-		Source:     source,
-		Processors: processors,
-		Sink:       sink,
-	}
-}
+	runners = append(runners,
+		runner.Sink(
+			l.Sink.mutability,
+			in,
+			props.poolAllocator(bufferSize),
+			runner.SinkFunc(l.Sink.SinkFunc),
+			runner.HookFunc(l.Sink.StartFunc),
+			runner.HookFunc(l.Sink.FlushFunc),
+		),
+	)
 
-func (s Source) runner(bufferSize int) (runner.Source, SignalProperties) {
-	return runner.Source{
-		Mutations:  make(chan mutability.Mutations, 1),
-		Mutability: s.mutability,
-		OutPool:    signal.GetPoolAllocator(s.Output.Channels, bufferSize, bufferSize),
-		Fn:         s.SourceFunc,
-		Start:      runner.HookFunc(s.StartFunc),
-		Flush:      runner.HookFunc(s.FlushFunc),
-	}, s.Output
-}
-
-func (p Processor) runner(bufferSize int, input SignalProperties) (runner.Processor, SignalProperties) {
-	return runner.Processor{
-		Mutability: p.mutability,
-		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
-		OutPool:    signal.GetPoolAllocator(p.Output.Channels, bufferSize, bufferSize),
-		Fn:         p.ProcessFunc,
-		Start:      runner.HookFunc(p.StartFunc),
-		Flush:      runner.HookFunc(p.FlushFunc),
-	}, p.Output
-}
-
-func (s Sink) runner(bufferSize int, input SignalProperties) runner.Sink {
-	return runner.Sink{
-		Mutability: s.mutability,
-		InPool:     signal.GetPoolAllocator(input.Channels, bufferSize, bufferSize),
-		Fn:         s.SinkFunc,
-		Start:      runner.HookFunc(s.StartFunc),
-		Flush:      runner.HookFunc(s.FlushFunc),
-	}
+	return runners
 }
 
 func push(mutations map[chan mutability.Mutations]mutability.Mutations) {
@@ -162,12 +157,12 @@ func push(mutations map[chan mutability.Mutations]mutability.Mutations) {
 }
 
 // start starts the execution of pipe.
-func start(ctx context.Context, runners map[*Line]*runner.Line) []<-chan error {
+func start(ctx context.Context, runners []runner.Runner) []<-chan error {
 	// start all runners
 	// error channel for each component
-	errChans := make([]<-chan error, 0, 2*len(runners))
+	errChans := make([]<-chan error, 0, len(runners))
 	for i := range runners {
-		errChans = append(errChans, runners[i].Run(ctx)...)
+		errChans = append(errChans, runners[i].Run(ctx))
 	}
 	return errChans
 }
@@ -180,27 +175,34 @@ func (r *Runner) Push(mutations ...mutability.Mutation) {
 
 // AddLine adds the line to the pipe.
 func (r *Runner) AddLine(l *Line) mutability.Mutation {
-	lineRunner := l.runner(r.ctx, r.bufferSize)
-	r.runners[l] = lineRunner
+	ms := make(chan mutability.Mutations, 1)
+	rs := l.runners(r.ctx, r.bufferSize, ms)
+	// r.runners[l] = lineRunner
 	return r.mutability.Mutate(func() error {
-		addListeners(r.listeners, lineRunner)
-		r.merger.merge(lineRunner.Run(r.ctx)...)
+		addListeners(r.listeners, l, ms) // RACE CONDITION
+		r.merger.merge(start(r.ctx, rs)...)
 		return nil
 	})
 }
 
 func (r *Runner) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) (mutability.Mutation, error) {
-	lineRunner, ok := r.runners[l]
-	if !ok {
-		panic("line is not running")
-	}
+	panic("not implemented")
+	// lineRunner, ok := r.runners[l]
+	// if !ok {
+	// 	panic("line is not running")
+	// }
 
 	// allocate processor with output properties of previous stage.
-	var input SignalProperties
+	var (
+		input SignalProperties
+		// mut   mutability.Mutability
+	)
 	if pos == 0 {
 		input = l.Source.Output
+		// mut = l.Source.mutability
 	} else {
 		input = l.Processors[pos-1].Output
+		// mut = l.Processors[pos-1].mutability
 	}
 	m := mutability.Mutable()
 	proc, err := fn(m, r.bufferSize, input)
@@ -213,12 +215,12 @@ func (r *Runner) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) (muta
 	copy(l.Processors[pos+1:], l.Processors[pos:])
 	l.Processors[pos] = proc
 
-	procRunner, _ := proc.runner(r.bufferSize, input)
-	lineRunner.AddProcessor(pos, procRunner)
-	r.listeners[proc.mutability] = lineRunner.Mutations
+	// procRunner, _ := proc.runner(r.bufferSize, input)
+	// lineRunner.AddProcessor(pos, procRunner)
+	// r.listeners[proc.mutability] = lineRunner.Mutations
 	return proc.mutability.Mutate(func() error {
 		// TODO: add magic here
-		r.merger.merge(procRunner.Run(r.ctx))
+		// r.merger.merge(procRunner.Run(r.ctx))
 		return nil
 	}), nil
 }
@@ -233,10 +235,10 @@ func (r *Runner) Wait() error {
 	return nil
 }
 
-func addListeners(listeners map[mutability.Mutability]chan mutability.Mutations, r *runner.Line) {
-	listeners[r.Source.Mutability] = r.Mutations
-	for i := range r.Processors {
-		listeners[r.Processors[i].Mutability] = r.Mutations
+func addListeners(listeners map[mutability.Mutability]chan mutability.Mutations, l *Line, ms chan mutability.Mutations) {
+	listeners[l.Source.mutability] = ms
+	for i := range l.Processors {
+		listeners[l.Processors[i].mutability] = ms
 	}
-	listeners[r.Sink.Mutability] = r.Mutations
+	listeners[l.Sink.mutability] = ms
 }

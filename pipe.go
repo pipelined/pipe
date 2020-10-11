@@ -181,3 +181,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 	return processors
 }
+
+func (sp SignalProperties) poolAllocator(bufferSize int) *signal.PoolAllocator {
+	return signal.GetPoolAllocator(sp.Channels, bufferSize, bufferSize)
+}
