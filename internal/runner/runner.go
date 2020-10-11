@@ -17,8 +17,8 @@ type Message struct {
 }
 
 type (
-	// Runner defines the sequence of executors.
-	Runner struct {
+	// Line defines the sequence of executors.
+	Line struct {
 		Source
 		Processors []Processor
 		Sink
@@ -69,7 +69,7 @@ func (fn HookFunc) call(ctx context.Context) error {
 }
 
 // Run starts the runners.
-func (r *Runner) Run(ctx context.Context) []<-chan error {
+func (r *Line) Run(ctx context.Context) []<-chan error {
 	bindChannels(r)
 	errcs := make([]<-chan error, 0, 2+len(r.Processors))
 	// start source
@@ -84,7 +84,18 @@ func (r *Runner) Run(ctx context.Context) []<-chan error {
 	return errcs
 }
 
-func bindChannels(r *Runner) {
+func (r *Line) AddProcessor(pos int, proc Processor) {
+	// var in chan Message
+	// if len(r.Processors) == 0 {
+	// 	in = r.Source.Out
+	// }
+
+	// if pos == 0 {
+
+	// }
+}
+
+func bindChannels(r *Line) {
 	r.Source.Out = make(chan Message, 1)
 	in := r.Source.Out
 	for i := range r.Processors {
