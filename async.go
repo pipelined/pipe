@@ -8,7 +8,8 @@ import (
 )
 
 type (
-	// Async executes the pipe.
+	// Async executes the pipe asynchronously. Every pipe component is
+	// executed in its own goroutine.
 	Async struct {
 		ctx           context.Context
 		cancelFn      context.CancelFunc
@@ -33,7 +34,10 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 		runners = append(runners,
 			p.Lines[i].runners(ctx, p.bufferSize, mutationsChan)...,
 		)
-		addListeners(listeners, p.Lines[i], mutationsChan)
+		addListeners(listeners,
+			mutationsChan,
+			p.Lines[i].mutableContexts(),
+		)
 	}
 	mutations := make(map[chan mutable.Mutations]mutable.Mutations)
 	for i := range initializers {
@@ -104,12 +108,12 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 // Line binds components. All allocators are executed and wrapped into
 // runners. If any of allocators failed, the error will be returned and
 // flush hooks won't be triggered.
-func (l *Line) runners(ctx context.Context, bufferSize int, ms chan mutable.Mutations) []async.Runner {
+func (l *Line) runners(ctx context.Context, bufferSize int, mc chan mutable.Mutations) []async.Runner {
 	runners := make([]async.Runner, 0, 2+len(l.Processors))
 
 	var r async.Runner
 	r = async.Source(
-		ms,
+		mc,
 		l.Source.mutability,
 		l.Source.Output.poolAllocator(bufferSize),
 		async.SourceFunc(l.Source.SourceFunc),
@@ -149,6 +153,17 @@ func (l *Line) runners(ctx context.Context, bufferSize int, ms chan mutable.Muta
 	return runners
 }
 
+func (l *Line) mutableContexts() []mutable.Context {
+	ctxs := make([]mutable.Context, 0, 2+len(l.Processors))
+
+	ctxs = append(ctxs, l.Source.mutability, l.Sink.mutability)
+	for i := range l.Processors {
+		ctxs = append(ctxs, l.Processors[i].mutability)
+	}
+
+	return ctxs
+}
+
 func push(mutations map[chan mutable.Mutations]mutable.Mutations) {
 	for c, m := range mutations {
 		c <- m
@@ -169,24 +184,23 @@ func start(ctx context.Context, runners []async.Runner) []<-chan error {
 
 // Push new mutators into pipe.
 // Calling this method after pipe is done will cause a panic.
-func (r *Async) Push(mutations ...mutable.Mutation) {
-	r.mutationsChan <- mutations
+func (a *Async) Push(mutations ...mutable.Mutation) {
+	a.mutationsChan <- mutations
 }
 
 // AddLine adds the line to the pipe.
-func (r *Async) AddLine(l *Line) mutable.Mutation {
-	ms := make(chan mutable.Mutations, 1)
-	rs := l.runners(r.ctx, r.bufferSize, ms)
-	// r.runners[l] = lineRunner
-	return r.mutability.Mutate(func() error {
-		addListeners(r.listeners, l, ms) // RACE CONDITION
-		r.merger.merge(start(r.ctx, rs)...)
+func (a *Async) AddLine(l *Line) mutable.Mutation {
+	mc := make(chan mutable.Mutations, 1)
+	rs := l.runners(a.ctx, a.bufferSize, mc)
+	ctxs := l.mutableContexts()
+	return a.mutability.Mutate(func() error {
+		addListeners(a.listeners, mc, ctxs)
+		a.merger.merge(start(a.ctx, rs)...)
 		return nil
 	})
 }
 
-func (r *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) (mutable.Mutation, error) {
-	panic("not implemented")
+func (a *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) (mutable.Mutation, error) {
 	// lineRunner, ok := r.runners[l]
 	// if !ok {
 	// 	panic("line is not running")
@@ -205,7 +219,7 @@ func (r *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) (mutab
 		// mut = l.Processors[pos-1].mutability
 	}
 	m := mutable.Mutable()
-	proc, err := fn(m, r.bufferSize, input)
+	proc, err := fn(m, a.bufferSize, input)
 	if err != nil {
 		return mutable.Mutation{}, err
 	}
@@ -226,8 +240,8 @@ func (r *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) (mutab
 }
 
 // Await for successful finish or first error to occur.
-func (r *Async) Await() error {
-	for err := range r.errorChan {
+func (a *Async) Await() error {
+	for err := range a.errorChan {
 		if err != nil {
 			return err
 		}
@@ -235,10 +249,8 @@ func (r *Async) Await() error {
 	return nil
 }
 
-func addListeners(listeners map[mutable.Context]chan mutable.Mutations, l *Line, ms chan mutable.Mutations) {
-	listeners[l.Source.mutability] = ms
-	for i := range l.Processors {
-		listeners[l.Processors[i].mutability] = ms
+func addListeners(listeners map[mutable.Context]chan mutable.Mutations, mc chan mutable.Mutations, ctxs []mutable.Context) {
+	for i := range ctxs {
+		listeners[ctxs[i]] = mc
 	}
-	listeners[l.Sink.mutability] = ms
 }

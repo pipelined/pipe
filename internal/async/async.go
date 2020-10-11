@@ -17,18 +17,12 @@ type Message struct {
 }
 
 type (
+	// Runner is asynchronous component executor.
 	Runner interface {
 		Run(context.Context) <-chan error
 		Out() <-chan Message
 		Insert(Runner)
 	}
-
-	// Line defines the sequence of executors.
-	// Line struct {
-	// 	Source     source
-	// 	Processors []Processor
-	// 	Sink
-	// }
 
 	// source executes pipe.source components.
 	source struct {
@@ -65,9 +59,12 @@ type (
 )
 
 type (
-	SourceFunc  func(out signal.Floating) (int, error)
+	// SourceFunc is a wrapper type of source closure.
+	SourceFunc func(out signal.Floating) (int, error)
+	// ProcessFunc is a wrapper type of processor closure.
 	ProcessFunc func(in, out signal.Floating) error
-	SinkFunc    func(in signal.Floating) error
+	// SinkFunc is a wrapper type of sink closure.
+	SinkFunc func(in signal.Floating) error
 )
 
 type out chan Message
@@ -86,6 +83,7 @@ func (fn HookFunc) call(ctx context.Context) error {
 	return fn(ctx)
 }
 
+// Source returns async runner for pipe.source components.
 func Source(mc chan mutable.Mutations, m mutable.Context, p *signal.PoolAllocator, fn SourceFunc, start, flush HookFunc) Runner {
 	return &source{
 		mutations:  mc,
@@ -98,6 +96,7 @@ func Source(mc chan mutable.Mutations, m mutable.Context, p *signal.PoolAllocato
 	}
 }
 
+// Processor returns async runner for pipe.processor components.
 func Processor(m mutable.Context, in <-chan Message, inp, outp *signal.PoolAllocator, fn ProcessFunc, start, flush HookFunc) Runner {
 	return &processor{
 		mutability: m,
@@ -111,6 +110,7 @@ func Processor(m mutable.Context, in <-chan Message, inp, outp *signal.PoolAlloc
 	}
 }
 
+// Sink returns async runner for pipe.sink components.
 func Sink(m mutable.Context, in <-chan Message, p *signal.PoolAllocator, fn SinkFunc, start, flush HookFunc) Runner {
 	return &sink{
 		mutability: m,
