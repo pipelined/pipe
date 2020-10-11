@@ -12,11 +12,11 @@ type (
 	Async struct {
 		ctx           context.Context
 		cancelFn      context.CancelFunc
-		mutability    mutability.Mutability
+		mutability    mutability.Context
 		bufferSize    int
 		merger        *merger
-		listeners     map[mutability.Mutability]chan mutability.Mutations
-		runners       map[mutability.Mutability]async.Runner
+		listeners     map[mutability.Context]chan mutability.Mutations
+		runners       map[mutability.Context]async.Runner
 		mutations     map[chan mutability.Mutations]mutability.Mutations
 		mutationsChan chan []mutability.Mutation
 		errorChan     chan error
@@ -27,7 +27,7 @@ type (
 func (p *Pipe) Async(ctx context.Context, initializers ...mutability.Mutation) *Async {
 	ctx, cancelFn := context.WithCancel(ctx)
 	runners := make([]async.Runner, 0, len(p.Lines)*3)
-	listeners := make(map[mutability.Mutability]chan mutability.Mutations)
+	listeners := make(map[mutability.Context]chan mutability.Mutations)
 	for i := range p.Lines {
 		mutationsChan := make(chan mutability.Mutations, 1)
 		runners = append(runners,
@@ -37,7 +37,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutability.Mutation) *
 	}
 	mutations := make(map[chan mutability.Mutations]mutability.Mutations)
 	for i := range initializers {
-		if c := listeners[initializers[i].Mutability]; c != nil {
+		if c := listeners[initializers[i].Context]; c != nil {
 			mutations[c] = mutations[c].Put(initializers[i])
 		}
 	}
@@ -61,7 +61,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutability.Mutation) *
 			case ms := <-mutationsChan:
 				for _, m := range ms {
 					// mutate pipe itself
-					if m.Mutability == runnerMutability {
+					if m.Context == runnerMutability {
 						if err := m.Apply(); err != nil {
 							cancelFn()
 							merger.await()
@@ -69,7 +69,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutability.Mutation) *
 						}
 					} else {
 						for i := range ms {
-							if c := listeners[m.Mutability]; c != nil {
+							if c := listeners[m.Context]; c != nil {
 								mutations[c] = mutations[c].Put(ms[i])
 							}
 						}
@@ -235,7 +235,7 @@ func (r *Async) Await() error {
 	return nil
 }
 
-func addListeners(listeners map[mutability.Mutability]chan mutability.Mutations, l *Line, ms chan mutability.Mutations) {
+func addListeners(listeners map[mutability.Context]chan mutability.Mutations, l *Line, ms chan mutability.Mutations) {
 	listeners[l.Source.mutability] = ms
 	for i := range l.Processors {
 		listeners[l.Processors[i].mutability] = ms

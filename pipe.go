@@ -27,18 +27,18 @@ type (
 	// SourceAllocatorFunc returns source for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SourceAllocatorFunc func(mut mutability.Mutability, bufferSize int) (Source, error)
+	SourceAllocatorFunc func(mut mutability.Context, bufferSize int) (Source, error)
 
 	// ProcessorAllocatorFunc returns processor for provided buffer size.
 	// It is responsible for pre-allocation of all necessary buffers and
 	// structures. Along with the processor, output signal properties are
 	// returned.
-	ProcessorAllocatorFunc func(mut mutability.Mutability, bufferSize int, output SignalProperties) (Processor, error)
+	ProcessorAllocatorFunc func(mut mutability.Context, bufferSize int, output SignalProperties) (Processor, error)
 
 	// SinkAllocatorFunc returns sink for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SinkAllocatorFunc func(mut mutability.Mutability, bufferSize int, output SignalProperties) (Sink, error)
+	SinkAllocatorFunc func(mut mutability.Context, bufferSize int, output SignalProperties) (Sink, error)
 )
 
 type (
@@ -58,7 +58,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
-		mutability mutability.Mutability
+		mutability mutability.Context
 		Output     SignalProperties
 		SourceFunc
 		StartFunc
@@ -73,7 +73,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Processor struct {
-		mutability mutability.Mutability
+		mutability mutability.Context
 		Output     SignalProperties
 		ProcessFunc
 		StartFunc
@@ -88,7 +88,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Sink struct {
-		mutability mutability.Mutability
+		mutability mutability.Context
 		Output     SignalProperties
 		SinkFunc
 		StartFunc

@@ -7,12 +7,12 @@ import (
 )
 
 type mutable struct {
-	mutability.Mutability
+	mutability.Context
 	parameter int
 }
 
 func (m *mutable) setParameter(value int) mutability.Mutation {
-	return m.Mutability.Mutate(func() error {
+	return m.Context.Mutate(func() error {
 		m.parameter = value
 		return nil
 	})
@@ -21,7 +21,7 @@ func (m *mutable) setParameter(value int) mutability.Mutation {
 func Example_mutation() {
 	// create new mutable component
 	component := &mutable{
-		Mutability: mutability.Mutable(),
+		Context: mutability.Mutable(),
 	}
 	fmt.Println(component.parameter)
 

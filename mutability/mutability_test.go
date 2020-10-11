@@ -9,7 +9,7 @@ import (
 
 // mutableMock used to set up test cases for mutators
 type mutableMock struct {
-	mutability.Mutability
+	Mutability mutability.Context
 	value      int
 	operations int
 	expected   int
@@ -17,7 +17,7 @@ type mutableMock struct {
 
 // mutators closure to mutability.value
 func (m *mutableMock) AddDelta(delta int) mutability.Mutation {
-	return m.Mutate(func() error {
+	return m.Mutability.Mutate(func() error {
 		m.value += delta
 		return nil
 	})
@@ -72,7 +72,7 @@ func TestPutMutations(t *testing.T) {
 		for _, m := range c.mocks {
 			mutations.ApplyTo(m.Mutability)
 			assertEqual(t, "value", m.value, m.expected)
-			assertEqual(t, "mutability", m.Immutable(), false)
+			assertEqual(t, "mutability", m.Mutability.IsMutable(), true)
 		}
 	}
 }
@@ -185,9 +185,9 @@ func TestDetachMutations(t *testing.T) {
 
 func TestMutability(t *testing.T) {
 	mut := mutability.Immutable()
-	assertEqual(t, "immutable", mut.Immutable(), true)
+	assertEqual(t, "immutable", mut.IsMutable(), false)
 	mut = mutability.Mutable()
-	assertEqual(t, "mutable", mut.Immutable(), false)
+	assertEqual(t, "mutable", mut.IsMutable(), true)
 	assertPanic(t, func() {
 		mutability.Immutable().Mutate(func() error { return nil })
 	})
