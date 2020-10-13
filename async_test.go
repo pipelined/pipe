@@ -10,28 +10,33 @@ import (
 
 func TestInsertProcessor(t *testing.T) {
 	bufferSize := 2
-	sink := &mock.Sink{Discard: true}
-	p, err := pipe.New(bufferSize, pipe.Routing{
-		Source: (&mock.Source{
-			Limit:    1024,
-			Channels: 2,
-		}).Source(),
-		Sink: sink.Sink(),
-	})
-	assertNil(t, "error", err)
+	testInsert := func(pos int) func(*testing.T) {
+		return func(t *testing.T) {
+			t.Helper()
+			p, err := pipe.New(bufferSize, pipe.Routing{
+				Source: (&mock.Source{
+					Limit:    500,
+					Channels: 2,
+				}).Source(),
+				Processors: pipe.Processors((&mock.Processor{}).Processor()),
+				Sink:       (&mock.Sink{Discard: true}).Sink(),
+			})
+			assertNil(t, "pipe error", err)
 
-	l := p.Lines[0]
-	proc := &mock.Processor{}
-	a := p.Async(context.Background())
+			l := p.Lines[0]
+			a := p.Async(context.Background())
 
-	err = a.AddProcessor(l, 0, proc.Processor())
-	assertNil(t, "error", err)
-	err = a.Await()
-	assertNil(t, "error", err)
+			proc := &mock.Processor{}
+			err = a.AddProcessor(l, pos, proc.Processor())
+			assertNil(t, "add error", err)
 
-	assertEqual(t, "processed", proc.Counter.Messages > 0, true)
-	// fmt.Printf("proc: %v\n", proc.Counter)
-	// fmt.Printf("sink: %v\n", sink.Counter)
+			err = a.Await()
+			assertNil(t, "await error", err)
+			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
+		}
+	}
+	t.Run("before processor", testInsert(0))
+	t.Run("before sink", testInsert(1))
 }
 
 func TestAddLine(t *testing.T) {
