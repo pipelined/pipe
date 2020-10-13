@@ -125,7 +125,6 @@ func Sink(m mutable.Context, in <-chan Message, p *signal.PoolAllocator, fn Sink
 // Run starts the Source runner.
 func (r *source) Run(ctx context.Context) <-chan error {
 	errc := make(chan error, 1)
-	fmt.Printf("start new source: %v\n", r)
 	go func() {
 		defer close(r.out)
 		defer close(errc)
