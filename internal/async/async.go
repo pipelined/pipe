@@ -21,7 +21,7 @@ type (
 	Runner interface {
 		Run(context.Context) <-chan error
 		Out() <-chan Message
-		Insert(Runner)
+		Insert(Runner, mutable.MutatorFunc) mutable.Mutation
 	}
 
 	// source executes pipe.source components.
@@ -125,6 +125,7 @@ func Sink(m mutable.Context, in <-chan Message, p *signal.PoolAllocator, fn Sink
 // Run starts the Source runner.
 func (r *source) Run(ctx context.Context) <-chan error {
 	errc := make(chan error, 1)
+	fmt.Printf("start new source: %v\n", r)
 	go func() {
 		defer close(r.out)
 		defer close(errc)
@@ -166,6 +167,7 @@ func (r *source) Run(ctx context.Context) <-chan error {
 				return
 			}
 			if read != outSignal.Length() {
+				fmt.Printf("read: %v\n", read)
 				outSignal = outSignal.Slice(0, read)
 			}
 
@@ -180,7 +182,7 @@ func (r *source) Run(ctx context.Context) <-chan error {
 	return errc
 }
 
-func (r *source) Insert(Runner) {
+func (r *source) Insert(Runner, mutable.MutatorFunc) mutable.Mutation {
 	panic("source cannot insert")
 }
 
@@ -241,16 +243,11 @@ func (r *processor) Run(ctx context.Context) <-chan error {
 	return errc
 }
 
-func (r *processor) Insert(nr Runner) {
-	// var in chan Message
-	// if len(r.Processors) == 0 {
-	// 	in = r.Source.Out
-	// }
-
-	// if pos == 0 {
-
-	// }
-	panic("not implemented")
+func (r *processor) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mutable.Mutation {
+	return r.mutability.Mutate(func() error {
+		r.In = newRunner.Out()
+		return insertHook()
+	})
 }
 
 // Run starts the sink runner.
@@ -301,8 +298,11 @@ func (r *sink) Run(ctx context.Context) <-chan error {
 	return errc
 }
 
-func (r *sink) Insert(nr Runner) {
-	panic("not implemented")
+func (r *sink) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mutable.Mutation {
+	return r.mutability.Mutate(func() error {
+		r.In = newRunner.Out()
+		return insertHook()
+	})
 }
 
 func (*sink) Out() <-chan Message {
