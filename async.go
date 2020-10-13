@@ -15,7 +15,7 @@ type (
 		cancelFn      context.CancelFunc
 		mutability    mutable.Context
 		bufferSize    int
-		merger        *merger
+		merger        *errorMerger
 		listeners     map[mutable.Context]chan mutable.Mutations
 		runners       map[mutable.Context]async.Runner
 		mutations     map[chan mutable.Mutations]mutable.Mutations
@@ -47,11 +47,11 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 	push(mutations)
 	// start the pipe execution with new context
 	// cancel is required to stop the pipe in case of error
-	merger := merger{
+	merger := errorMerger{
 		errorChan: make(chan error, 1),
 	}
-	merger.merge(startAll(ctx, runners)...)
-	go merger.wait()
+	merger.add(startAll(ctx, runners)...)
+	go merger.start()
 
 	errc := make(chan error, 1)
 	mutationsChan := make(chan []mutable.Mutation, 1)
@@ -199,7 +199,7 @@ func (a *Async) AddLine(l *Line) mutable.Mutation {
 	ctxs := l.mutableContexts()
 	return a.mutability.Mutate(func() error {
 		addListeners(a.listeners, mc, ctxs...)
-		a.merger.merge(start(a.ctx, a.runners, ctxs)...)
+		a.merger.add(start(a.ctx, a.runners, ctxs)...)
 		return nil
 	})
 }
@@ -256,7 +256,7 @@ func (a *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) error 
 			return nil
 		}),
 		nextRunner.Insert(r, func() error {
-			a.merger.merge(start(a.ctx, map[mutable.Context]async.Runner{m: r}, []mutable.Context{m})...)
+			a.merger.add(start(a.ctx, map[mutable.Context]async.Runner{m: r}, []mutable.Context{m})...)
 			return nil
 		}),
 	)
