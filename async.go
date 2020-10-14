@@ -13,7 +13,7 @@ type (
 	Async struct {
 		ctx           context.Context
 		cancelFn      context.CancelFunc
-		mutability    mutable.Context
+		mctx          mutable.Context
 		bufferSize    int
 		merger        *errorMerger
 		listeners     map[mutable.Context]chan mutable.Mutations
@@ -55,7 +55,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 
 	errc := make(chan error, 1)
 	mutationsChan := make(chan []mutable.Mutation, 1)
-	runnerMutability := mutable.Mutable()
+	runnerContext := mutable.Mutable()
 	go func() {
 		defer close(errc)
 		for {
@@ -63,7 +63,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 			case ms := <-mutationsChan:
 				for _, m := range ms {
 					// mutate pipe itself
-					if m.Context == runnerMutability {
+					if m.Context == runnerContext {
 						if err := m.Apply(); err != nil {
 							cancelFn()
 							merger.await()
@@ -94,7 +94,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 		ctx:           ctx,
 		cancelFn:      cancelFn,
 		bufferSize:    p.bufferSize,
-		mutability:    runnerMutability,
+		mctx:          runnerContext,
 		mutations:     mutations,
 		mutationsChan: mutationsChan,
 		errorChan:     errc,
@@ -111,19 +111,19 @@ func (l *Line) runners(ctx context.Context, bufferSize int, mc chan mutable.Muta
 	var r async.Runner
 	r = async.Source(
 		mc,
-		l.Source.mutability,
+		l.Source.mctx,
 		l.Source.Output.poolAllocator(bufferSize),
 		async.SourceFunc(l.Source.SourceFunc),
 		async.HookFunc(l.Source.StartFunc),
 		async.HookFunc(l.Source.FlushFunc),
 	)
-	runners[l.Source.mutability] = r
+	runners[l.Source.mctx] = r
 
 	in := r.Out()
 	props := l.Source.Output
 	for i := range l.Processors {
 		r = async.Processor(
-			l.Processors[i].mutability,
+			l.Processors[i].mctx,
 			in,
 			props.poolAllocator(bufferSize),
 			l.Processors[i].Output.poolAllocator(bufferSize),
@@ -131,13 +131,13 @@ func (l *Line) runners(ctx context.Context, bufferSize int, mc chan mutable.Muta
 			async.HookFunc(l.Processors[i].StartFunc),
 			async.HookFunc(l.Processors[i].FlushFunc),
 		)
-		runners[l.Processors[i].mutability] = r
+		runners[l.Processors[i].mctx] = r
 		in = r.Out()
 		props = l.Processors[i].Output
 	}
 
-	runners[l.Sink.mutability] = async.Sink(
-		l.Sink.mutability,
+	runners[l.Sink.mctx] = async.Sink(
+		l.Sink.mctx,
 		in,
 		props.poolAllocator(bufferSize),
 		async.SinkFunc(l.Sink.SinkFunc),
@@ -149,9 +149,9 @@ func (l *Line) runners(ctx context.Context, bufferSize int, mc chan mutable.Muta
 func (l *Line) mutableContexts() []mutable.Context {
 	ctxs := make([]mutable.Context, 0, 2+len(l.Processors))
 
-	ctxs = append(ctxs, l.Source.mutability, l.Sink.mutability)
+	ctxs = append(ctxs, l.Source.mctx, l.Sink.mctx)
 	for i := range l.Processors {
-		ctxs = append(ctxs, l.Processors[i].mutability)
+		ctxs = append(ctxs, l.Processors[i].mctx)
 	}
 
 	return ctxs
@@ -197,7 +197,7 @@ func (a *Async) AddLine(l *Line) mutable.Mutation {
 	mc := make(chan mutable.Mutations, 1)
 	l.runners(a.ctx, a.bufferSize, mc, a.runners)
 	ctxs := l.mutableContexts()
-	return a.mutability.Mutate(func() error {
+	return a.mctx.Mutate(func() error {
 		addListeners(a.listeners, mc, ctxs...)
 		a.merger.add(start(a.ctx, a.runners, ctxs)...)
 		return nil
@@ -216,10 +216,10 @@ func (a *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) error 
 	)
 	if pos == 0 {
 		output = l.Source.Output
-		prevRunner = a.runners[l.Source.mutability]
+		prevRunner = a.runners[l.Source.mctx]
 	} else {
 		output = l.Processors[pos-1].Output
-		prevRunner = a.runners[l.Processors[pos-1].mutability]
+		prevRunner = a.runners[l.Processors[pos-1].mctx]
 	}
 
 	// allocate new processor
@@ -228,14 +228,14 @@ func (a *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) error 
 	if err != nil {
 		return err
 	}
-	proc.mutability = m
+	proc.mctx = m
 
 	// obtain mutable context of the next stage.
 	var nextRunner async.Runner
 	if pos == len(l.Processors) {
-		nextRunner = a.runners[l.Sink.mutability]
+		nextRunner = a.runners[l.Sink.mctx]
 	} else {
-		nextRunner = a.runners[l.Processors[pos].mutability]
+		nextRunner = a.runners[l.Processors[pos].mctx]
 	}
 	r := async.Processor(
 		m,
@@ -251,8 +251,8 @@ func (a *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) error 
 	copy(l.Processors[pos+1:], l.Processors[pos:])
 	l.Processors[pos] = proc
 	a.Push(
-		a.mutability.Mutate(func() error {
-			addListeners(a.listeners, a.listeners[l.Source.mutability], m)
+		a.mctx.Mutate(func() error {
+			addListeners(a.listeners, a.listeners[l.Source.mctx], m)
 			return nil
 		}),
 		nextRunner.Insert(r, func() error {

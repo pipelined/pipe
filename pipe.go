@@ -58,8 +58,8 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
-		mutability mutable.Context
-		Output     SignalProperties
+		mctx   mutable.Context
+		Output SignalProperties
 		SourceFunc
 		StartFunc
 		FlushFunc
@@ -73,8 +73,8 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Processor struct {
-		mutability mutable.Context
-		Output     SignalProperties
+		mctx   mutable.Context
+		Output SignalProperties
 		ProcessFunc
 		StartFunc
 		FlushFunc
@@ -88,8 +88,8 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Sink struct {
-		mutability mutable.Context
-		Output     SignalProperties
+		mctx   mutable.Context
+		Output SignalProperties
 		SinkFunc
 		StartFunc
 		FlushFunc
@@ -148,7 +148,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)
 	}
-	source.mutability = m
+	source.mctx = m
 
 	input := source.Output
 	processors := make([]Processor, 0, len(r.Processors))
@@ -158,7 +158,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 		if err != nil {
 			return nil, fmt.Errorf("processor: %w", err)
 		}
-		processor.mutability = m
+		processor.mctx = m
 		processors = append(processors, processor)
 		input = processor.Output
 	}
@@ -168,7 +168,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sink: %w", err)
 	}
-	sink.mutability = m
+	sink.mctx = m
 
 	return &Line{
 		Source:     source,

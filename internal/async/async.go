@@ -26,35 +26,35 @@ type (
 
 	// source executes pipe.source components.
 	source struct {
-		mutations  chan mutable.Mutations
-		mutability mutable.Context
-		Start      HookFunc
-		Flush      HookFunc
-		OutPool    *signal.PoolAllocator
-		Fn         SourceFunc
+		mutations chan mutable.Mutations
+		mctx      mutable.Context
+		Start     HookFunc
+		Flush     HookFunc
+		OutPool   *signal.PoolAllocator
+		Fn        SourceFunc
 		out
 	}
 
 	// processor executes pipe.processor components.
 	processor struct {
-		mutability mutable.Context
-		Start      HookFunc
-		Flush      HookFunc
-		InPool     *signal.PoolAllocator
-		OutPool    *signal.PoolAllocator
-		In         <-chan Message
-		Fn         ProcessFunc
+		mctx    mutable.Context
+		Start   HookFunc
+		Flush   HookFunc
+		InPool  *signal.PoolAllocator
+		OutPool *signal.PoolAllocator
+		In      <-chan Message
+		Fn      ProcessFunc
 		out
 	}
 
 	// sink executes pipe.sink components.
 	sink struct {
-		mutability mutable.Context
-		Start      HookFunc
-		Flush      HookFunc
-		InPool     *signal.PoolAllocator
-		Fn         SinkFunc
-		In         <-chan Message
+		mctx   mutable.Context
+		Start  HookFunc
+		Flush  HookFunc
+		InPool *signal.PoolAllocator
+		Fn     SinkFunc
+		In     <-chan Message
 	}
 )
 
@@ -86,39 +86,39 @@ func (fn HookFunc) call(ctx context.Context) error {
 // Source returns async runner for pipe.source components.
 func Source(mc chan mutable.Mutations, m mutable.Context, p *signal.PoolAllocator, fn SourceFunc, start, flush HookFunc) Runner {
 	return &source{
-		mutations:  mc,
-		mutability: m,
-		OutPool:    p,
-		Fn:         fn,
-		Start:      start,
-		Flush:      flush,
-		out:        make(chan Message, 1),
+		mutations: mc,
+		mctx:      m,
+		OutPool:   p,
+		Fn:        fn,
+		Start:     start,
+		Flush:     flush,
+		out:       make(chan Message, 1),
 	}
 }
 
 // Processor returns async runner for pipe.processor components.
 func Processor(m mutable.Context, in <-chan Message, inp, outp *signal.PoolAllocator, fn ProcessFunc, start, flush HookFunc) Runner {
 	return &processor{
-		mutability: m,
-		In:         in,
-		InPool:     inp,
-		OutPool:    outp,
-		Fn:         fn,
-		Start:      start,
-		Flush:      flush,
-		out:        make(chan Message, 1),
+		mctx:    m,
+		In:      in,
+		InPool:  inp,
+		OutPool: outp,
+		Fn:      fn,
+		Start:   start,
+		Flush:   flush,
+		out:     make(chan Message, 1),
 	}
 }
 
 // Sink returns async runner for pipe.sink components.
 func Sink(m mutable.Context, in <-chan Message, p *signal.PoolAllocator, fn SinkFunc, start, flush HookFunc) Runner {
 	return &sink{
-		mutability: m,
-		In:         in,
-		InPool:     p,
-		Fn:         fn,
-		Start:      start,
-		Flush:      flush,
+		mctx:   m,
+		In:     in,
+		InPool: p,
+		Fn:     fn,
+		Start:  start,
+		Flush:  flush,
 	}
 }
 
@@ -151,7 +151,7 @@ func (r *source) Run(ctx context.Context) <-chan error {
 			default:
 			}
 
-			if err = mutations.ApplyTo(r.mutability); err != nil {
+			if err = mutations.ApplyTo(r.mctx); err != nil {
 				errc <- fmt.Errorf("error mutating source: %w", err)
 				return
 			}
@@ -216,7 +216,7 @@ func (r *processor) Run(ctx context.Context) <-chan error {
 				return
 			}
 
-			if err = message.Mutations.ApplyTo(r.mutability); err != nil {
+			if err = message.Mutations.ApplyTo(r.mctx); err != nil {
 				errc <- fmt.Errorf("error mutating processor: %w", err)
 				message.Signal.Free(r.InPool)
 				return
@@ -243,7 +243,7 @@ func (r *processor) Run(ctx context.Context) <-chan error {
 }
 
 func (r *processor) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mutable.Mutation {
-	return r.mutability.Mutate(func() error {
+	return r.mctx.Mutate(func() error {
 		r.In = newRunner.Out()
 		return insertHook()
 	})
@@ -280,7 +280,7 @@ func (r *sink) Run(ctx context.Context) <-chan error {
 			}
 
 			// apply Mutators
-			if err = message.Mutations.ApplyTo(r.mutability); err != nil {
+			if err = message.Mutations.ApplyTo(r.mctx); err != nil {
 				errc <- fmt.Errorf("error mutating sink: %w", err)
 				message.Signal.Free(r.InPool) // need to free
 				return
@@ -298,7 +298,7 @@ func (r *sink) Run(ctx context.Context) <-chan error {
 }
 
 func (r *sink) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mutable.Mutation {
-	return r.mutability.Mutate(func() error {
+	return r.mctx.Mutate(func() error {
 		r.In = newRunner.Out()
 		return insertHook()
 	})
