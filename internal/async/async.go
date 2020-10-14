@@ -26,35 +26,35 @@ type (
 
 	// source executes pipe.source components.
 	source struct {
-		mutations chan mutable.Mutations
-		mctx      mutable.Context
-		Start     HookFunc
-		Flush     HookFunc
-		OutPool   *signal.PoolAllocator
-		Fn        SourceFunc
+		mutations  chan mutable.Mutations
+		mctx       mutable.Context
+		outputPool *signal.PoolAllocator
+		startFn    HookFunc
+		flushFn    HookFunc
+		sourceFn   SourceFunc
 		out
 	}
 
 	// processor executes pipe.processor components.
 	processor struct {
-		mctx    mutable.Context
-		Start   HookFunc
-		Flush   HookFunc
-		InPool  *signal.PoolAllocator
-		OutPool *signal.PoolAllocator
-		In      <-chan Message
-		Fn      ProcessFunc
+		mctx       mutable.Context
+		inputPool  *signal.PoolAllocator
+		outputPool *signal.PoolAllocator
+		startFn    HookFunc
+		flushFn    HookFunc
+		processFn  ProcessFunc
+		in         <-chan Message
 		out
 	}
 
 	// sink executes pipe.sink components.
 	sink struct {
-		mctx   mutable.Context
-		Start  HookFunc
-		Flush  HookFunc
-		InPool *signal.PoolAllocator
-		Fn     SinkFunc
-		In     <-chan Message
+		mctx      mutable.Context
+		startFn   HookFunc
+		flushFn   HookFunc
+		inputPool *signal.PoolAllocator
+		sinkFn    SinkFunc
+		in        <-chan Message
 	}
 )
 
@@ -86,39 +86,39 @@ func (fn HookFunc) call(ctx context.Context) error {
 // Source returns async runner for pipe.source components.
 func Source(mc chan mutable.Mutations, m mutable.Context, p *signal.PoolAllocator, fn SourceFunc, start, flush HookFunc) Runner {
 	return &source{
-		mutations: mc,
-		mctx:      m,
-		OutPool:   p,
-		Fn:        fn,
-		Start:     start,
-		Flush:     flush,
-		out:       make(chan Message, 1),
+		mutations:  mc,
+		mctx:       m,
+		outputPool: p,
+		sourceFn:   fn,
+		startFn:    start,
+		flushFn:    flush,
+		out:        make(chan Message, 1),
 	}
 }
 
 // Processor returns async runner for pipe.processor components.
 func Processor(m mutable.Context, in <-chan Message, inp, outp *signal.PoolAllocator, fn ProcessFunc, start, flush HookFunc) Runner {
 	return &processor{
-		mctx:    m,
-		In:      in,
-		InPool:  inp,
-		OutPool: outp,
-		Fn:      fn,
-		Start:   start,
-		Flush:   flush,
-		out:     make(chan Message, 1),
+		mctx:       m,
+		in:         in,
+		inputPool:  inp,
+		outputPool: outp,
+		processFn:  fn,
+		startFn:    start,
+		flushFn:    flush,
+		out:        make(chan Message, 1),
 	}
 }
 
 // Sink returns async runner for pipe.sink components.
 func Sink(m mutable.Context, in <-chan Message, p *signal.PoolAllocator, fn SinkFunc, start, flush HookFunc) Runner {
 	return &sink{
-		mctx:   m,
-		In:     in,
-		InPool: p,
-		Fn:     fn,
-		Start:  start,
-		Flush:  flush,
+		mctx:      m,
+		in:        in,
+		inputPool: p,
+		sinkFn:    fn,
+		startFn:   start,
+		flushFn:   flush,
 	}
 }
 
@@ -128,12 +128,12 @@ func (r *source) Run(ctx context.Context) <-chan error {
 	go func() {
 		defer close(r.out)
 		defer close(errc)
-		if err := r.Start.call(ctx); err != nil {
+		if err := r.startFn.call(ctx); err != nil {
 			errc <- fmt.Errorf("error starting source: %w", err)
 		}
 		// flush shouldn't be executed if start has failed.
 		defer func() {
-			if err := r.Flush.call(ctx); err != nil {
+			if err := r.flushFn.call(ctx); err != nil {
 				errc <- fmt.Errorf("error flushing source: %w", err)
 			}
 		}()
@@ -156,13 +156,13 @@ func (r *source) Run(ctx context.Context) <-chan error {
 				return
 			}
 
-			outSignal = r.OutPool.GetFloat64()
-			if read, err = r.Fn(outSignal); err != nil {
+			outSignal = r.outputPool.GetFloat64()
+			if read, err = r.sourceFn(outSignal); err != nil {
 				if err != io.EOF {
 					errc <- fmt.Errorf("error running source: %w", err)
 				}
 				// this buffer wasn't sent, free now
-				outSignal.Free(r.OutPool)
+				outSignal.Free(r.outputPool)
 				return
 			}
 			if read != outSignal.Length() {
@@ -191,12 +191,12 @@ func (r *processor) Run(ctx context.Context) <-chan error {
 	go func() {
 		defer close(r.out)
 		defer close(errc)
-		if err := r.Start.call(ctx); err != nil {
+		if err := r.startFn.call(ctx); err != nil {
 			errc <- fmt.Errorf("error starting source: %w", err)
 		}
 		// flush shouldn't be executed if start has failed.
 		defer func() {
-			if err := r.Flush.call(ctx); err != nil {
+			if err := r.flushFn.call(ctx); err != nil {
 				errc <- fmt.Errorf("error flushing processor: %w", err)
 			}
 		}()
@@ -208,7 +208,7 @@ func (r *processor) Run(ctx context.Context) <-chan error {
 		)
 		for {
 			select {
-			case message, ok = <-r.In:
+			case message, ok = <-r.in:
 				if !ok {
 					return
 				}
@@ -218,17 +218,17 @@ func (r *processor) Run(ctx context.Context) <-chan error {
 
 			if err = message.Mutations.ApplyTo(r.mctx); err != nil {
 				errc <- fmt.Errorf("error mutating processor: %w", err)
-				message.Signal.Free(r.InPool)
+				message.Signal.Free(r.inputPool)
 				return
 			}
 
-			outSignal = r.OutPool.GetFloat64()
-			err = r.Fn(message.Signal, outSignal)
-			message.Signal.Free(r.InPool)
+			outSignal = r.outputPool.GetFloat64()
+			err = r.processFn(message.Signal, outSignal)
+			message.Signal.Free(r.inputPool)
 			if err != nil {
 				errc <- fmt.Errorf("error running processor: %w", err)
 				// this buffer wasn't sent, free now
-				outSignal.Free(r.OutPool)
+				outSignal.Free(r.outputPool)
 				return
 			}
 
@@ -244,7 +244,7 @@ func (r *processor) Run(ctx context.Context) <-chan error {
 
 func (r *processor) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mutable.Mutation {
 	return r.mctx.Mutate(func() error {
-		r.In = newRunner.Out()
+		r.in = newRunner.Out()
 		return insertHook()
 	})
 }
@@ -254,12 +254,12 @@ func (r *sink) Run(ctx context.Context) <-chan error {
 	errc := make(chan error, 1)
 	go func() {
 		defer close(errc)
-		if err := r.Start.call(ctx); err != nil {
+		if err := r.startFn.call(ctx); err != nil {
 			errc <- fmt.Errorf("error starting source: %w", err)
 		}
 		// flush shouldn't be executed if start has failed.
 		defer func() {
-			if err := r.Flush.call(ctx); err != nil {
+			if err := r.flushFn.call(ctx); err != nil {
 				errc <- fmt.Errorf("error flushing sink: %w", err)
 			}
 		}()
@@ -271,7 +271,7 @@ func (r *sink) Run(ctx context.Context) <-chan error {
 		for {
 			// receive new message
 			select {
-			case message, ok = <-r.In:
+			case message, ok = <-r.in:
 				if !ok {
 					return
 				}
@@ -282,11 +282,11 @@ func (r *sink) Run(ctx context.Context) <-chan error {
 			// apply Mutators
 			if err = message.Mutations.ApplyTo(r.mctx); err != nil {
 				errc <- fmt.Errorf("error mutating sink: %w", err)
-				message.Signal.Free(r.InPool) // need to free
+				message.Signal.Free(r.inputPool) // need to free
 				return
 			}
-			err = r.Fn(message.Signal) // sink a buffer
-			message.Signal.Free(r.InPool)
+			err = r.sinkFn(message.Signal) // sink a buffer
+			message.Signal.Free(r.inputPool)
 			if err != nil {
 				errc <- fmt.Errorf("error running sink: %w", err)
 				return
@@ -299,7 +299,7 @@ func (r *sink) Run(ctx context.Context) <-chan error {
 
 func (r *sink) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mutable.Mutation {
 	return r.mctx.Mutate(func() error {
-		r.In = newRunner.Out()
+		r.in = newRunner.Out()
 		return insertHook()
 	})
 }
