@@ -27,18 +27,18 @@ type (
 	// SourceAllocatorFunc returns source for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SourceAllocatorFunc func(mut mutable.Context, bufferSize int) (Source, error)
+	SourceAllocatorFunc func(mctx mutable.Context, bufferSize int) (Source, error)
 
 	// ProcessorAllocatorFunc returns processor for provided buffer size.
 	// It is responsible for pre-allocation of all necessary buffers and
 	// structures. Along with the processor, output signal properties are
 	// returned.
-	ProcessorAllocatorFunc func(mut mutable.Context, bufferSize int, output SignalProperties) (Processor, error)
+	ProcessorAllocatorFunc func(mctx mutable.Context, bufferSize int, input SignalProperties) (Processor, error)
 
 	// SinkAllocatorFunc returns sink for provided buffer size. It is
 	// responsible for pre-allocation of all necessary buffers and
 	// structures.
-	SinkAllocatorFunc func(mut mutable.Context, bufferSize int, output SignalProperties) (Sink, error)
+	SinkAllocatorFunc func(mctx mutable.Context, bufferSize int, input SignalProperties) (Sink, error)
 )
 
 type (
