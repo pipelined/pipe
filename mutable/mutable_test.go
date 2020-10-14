@@ -1,23 +1,23 @@
-package mutability_test
+package mutable_test
 
 import (
 	"reflect"
 	"testing"
 
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 )
 
 // mutableMock used to set up test cases for mutators
 type mutableMock struct {
-	mutability.Mutability
+	Mutability mutable.Context
 	value      int
 	operations int
 	expected   int
 }
 
-// mutators closure to mutability.value
-func (m *mutableMock) AddDelta(delta int) mutability.Mutation {
-	return m.Mutate(func() error {
+// mutators closure to mutable.value
+func (m *mutableMock) AddDelta(delta int) mutable.Mutation {
+	return m.Mutability.Mutate(func() error {
 		m.value += delta
 		return nil
 	})
@@ -30,7 +30,7 @@ func TestPutMutations(t *testing.T) {
 		{
 			mocks: []*mutableMock{
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -39,7 +39,7 @@ func TestPutMutations(t *testing.T) {
 		{
 			mocks: []*mutableMock{
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
@@ -48,12 +48,12 @@ func TestPutMutations(t *testing.T) {
 		{
 			mocks: []*mutableMock{
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
@@ -62,7 +62,7 @@ func TestPutMutations(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutations mutability.Mutations
+		var mutations mutable.Mutations
 		delta := 10
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
@@ -72,7 +72,7 @@ func TestPutMutations(t *testing.T) {
 		for _, m := range c.mocks {
 			mutations.ApplyTo(m.Mutability)
 			assertEqual(t, "value", m.value, m.expected)
-			assertEqual(t, "mutability", m.Immutable(), false)
+			assertEqual(t, "mutability", m.Mutability.IsMutable(), true)
 		}
 	}
 }
@@ -84,7 +84,7 @@ func TestAppendMutations(t *testing.T) {
 		{
 			mocks: []*mutableMock{
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -93,12 +93,12 @@ func TestAppendMutations(t *testing.T) {
 		{
 			mocks: []*mutableMock{
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
@@ -107,10 +107,10 @@ func TestAppendMutations(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutations mutability.Mutations
+		var mutations mutable.Mutations
 		delta := 10
 		for _, m := range c.mocks {
-			var mockMutations mutability.Mutations
+			var mockMutations mutable.Mutations
 			for j := 0; j < m.operations; j++ {
 				mutations = mutations.Append(mockMutations.Put(m.AddDelta(delta)))
 			}
@@ -129,7 +129,7 @@ func TestDetachMutations(t *testing.T) {
 		{
 			mocks: []*mutableMock{
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 1,
 					expected:   10,
 				},
@@ -138,12 +138,12 @@ func TestDetachMutations(t *testing.T) {
 		{
 			mocks: []*mutableMock{
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 2,
 					expected:   20,
 				},
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 3,
 					expected:   30,
 				},
@@ -152,12 +152,12 @@ func TestDetachMutations(t *testing.T) {
 		{
 			mocks: []*mutableMock{
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 4,
 					expected:   40,
 				},
 				{
-					Mutability: mutability.Mutable(),
+					Mutability: mutable.Mutable(),
 					operations: 0,
 					expected:   0,
 				},
@@ -166,7 +166,7 @@ func TestDetachMutations(t *testing.T) {
 	}
 
 	for _, c := range tests {
-		var mutators mutability.Mutations
+		var mutators mutable.Mutations
 		delta := 10
 		for _, m := range c.mocks {
 			for j := 0; j < m.operations; j++ {
@@ -184,15 +184,15 @@ func TestDetachMutations(t *testing.T) {
 }
 
 func TestMutability(t *testing.T) {
-	mut := mutability.Immutable()
-	assertEqual(t, "immutable", mut.Immutable(), true)
-	mut = mutability.Mutable()
-	assertEqual(t, "mutable", mut.Immutable(), false)
+	mut := mutable.Immutable()
+	assertEqual(t, "immutable", mut.IsMutable(), false)
+	mut = mutable.Mutable()
+	assertEqual(t, "mutable", mut.IsMutable(), true)
 	assertPanic(t, func() {
-		mutability.Immutable().Mutate(func() error { return nil })
+		mutable.Immutable().Mutate(func() error { return nil })
 	})
 	mock := &mutableMock{
-		Mutability: mutability.Mutable(),
+		Mutability: mutable.Mutable(),
 	}
 	delta := 10
 	mock.AddDelta(delta).Apply()

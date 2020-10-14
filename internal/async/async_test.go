@@ -1,4 +1,4 @@
-package runner_test
+package async_test
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"pipelined.dev/pipe"
-	"pipelined.dev/pipe/internal/runner"
+	"pipelined.dev/pipe/internal/async"
 	"pipelined.dev/pipe/mock"
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 
 	"pipelined.dev/signal"
 )
@@ -22,18 +22,19 @@ const (
 )
 
 func TestSource(t *testing.T) {
-	setupSource := func(sourceAllocator pipe.SourceAllocatorFunc) runner.Source {
-		source, props, _ := sourceAllocator(context.Background(), bufferSize)
-		return runner.Source{
-			Mutations:  make(chan mutability.Mutations, 1),
-			Mutability: source.Mutability,
-			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
-			Fn:         source.SourceFunc,
-			Flush:      runner.FlushFunc(source.FlushFunc),
-			Out:        make(chan runner.Message, 1),
-		}
+	setupSource := func(sourceAllocator pipe.SourceAllocatorFunc, mutationsChan chan mutable.Mutations) async.Runner {
+		m := mutable.Mutable()
+		source, _ := sourceAllocator(m, bufferSize)
+		return async.Source(
+			mutationsChan,
+			m,
+			signal.GetPoolAllocator(source.Output.Channels, bufferSize, bufferSize),
+			async.SourceFunc(source.SourceFunc),
+			async.HookFunc(source.StartFunc),
+			async.HookFunc(source.FlushFunc),
+		)
 	}
-	assertSource := func(t *testing.T, mockSource *mock.Source, out <-chan runner.Message, errs <-chan error) {
+	assertSource := func(t *testing.T, mockSource *mock.Source, out <-chan async.Message, errs <-chan error) {
 		t.Helper()
 		received := 0
 		for buf := range out {
@@ -49,9 +50,9 @@ func TestSource(t *testing.T) {
 	testSource := func(ctx context.Context, mockSource mock.Source) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			r := setupSource(mockSource.Source())
+			r := setupSource(mockSource.Source(), nil)
 			errs := r.Run(ctx)
-			assertSource(t, &mockSource, r.Out, errs)
+			assertSource(t, &mockSource, r.Out(), errs)
 		}
 	}
 	testContextDone := func(mockSource mock.Source) func(*testing.T) {
@@ -64,10 +65,11 @@ func TestSource(t *testing.T) {
 	testMutationError := func(ctx context.Context, mockSource mock.Source) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			r := setupSource(mockSource.Source())
-			r.Mutations <- mutability.Mutations{}.Put(mockSource.MockMutation())
+			mutationsChan := make(chan mutable.Mutations, 1)
+			r := setupSource(mockSource.Source(), mutationsChan)
+			mutationsChan <- mutable.Mutations{}.Put(mockSource.MockMutation())
 			errs := r.Run(ctx)
-			assertSource(t, &mockSource, r.Out, errs)
+			assertSource(t, &mockSource, r.Out(), errs)
 		}
 	}
 
@@ -107,7 +109,7 @@ func TestSource(t *testing.T) {
 		context.Background(),
 		mock.Source{
 			Mutator: mock.Mutator{
-				Mutability:      mutability.Mutable(),
+				Mutability:      mutable.Mutable(),
 				ErrorOnMutation: testError,
 			},
 			Channels: 1,
@@ -117,17 +119,19 @@ func TestSource(t *testing.T) {
 }
 
 func TestProcessor(t *testing.T) {
-	setupRunner := func(processorAllocator pipe.ProcessorAllocatorFunc, alloc signal.Allocator) runner.Processor {
-		processor, props, _ := processorAllocator(context.Background(), bufferSize, pipe.SignalProperties{Channels: channels})
-		return runner.Processor{
-			Mutability: processor.Mutability,
-			InPool:     signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
-			OutPool:    signal.GetPoolAllocator(props.Channels, bufferSize, bufferSize),
-			Fn:         processor.ProcessFunc,
-			Flush:      runner.FlushFunc(processor.FlushFunc),
-			In:         make(chan runner.Message, 1),
-			Out:        make(chan runner.Message, 1),
-		}
+	setupRunner := func(processorAllocator pipe.ProcessorAllocatorFunc, alloc signal.Allocator) (async.Runner, chan<- async.Message) {
+		m := mutable.Mutable()
+		processor, _ := processorAllocator(m, bufferSize, pipe.SignalProperties{Channels: channels})
+		in := make(chan async.Message, 1)
+		return async.Processor(
+			m,
+			in,
+			signal.GetPoolAllocator(processor.Output.Channels, bufferSize, bufferSize),
+			signal.GetPoolAllocator(processor.Output.Channels, bufferSize, bufferSize),
+			async.ProcessFunc(processor.ProcessFunc),
+			async.HookFunc(processor.StartFunc),
+			async.HookFunc(processor.FlushFunc),
+		), in
 	}
 	testProcessor := func(ctx context.Context, mockProcessor mock.Processor) func(*testing.T) {
 		return func(t *testing.T) {
@@ -137,16 +141,16 @@ func TestProcessor(t *testing.T) {
 				Length:   bufferSize,
 				Capacity: bufferSize,
 			}
-			r := setupRunner(mockProcessor.Processor(), alloc)
+			r, in := setupRunner(mockProcessor.Processor(), alloc)
 			errc := r.Run(ctx)
 
 			// test mutations only for mutable
-			r.In <- runner.Message{
+			in <- async.Message{
 				Signal:    alloc.Float64(),
-				Mutations: mutability.Mutations{}.Put(mockProcessor.MockMutation()),
+				Mutations: mutable.Mutations{}.Put(mockProcessor.MockMutation()),
 			}
-			close(r.In)
-			for msg := range r.Out {
+			close(in)
+			for msg := range r.Out() {
 				assertEqual(t, "samples", msg.Signal.Length(), alloc.Length)
 			}
 			for err := range errc {
@@ -162,14 +166,14 @@ func TestProcessor(t *testing.T) {
 			t.Helper()
 			ctx, cancelFn := context.WithCancel(context.Background())
 			cancelFn()
-			r := setupRunner(mockProcessor.Processor(), signal.Allocator{
+			r, _ := setupRunner(mockProcessor.Processor(), signal.Allocator{
 				Channels: channels,
 				Length:   bufferSize,
 				Capacity: bufferSize,
 			})
 			errc := r.Run(ctx)
 
-			_, ok := <-r.Out
+			_, ok := <-r.Out()
 			assertEqual(t, "out closed", ok, false)
 			_, ok = <-errc
 			assertEqual(t, "errc closed", ok, false)
@@ -181,7 +185,7 @@ func TestProcessor(t *testing.T) {
 		context.Background(),
 		mock.Processor{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 		},
 	))
@@ -189,7 +193,7 @@ func TestProcessor(t *testing.T) {
 		context.Background(),
 		mock.Processor{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 			ErrorOnCall: testError,
 		},
@@ -198,7 +202,7 @@ func TestProcessor(t *testing.T) {
 		context.Background(),
 		mock.Processor{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 			Flusher: mock.Flusher{
 				ErrorOnFlush: testError,
@@ -212,7 +216,7 @@ func TestProcessor(t *testing.T) {
 		context.Background(),
 		mock.Processor{
 			Mutator: mock.Mutator{
-				Mutability:      mutability.Mutable(),
+				Mutability:      mutable.Mutable(),
 				ErrorOnMutation: testError,
 			},
 		},
@@ -220,15 +224,18 @@ func TestProcessor(t *testing.T) {
 }
 
 func TestSink(t *testing.T) {
-	setupRunner := func(sinkAllocator pipe.SinkAllocatorFunc, alloc signal.Allocator) runner.Sink {
-		sink, _ := sinkAllocator(context.Background(), bufferSize, pipe.SignalProperties{Channels: channels})
-		return runner.Sink{
-			Mutability: sink.Mutability,
-			InPool:     signal.GetPoolAllocator(channels, bufferSize, bufferSize),
-			Fn:         sink.SinkFunc,
-			Flush:      runner.FlushFunc(sink.FlushFunc),
-			In:         make(chan runner.Message, 1),
-		}
+	setupRunner := func(sinkAllocator pipe.SinkAllocatorFunc, alloc signal.Allocator) (async.Runner, chan<- async.Message) {
+		m := mutable.Mutable()
+		sink, _ := sinkAllocator(m, bufferSize, pipe.SignalProperties{Channels: channels})
+		in := make(chan async.Message, 1)
+		return async.Sink(
+			m,
+			in,
+			signal.GetPoolAllocator(channels, bufferSize, bufferSize),
+			async.SinkFunc(sink.SinkFunc),
+			async.HookFunc(sink.StartFunc),
+			async.HookFunc(sink.FlushFunc),
+		), in
 	}
 	testSink := func(ctx context.Context, mockSink mock.Sink) func(*testing.T) {
 		return func(t *testing.T) {
@@ -238,13 +245,13 @@ func TestSink(t *testing.T) {
 				Capacity: bufferSize,
 			}
 
-			r := setupRunner(mockSink.Sink(), alloc)
+			r, in := setupRunner(mockSink.Sink(), alloc)
 			errc := r.Run(ctx)
-			r.In <- runner.Message{
+			in <- async.Message{
 				Signal:    alloc.Float64(),
-				Mutations: mutability.Mutations{}.Put(mockSink.MockMutation()),
+				Mutations: mutable.Mutations{}.Put(mockSink.MockMutation()),
 			}
-			close(r.In)
+			close(in)
 			for err := range errc {
 				assertEqual(t, "error", errors.Unwrap(err), testError)
 			}
@@ -264,8 +271,8 @@ func TestSink(t *testing.T) {
 				Capacity: bufferSize,
 			}
 
-			errc := setupRunner(mockSink.Sink(), alloc).Run(ctx)
-			_, ok := <-errc
+			r, _ := setupRunner(mockSink.Sink(), alloc)
+			_, ok := <-r.Run(ctx)
 			assertEqual(t, "errc closed", ok, false)
 			assertEqual(t, "flushed", mockSink.Flusher.Flushed, true)
 			return
@@ -275,7 +282,7 @@ func TestSink(t *testing.T) {
 		context.Background(),
 		mock.Sink{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 		},
 	))
@@ -283,7 +290,7 @@ func TestSink(t *testing.T) {
 		context.Background(),
 		mock.Sink{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 			ErrorOnCall: testError,
 		},
@@ -292,7 +299,7 @@ func TestSink(t *testing.T) {
 		context.Background(),
 		mock.Sink{
 			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
+				Mutability: mutable.Mutable(),
 			},
 			Flusher: mock.Flusher{
 				ErrorOnFlush: testError,
@@ -306,7 +313,7 @@ func TestSink(t *testing.T) {
 		context.Background(),
 		mock.Sink{
 			Mutator: mock.Mutator{
-				Mutability:      mutability.Mutable(),
+				Mutability:      mutable.Mutable(),
 				ErrorOnMutation: testError,
 			},
 		},

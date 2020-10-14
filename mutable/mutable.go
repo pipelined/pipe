@@ -1,55 +1,55 @@
-package mutability
+package mutable
 
 import (
 	"crypto/rand"
 )
 
-// zero value for mutability is immutable.
-var immutable = Mutability{}
+// zero value for context is immutable.
+var immutable = Context{}
 
 type (
-	// Mutability can be embedded to make structure behaviour mutability.
-	Mutability [16]byte
+	// Context can be embedded to make structure behaviour mutable.
+	Context [16]byte
 
-	// Mutation is mutator function associated with a certain mutability.
+	// Mutation is mutator function associated with a certain mutable context.
 	Mutation struct {
-		Mutability
+		Context
 		mutator MutatorFunc
 	}
 
 	// Mutations is a set of Mutations mapped their Mutables.
-	Mutations map[Mutability][]MutatorFunc
+	Mutations map[Context][]MutatorFunc
 
 	// MutatorFunc mutates the object.
 	MutatorFunc func() error
 )
 
-// Mutable returns new mutable Mutability.
-func Mutable() Mutability {
+// Mutable returns new mutable mutable.
+func Mutable() Context {
 	var id [16]byte
 	rand.Read(id[:])
 	return id
 }
 
-// Immutable returns immutable Mutability.
-func Immutable() Mutability {
+// Immutable returns immutable mutable.
+func Immutable() Context {
 	return immutable
 }
 
 // Mutate associates provided mutator with mutable and return mutation.
-func (m Mutability) Mutate(mutator MutatorFunc) Mutation {
-	if m == immutable {
+func (c Context) Mutate(m MutatorFunc) Mutation {
+	if c == immutable {
 		panic("mutate immutable")
 	}
 	return Mutation{
-		Mutability: m,
-		mutator:    mutator,
+		Context: c,
+		mutator: m,
 	}
 }
 
-// Immutable returns true if object is immutable.
-func (m Mutability) Immutable() bool {
-	return m == immutable
+// IsMutable returns true if object is mutable.
+func (c Context) IsMutable() bool {
+	return c != immutable
 }
 
 // Apply mutator function.
@@ -59,24 +59,24 @@ func (m Mutation) Apply() error {
 
 // Put mutation to the set of Mutations.
 func (ms Mutations) Put(m Mutation) Mutations {
-	if m.Mutability == immutable {
+	if m.Context == immutable {
 		return ms
 	}
 	if ms == nil {
-		return map[Mutability][]MutatorFunc{m.Mutability: {m.mutator}}
+		return map[Context][]MutatorFunc{m.Context: {m.mutator}}
 	}
 
-	if _, ok := ms[m.Mutability]; !ok {
-		ms[m.Mutability] = []MutatorFunc{m.mutator}
+	if _, ok := ms[m.Context]; !ok {
+		ms[m.Context] = []MutatorFunc{m.mutator}
 	} else {
-		ms[m.Mutability] = append(ms[m.Mutability], m.mutator)
+		ms[m.Context] = append(ms[m.Context], m.mutator)
 	}
 
 	return ms
 }
 
 // ApplyTo consumes Mutations defined for consumer in this param set.
-func (ms Mutations) ApplyTo(id Mutability) error {
+func (ms Mutations) ApplyTo(id Context) error {
 	if ms == nil || id == immutable {
 		return nil
 	}
@@ -94,7 +94,7 @@ func (ms Mutations) ApplyTo(id Mutability) error {
 // Append param set to another set.
 func (ms Mutations) Append(source Mutations) Mutations {
 	if ms == nil {
-		ms = make(map[Mutability][]MutatorFunc)
+		ms = make(map[Context][]MutatorFunc)
 	}
 	for id, fns := range source {
 		if _, ok := ms[id]; ok {
@@ -107,12 +107,12 @@ func (ms Mutations) Append(source Mutations) Mutations {
 }
 
 // Detach params for provided component id.
-func (ms Mutations) Detach(id Mutability) Mutations {
+func (ms Mutations) Detach(id Context) Mutations {
 	if ms == nil {
 		return nil
 	}
 	if v, ok := ms[id]; ok {
-		d := map[Mutability][]MutatorFunc{id: v}
+		d := map[Context][]MutatorFunc{id: v}
 		delete(ms, id)
 		return d
 	}

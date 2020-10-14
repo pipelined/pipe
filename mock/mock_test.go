@@ -11,7 +11,7 @@ import (
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mock"
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 )
 
 var errTest = errors.New("Test error")
@@ -24,14 +24,15 @@ func TestSource(t *testing.T) {
 	testSource := func(source mock.Source, test params) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
-			fn, props, _ := source.Source()(context.Background(), test.bufferSize)
+			m := mutable.Mutable()
+			src, _ := source.Source()(m, test.bufferSize)
 			buf := signal.Allocator{
-				Channels: props.Channels,
+				Channels: src.Output.Channels,
 				Length:   test.bufferSize,
 				Capacity: test.bufferSize,
 			}.Float64()
 			for {
-				if _, err := fn.SourceFunc(buf); err != nil {
+				if _, err := src.SourceFunc(buf); err != nil {
 					if err != io.EOF {
 						assertEqual(t, "error", err, source.ErrorOnCall)
 					}
@@ -46,15 +47,13 @@ func TestSource(t *testing.T) {
 
 	testMutations := func(test params) func(*testing.T) {
 		mockSource := &mock.Source{
-			Mutator: mock.Mutator{
-				Mutability: mutability.Mutable(),
-			},
 			Limit:    test.bufferSize,
 			Channels: 1,
 		}
-		source, props, _ := mockSource.Source()(context.Background(), 10)
+		m := mutable.Mutable()
+		source, _ := mockSource.Source()(m, 10)
 		source.SourceFunc(signal.Allocator{
-			Channels: props.Channels,
+			Channels: source.Output.Channels,
 			Length:   test.bufferSize,
 			Capacity: test.bufferSize,
 		}.Float64())
@@ -109,7 +108,8 @@ func TestProcessor(t *testing.T) {
 	}
 	testProcessor := func(processorMock mock.Processor, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			processor, _, _ := processorMock.Processor()(context.Background(), 0, pipe.SignalProperties{})
+			m := mutable.Mutable()
+			processor, _ := processorMock.Processor()(m, 0, pipe.SignalProperties{})
 
 			alloc := signal.Allocator{
 				Channels: 1,
@@ -159,7 +159,8 @@ func TestSink(t *testing.T) {
 	}
 	testSink := func(sinkMock mock.Sink, p params) func(*testing.T) {
 		return func(t *testing.T) {
-			sink, _ := sinkMock.Sink()(context.Background(), 0, pipe.SignalProperties{Channels: 1})
+			m := mutable.Mutable()
+			sink, _ := sinkMock.Sink()(m, 0, pipe.SignalProperties{Channels: 1})
 
 			alloc := signal.Allocator{
 				Channels: 1,
@@ -210,7 +211,7 @@ func TestSink(t *testing.T) {
 func TestHooks(t *testing.T) {
 	testFlush := func(f *mock.Flusher, expected error) func(*testing.T) {
 		return func(t *testing.T) {
-			err := f.Flush()
+			err := f.Flush(context.Background())
 			assertEqual(t, "error", err, expected)
 		}
 	}

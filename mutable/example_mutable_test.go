@@ -1,27 +1,27 @@
-package mutability_test
+package mutable_test
 
 import (
 	"fmt"
 
-	"pipelined.dev/pipe/mutability"
+	"pipelined.dev/pipe/mutable"
 )
 
-type mutable struct {
-	mutability.Mutability
+type mutableType struct {
+	mutable.Context
 	parameter int
 }
 
-func (m *mutable) setParameter(value int) mutability.Mutation {
-	return m.Mutability.Mutate(func() error {
-		m.parameter = value
+func (v *mutableType) setParameter(value int) mutable.Mutation {
+	return v.Context.Mutate(func() error {
+		v.parameter = value
 		return nil
 	})
 }
 
 func Example_mutation() {
 	// create new mutable component
-	component := &mutable{
-		Mutability: mutability.Mutable(),
+	component := &mutableType{
+		Context: mutable.Mutable(),
 	}
 	fmt.Println(component.parameter)
 
