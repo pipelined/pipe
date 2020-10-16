@@ -141,10 +141,10 @@ func (p *Pipe) Append(r Routing) (*Line, error) {
 	return l, nil
 }
 
-// Insert adds the processor to the line. Pos is the index where processor
-// should be inserted relatively to other processors i.e: pos 0 means that
-// new processor will be inserted right after the source.
-func (l *Line) Insert(pos int, fn ProcessorAllocatorFunc) error {
+// InsertProcessor inserts the processor to the line. Pos is the index
+// where processor should be inserted relatively to other processors i.e:
+// pos 0 means that new processor will be inserted right after the source.
+func (l *Line) InsertProcessor(pos int, fn ProcessorAllocatorFunc) error {
 	var inputProps SignalProperties
 	if pos == 0 {
 		inputProps = l.Source.Output

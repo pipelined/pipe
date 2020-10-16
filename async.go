@@ -203,9 +203,9 @@ func (a *Async) Append(l *Line) mutable.Mutation {
 	})
 }
 
-// StartProcessor adds the processor to the running line. Pos is the index
-// of the processor that should be started.
-func (a *Async) StartProcessor(l *Line, pos int) []mutable.Mutation {
+// InsertRunner adds the processor to the running line. Pos is the index
+// of the processor that should be inserted.
+func (a *Async) InsertRunner(l *Line, pos int) []mutable.Mutation {
 	proc := l.Processors[pos]
 	if _, ok := a.runners[proc.mctx]; ok {
 		panic(fmt.Sprintf("processor at %d position is already running", pos))

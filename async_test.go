@@ -27,10 +27,10 @@ func TestInsertProcessor(t *testing.T) {
 			a := p.Async(context.Background())
 
 			proc := &mock.Processor{}
-			err = l.Insert(pos, proc.Processor())
+			err = l.InsertProcessor(pos, proc.Processor())
 			assertNil(t, "add error", err)
 
-			a.Push(a.StartProcessor(l, pos)...)
+			a.Push(a.InsertRunner(l, pos)...)
 			err = a.Await()
 			assertNil(t, "await error", err)
 			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
