@@ -50,6 +50,7 @@ type (
 
 	// Line bounds the routing to the context and buffer size.
 	Line struct {
+		bufferSize int
 		Source
 		Processors []Processor
 		Sink
@@ -140,6 +141,45 @@ func (p *Pipe) Append(r Routing) (*Line, error) {
 	return l, nil
 }
 
+// Insert adds the processor to the line. Pos is the index where processor
+// should be inserted relatively to other processors i.e: pos 0 means that
+// new processor will be inserted right after the source.
+func (l *Line) Insert(pos int, fn ProcessorAllocatorFunc) error {
+	var inputProps SignalProperties
+	if pos == 0 {
+		inputProps = l.Source.Output
+	} else {
+		inputProps = l.Processors[pos-1].Output
+	}
+
+	// allocate new processor
+	m := mutable.Mutable()
+	proc, err := fn(m, l.bufferSize, inputProps)
+	if err != nil {
+		return err
+	}
+	proc.mctx = m
+	// append processor
+	l.Processors = append(l.Processors, Processor{})
+	copy(l.Processors[pos+1:], l.Processors[pos:])
+	l.Processors[pos] = proc
+	return nil
+}
+
+func (l *Line) prev(pos int) mutable.Context {
+	if pos == 0 {
+		return l.Source.mctx
+	}
+	return l.Processors[pos-1].mctx
+}
+
+func (l *Line) next(pos int) mutable.Context {
+	if pos+1 == len(l.Processors) {
+		return l.Sink.mctx
+	}
+	return l.Processors[pos+1].mctx
+}
+
 func (r Routing) line(bufferSize int) (*Line, error) {
 	m := mutable.Mutable()
 	source, err := r.Source(m, bufferSize)
@@ -169,6 +209,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 	sink.mctx = m
 
 	return &Line{
+		bufferSize: bufferSize,
 		Source:     source,
 		Processors: processors,
 		Sink:       sink,
