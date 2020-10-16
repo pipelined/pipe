@@ -192,8 +192,8 @@ func (a *Async) Push(mutations ...mutable.Mutation) {
 	a.mutationsChan <- mutations
 }
 
-// AddLine adds the line to the pipe.
-func (a *Async) AddLine(l *Line) mutable.Mutation {
+// Append adds the line to the running pipe.
+func (a *Async) Append(l *Line) mutable.Mutation {
 	mc := make(chan mutable.Mutations, 1)
 	l.runners(a.ctx, a.bufferSize, mc, a.runners)
 	ctxs := l.mutableContexts()
@@ -204,11 +204,11 @@ func (a *Async) AddLine(l *Line) mutable.Mutation {
 	})
 }
 
-// AddProcessor adds the processor to the running line. Pos is the index
+// Insert adds the processor to the running line. Pos is the index
 // where processor should be inserted relatively to other processors i.e:
 // pos 0 means that new processor will be inserted right after the pipe
 // source.
-func (a *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) error {
+func (a *Async) Insert(l *Line, pos int, fn ProcessorAllocatorFunc) error {
 	// obtain signal properties of previous stage.
 	var (
 		output     SignalProperties

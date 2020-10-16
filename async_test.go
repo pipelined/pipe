@@ -68,10 +68,10 @@ func TestAddLine(t *testing.T) {
 	assertNil(t, "error", err)
 
 	r := p.Async(context.Background())
-	l, err := p.AddRoute(route2)
+	l, err := p.Append(route2)
 	assertNil(t, "error", err)
 	r.Push(source2.Reset())
-	r.Push(r.AddLine(l))
+	r.Push(r.Append(l))
 
 	// start
 	err = r.Await()

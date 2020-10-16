@@ -54,6 +54,7 @@ type (
 		Processors []Processor
 		Sink
 	}
+
 	// Source is a source of signal data. Optinaly, mutability can be
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
@@ -129,11 +130,8 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 	}, nil
 }
 
-// AddRoute adds the route to already bound pipe.
-func (p *Pipe) AddRoute(r Routing) (*Line, error) {
-	// For every added line new child context is created. It allows to
-	// cancel it without cancelling parent context of already bound
-	// components. If pipe is bound successfully, context is not cancelled.
+// Append adds the route to the bound pipe.
+func (p *Pipe) Append(r Routing) (*Line, error) {
 	l, err := r.line(p.bufferSize)
 	if err != nil {
 		return nil, err
