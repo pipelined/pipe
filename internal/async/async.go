@@ -21,6 +21,7 @@ type (
 	Runner interface {
 		Run(context.Context) <-chan error
 		Out() <-chan Message
+		OutputPool() *signal.PoolAllocator
 		Insert(Runner, mutable.MutatorFunc) mutable.Mutation
 	}
 
@@ -185,6 +186,10 @@ func (r *source) Insert(Runner, mutable.MutatorFunc) mutable.Mutation {
 	panic("source cannot insert")
 }
 
+func (r *source) OutputPool() *signal.PoolAllocator {
+	return r.outputPool
+}
+
 // Run starts the Processor runner.
 func (r *processor) Run(ctx context.Context) <-chan error {
 	errc := make(chan error, 1)
@@ -249,6 +254,10 @@ func (r *processor) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mut
 	})
 }
 
+func (r *processor) OutputPool() *signal.PoolAllocator {
+	return r.outputPool
+}
+
 // Run starts the sink runner.
 func (r *sink) Run(ctx context.Context) <-chan error {
 	errc := make(chan error, 1)
@@ -302,6 +311,10 @@ func (r *sink) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mutable.
 		r.in = newRunner.Out()
 		return insertHook()
 	})
+}
+
+func (r *sink) OutputPool() *signal.PoolAllocator {
+	return nil
 }
 
 func (*sink) Out() <-chan Message {
