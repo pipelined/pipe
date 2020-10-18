@@ -131,8 +131,8 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 	}, nil
 }
 
-// Append adds the route to the bound pipe.
-func (p *Pipe) Append(r Routing) (*Line, error) {
+// AddLine creates the line for provied route and adds it to the pipe.
+func (p *Pipe) AddLine(r Routing) (*Line, error) {
 	l, err := r.line(p.bufferSize)
 	if err != nil {
 		return nil, err

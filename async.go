@@ -185,22 +185,29 @@ func start(ctx context.Context, runners map[mutable.Context]async.Runner, contex
 	return errChans
 }
 
-// Push new mutators into pipe.
-// Calling this method after pipe is done will cause a panic.
+// Push new mutators into pipe. Calling this method after pipe is done will
+// cause a panic.
 func (a *Async) Push(mutations ...mutable.Mutation) {
 	a.mutationsChan <- mutations
 }
 
-// Append adds the line to the running pipe.
-func (a *Async) Append(l *Line) mutable.Mutation {
+// StartLine adds the line to the running pipe. The result is a channel
+// that will be closed when line is started or the async execution is done.
+// Line should not be mutated while the returned channel is open.
+func (a *Async) StartLine(l *Line) <-chan struct{} {
 	mc := make(chan mutable.Mutations, 1)
 	l.runners(a.ctx, mc, a.runners)
 	ctxs := l.mutableContexts()
-	return a.mctx.Mutate(func() error {
-		addListeners(a.listeners, mc, ctxs...)
-		a.merger.add(start(a.ctx, a.runners, ctxs)...)
-		return nil
-	})
+	ctx, cancelFn := context.WithCancel(a.ctx)
+	a.Push(
+		a.mctx.Mutate(func() error {
+			addListeners(a.listeners, mc, ctxs...)
+			a.merger.add(start(a.ctx, a.runners, ctxs)...)
+			cancelFn()
+			return nil
+		}),
+	)
+	return ctx.Done()
 }
 
 // StartProcessor adds the processor to the running line. Pos is the index
