@@ -42,7 +42,7 @@ func TestInsertProcessor(t *testing.T) {
 
 func TestInsertMultiple(t *testing.T) {
 	bufferSize := 2
-	singlePush := func(pos int) func(*testing.T) {
+	insert := func(pos int) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
 			samples := 500
@@ -52,8 +52,8 @@ func TestInsertMultiple(t *testing.T) {
 					Limit:    samples,
 					Channels: 2,
 				}).Source(),
-				// Processors: pipe.Processors((&mock.Processor{}).Processor()),
-				Sink: sink.Sink(),
+				Processors: pipe.Processors((&mock.Processor{}).Processor()),
+				Sink:       sink.Sink(),
 			})
 			assertNil(t, "pipe error", err)
 
@@ -77,7 +77,8 @@ func TestInsertMultiple(t *testing.T) {
 			assertEqual(t, "processed 2", proc2.Counter.Messages > 0, true)
 		}
 	}
-	t.Run("single push", singlePush(0))
+	t.Run("before processor", insert(0))
+	t.Run("before sink", insert(1))
 }
 
 func TestAddLine(t *testing.T) {
@@ -111,7 +112,6 @@ func TestAddLine(t *testing.T) {
 	r := p.Async(context.Background())
 	l, err := p.Append(route2)
 	assertNil(t, "error", err)
-	r.Push(source2.Reset())
 	r.Push(r.Append(l))
 
 	// start
