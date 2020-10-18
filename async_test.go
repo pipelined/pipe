@@ -30,7 +30,7 @@ func TestInsertProcessor(t *testing.T) {
 			err = l.InsertProcessor(pos, proc.Processor())
 			assertNil(t, "add error", err)
 
-			<-a.InsertRunner(l, pos)
+			<-a.StartProcessor(l, pos)
 			err = a.Await()
 			assertNil(t, "await error", err)
 			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
@@ -63,12 +63,12 @@ func TestInsertMultiple(t *testing.T) {
 			proc1 := &mock.Processor{}
 			err = l.InsertProcessor(pos, proc1.Processor())
 			assertNil(t, "add 1 error", err)
-			<-a.InsertRunner(l, pos)
+			<-a.StartProcessor(l, pos)
 
 			proc2 := &mock.Processor{}
 			err = l.InsertProcessor(pos, proc2.Processor())
 			assertNil(t, "add 2 error", err)
-			<-a.InsertRunner(l, pos)
+			<-a.StartProcessor(l, pos)
 
 			err = a.Await()
 			assertNil(t, "await error", err)

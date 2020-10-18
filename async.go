@@ -203,12 +203,12 @@ func (a *Async) Append(l *Line) mutable.Mutation {
 	})
 }
 
-// InsertRunner adds the processor to the running line. Pos is the index of
-// the processor that should be inserted. The result is a channel that will
-// be closed when runner is inserted or the async exection is done. No
-// other processors should be inserted in this line while the returned
+// StartProcessor adds the processor to the running line. Pos is the index
+// of the processor that should be started. The result is a channel that
+// will be closed when processor is started or the async exection is done.
+// No other processors should be starting in this line while the returned
 // channel is open.
-func (a *Async) InsertRunner(l *Line, pos int) <-chan struct{} {
+func (a *Async) StartProcessor(l *Line, pos int) <-chan struct{} {
 	proc := l.Processors[pos]
 	if _, ok := a.runners[proc.mctx]; ok {
 		panic(fmt.Sprintf("processor at %d position is already running", pos))
