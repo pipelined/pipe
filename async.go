@@ -62,7 +62,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 			select {
 			case ms := <-mutationsChan:
 				for _, m := range ms {
-					// mutate pipe itself
+					// mutate the runner itself
 					if m.Context == runnerContext {
 						if err := m.Apply(); err != nil {
 							cancelFn()
@@ -70,10 +70,10 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 							errc <- err
 						}
 					} else {
-						for i := range ms {
-							if c := listeners[m.Context]; c != nil {
-								mutations[c] = mutations[c].Put(ms[i])
-							}
+						if c, ok := listeners[m.Context]; ok {
+							mutations[c] = mutations[c].Put(m)
+						} else {
+							panic("no listener found!")
 						}
 					}
 				}
@@ -203,9 +203,10 @@ func (a *Async) Append(l *Line) mutable.Mutation {
 	})
 }
 
-// InsertRunner adds the processor to the running line. Pos is the index
-// of the processor that should be inserted.
-func (a *Async) InsertRunner(l *Line, pos int) []mutable.Mutation {
+// InsertRunner adds the processor to the running line. Pos is the index of
+// the processor that should be inserted. The result is a channel that will
+// be closed when runner is inserted or the async exection is done.
+func (a *Async) InsertRunner(l *Line, pos int) <-chan struct{} {
 	proc := l.Processors[pos]
 	if _, ok := a.runners[proc.mctx]; ok {
 		panic(fmt.Sprintf("processor at %d position is already running", pos))
@@ -222,16 +223,20 @@ func (a *Async) InsertRunner(l *Line, pos int) []mutable.Mutation {
 		async.HookFunc(proc.StartFunc),
 		async.HookFunc(proc.FlushFunc),
 	)
-	return []mutable.Mutation{
+	a.runners[proc.mctx] = r
+	ctx, cancelFn := context.WithCancel(a.ctx)
+	a.Push(
 		a.mctx.Mutate(func() error {
 			addListeners(a.listeners, a.listeners[l.Source.mctx], proc.mctx)
 			return nil
 		}),
 		next.Insert(r, func() error {
 			a.merger.add(start(a.ctx, map[mutable.Context]async.Runner{proc.mctx: r}, []mutable.Context{proc.mctx})...)
+			cancelFn()
 			return nil
 		}),
-	}
+	)
+	return ctx.Done()
 }
 
 // Await for successful finish or first error to occur.
