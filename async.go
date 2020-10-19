@@ -64,11 +64,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 				for _, m := range ms {
 					// mutate the runner itself
 					if m.Context == runnerContext {
-						if err := m.Apply(); err != nil {
-							cancelFn()
-							merger.await()
-							errc <- err
-						}
+						m.Apply()
 					} else {
 						if c, ok := listeners[m.Context]; ok {
 							mutations[c] = mutations[c].Put(m)
@@ -204,11 +200,10 @@ func (a *Async) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Mutat
 	mc := make(chan mutable.Mutations, 1)
 	l.runners(a.ctx, mc, a.runners)
 	ctxs := l.mutableContexts()
-	return a.mctx.Mutate(func() error {
+	return a.mctx.Mutate(func() {
 		addListeners(a.listeners, mc, ctxs...)
 		a.merger.add(start(a.ctx, a.runners, ctxs)...)
 		cancelFn()
-		return nil
 	})
 }
 
@@ -248,17 +243,15 @@ func (a *Async) StartProcessor(l *Line, pos int) <-chan struct{} {
 }
 
 func (a *Async) addListenerMut(mc chan mutable.Mutations, mctx mutable.Context) mutable.Mutation {
-	return a.mctx.Mutate(func() error {
+	return a.mctx.Mutate(func() {
 		addListeners(a.listeners, mc, mctx)
-		return nil
 	})
 }
 
 func (a *Async) startRunnerMutFunc(r async.Runner, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
-	return func() error {
+	return func() {
 		a.merger.add(start(a.ctx, map[mutable.Context]async.Runner{mctx: r}, []mutable.Context{mctx})...)
 		cancelFn()
-		return nil
 	}
 }
 

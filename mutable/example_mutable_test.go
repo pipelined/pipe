@@ -12,9 +12,8 @@ type mutableType struct {
 }
 
 func (v *mutableType) setParameter(value int) mutable.Mutation {
-	return v.Context.Mutate(func() error {
+	return v.Context.Mutate(func() {
 		v.parameter = value
-		return nil
 	})
 }
 
