@@ -44,7 +44,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 		}
 	}
 	// push cached mutators at the start
-	push(mutations)
+	push(ctx, mutations)
 	// start the pipe execution with new context
 	// cancel is required to stop the pipe in case of error
 	merger := errorMerger{
@@ -73,7 +73,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 						}
 					}
 				}
-				push(mutations)
+				push(ctx, mutations)
 			case err, ok := <-merger.errorChan:
 				// merger has buffer of one error,
 				// if more errors happen, they will be ignored.
@@ -152,10 +152,14 @@ func (l *Line) mutableContexts() []mutable.Context {
 	return ctxs
 }
 
-func push(mutations map[chan mutable.Mutations]mutable.Mutations) {
+func push(ctx context.Context, mutations map[chan mutable.Mutations]mutable.Mutations) {
 	for c, m := range mutations {
-		c <- m
-		delete(mutations, c)
+		select {
+		case c <- m:
+			delete(mutations, c)
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
