@@ -163,7 +163,6 @@ func (r *source) Run(ctx context.Context) <-chan error {
 				return
 			}
 			if read != outSignal.Length() {
-				fmt.Printf("read: %v\n", read)
 				outSignal = outSignal.Slice(0, read)
 			}
 
