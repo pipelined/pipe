@@ -147,14 +147,10 @@ func (r *source) Run(ctx context.Context) <-chan error {
 		for {
 			select {
 			case mutations = <-r.mutations:
+				mutations.ApplyTo(r.mctx)
 			case <-ctx.Done():
 				return
 			default:
-			}
-
-			if err = mutations.ApplyTo(r.mctx); err != nil {
-				errc <- fmt.Errorf("error mutating source: %w", err)
-				return
 			}
 
 			outSignal = r.outputPool.GetFloat64()
@@ -217,13 +213,8 @@ func (r *processor) Run(ctx context.Context) <-chan error {
 				if !ok {
 					return
 				}
+				message.Mutations.ApplyTo(r.mctx)
 			case <-ctx.Done():
-				return
-			}
-
-			if err = message.Mutations.ApplyTo(r.mctx); err != nil {
-				errc <- fmt.Errorf("error mutating processor: %w", err)
-				message.Signal.Free(r.inputPool)
 				return
 			}
 
@@ -248,9 +239,9 @@ func (r *processor) Run(ctx context.Context) <-chan error {
 }
 
 func (r *processor) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mutable.Mutation {
-	return r.mctx.Mutate(func() error {
+	return r.mctx.Mutate(func() {
 		r.in = newRunner.Out()
-		return insertHook()
+		insertHook()
 	})
 }
 
@@ -284,16 +275,12 @@ func (r *sink) Run(ctx context.Context) <-chan error {
 				if !ok {
 					return
 				}
+				// apply Mutators
+				message.Mutations.ApplyTo(r.mctx)
 			case <-ctx.Done():
 				return
 			}
 
-			// apply Mutators
-			if err = message.Mutations.ApplyTo(r.mctx); err != nil {
-				errc <- fmt.Errorf("error mutating sink: %w", err)
-				message.Signal.Free(r.inputPool) // need to free
-				return
-			}
 			err = r.sinkFn(message.Signal) // sink a buffer
 			message.Signal.Free(r.inputPool)
 			if err != nil {
@@ -307,9 +294,9 @@ func (r *sink) Run(ctx context.Context) <-chan error {
 }
 
 func (r *sink) Insert(newRunner Runner, insertHook mutable.MutatorFunc) mutable.Mutation {
-	return r.mctx.Mutate(func() error {
+	return r.mctx.Mutate(func() {
 		r.in = newRunner.Out()
-		return insertHook()
+		insertHook()
 	})
 }
 

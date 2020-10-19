@@ -109,8 +109,7 @@ func TestSource(t *testing.T) {
 		context.Background(),
 		mock.Source{
 			Mutator: mock.Mutator{
-				Mutability:      mutable.Mutable(),
-				ErrorOnMutation: testError,
+				Mutability: mutable.Mutable(),
 			},
 			Channels: 1,
 			Limit:    0,
@@ -216,8 +215,7 @@ func TestProcessor(t *testing.T) {
 		context.Background(),
 		mock.Processor{
 			Mutator: mock.Mutator{
-				Mutability:      mutable.Mutable(),
-				ErrorOnMutation: testError,
+				Mutability: mutable.Mutable(),
 			},
 		},
 	))
@@ -313,8 +311,7 @@ func TestSink(t *testing.T) {
 		context.Background(),
 		mock.Sink{
 			Mutator: mock.Mutator{
-				Mutability:      mutable.Mutable(),
-				ErrorOnMutation: testError,
+				Mutability: mutable.Mutable(),
 			},
 		},
 	))
