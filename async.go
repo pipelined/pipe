@@ -195,19 +195,21 @@ func (a *Async) Push(mutations ...mutable.Mutation) {
 // that will be closed when line is started or the async execution is done.
 // Line should not be mutated while the returned channel is open.
 func (a *Async) StartLine(l *Line) <-chan struct{} {
+	ctx, cancelFn := context.WithCancel(a.ctx)
+	a.Push(a.startLineMut(l, cancelFn))
+	return ctx.Done()
+}
+
+func (a *Async) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Mutation {
 	mc := make(chan mutable.Mutations, 1)
 	l.runners(a.ctx, mc, a.runners)
 	ctxs := l.mutableContexts()
-	ctx, cancelFn := context.WithCancel(a.ctx)
-	a.Push(
-		a.mctx.Mutate(func() error {
-			addListeners(a.listeners, mc, ctxs...)
-			a.merger.add(start(a.ctx, a.runners, ctxs)...)
-			cancelFn()
-			return nil
-		}),
-	)
-	return ctx.Done()
+	return a.mctx.Mutate(func() error {
+		addListeners(a.listeners, mc, ctxs...)
+		a.merger.add(start(a.ctx, a.runners, ctxs)...)
+		cancelFn()
+		return nil
+	})
 }
 
 // StartProcessor adds the processor to the running line. Pos is the index
@@ -216,6 +218,10 @@ func (a *Async) StartLine(l *Line) <-chan struct{} {
 // No other processors should be starting in this line while the returned
 // channel is open.
 func (a *Async) StartProcessor(l *Line, pos int) <-chan struct{} {
+	mc, ok := a.listeners[l.Source.mctx]
+	if !ok {
+		panic("line is not running")
+	}
 	proc := l.Processors[pos]
 	if _, ok := a.runners[proc.mctx]; ok {
 		panic(fmt.Sprintf("processor at %d position is already running", pos))
@@ -235,17 +241,25 @@ func (a *Async) StartProcessor(l *Line, pos int) <-chan struct{} {
 	a.runners[proc.mctx] = r
 	ctx, cancelFn := context.WithCancel(a.ctx)
 	a.Push(
-		a.mctx.Mutate(func() error {
-			addListeners(a.listeners, a.listeners[l.Source.mctx], proc.mctx)
-			return nil
-		}),
-		next.Insert(r, func() error {
-			a.merger.add(start(a.ctx, map[mutable.Context]async.Runner{proc.mctx: r}, []mutable.Context{proc.mctx})...)
-			cancelFn()
-			return nil
-		}),
+		a.addListenerMut(mc, proc.mctx),
+		next.Insert(r, a.startRunnerMutFunc(r, proc.mctx, cancelFn)),
 	)
 	return ctx.Done()
+}
+
+func (a *Async) addListenerMut(mc chan mutable.Mutations, mctx mutable.Context) mutable.Mutation {
+	return a.mctx.Mutate(func() error {
+		addListeners(a.listeners, mc, mctx)
+		return nil
+	})
+}
+
+func (a *Async) startRunnerMutFunc(r async.Runner, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
+	return func() error {
+		a.merger.add(start(a.ctx, map[mutable.Context]async.Runner{mctx: r}, []mutable.Context{mctx})...)
+		cancelFn()
+		return nil
+	}
 }
 
 // Await for successful finish or first error to occur.
