@@ -50,10 +50,12 @@ type (
 
 	// Line bounds the routing to the context and buffer size.
 	Line struct {
+		bufferSize int
 		Source
 		Processors []Processor
 		Sink
 	}
+
 	// Source is a source of signal data. Optinaly, mutability can be
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
@@ -129,17 +131,53 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 	}, nil
 }
 
-// AddRoute adds the route to already bound pipe.
-func (p *Pipe) AddRoute(r Routing) (*Line, error) {
-	// For every added line new child context is created. It allows to
-	// cancel it without cancelling parent context of already bound
-	// components. If pipe is bound successfully, context is not cancelled.
+// AddLine creates the line for provied route and adds it to the pipe.
+func (p *Pipe) AddLine(r Routing) (*Line, error) {
 	l, err := r.line(p.bufferSize)
 	if err != nil {
 		return nil, err
 	}
 	p.Lines = append(p.Lines, l)
 	return l, nil
+}
+
+// InsertProcessor inserts the processor to the line. Pos is the index
+// where processor should be inserted relatively to other processors i.e:
+// pos 0 means that new processor will be inserted right after the source.
+func (l *Line) InsertProcessor(pos int, fn ProcessorAllocatorFunc) error {
+	var inputProps SignalProperties
+	if pos == 0 {
+		inputProps = l.Source.Output
+	} else {
+		inputProps = l.Processors[pos-1].Output
+	}
+
+	// allocate new processor
+	m := mutable.Mutable()
+	proc, err := fn(m, l.bufferSize, inputProps)
+	if err != nil {
+		return err
+	}
+	proc.mctx = m
+	// append processor
+	l.Processors = append(l.Processors, Processor{})
+	copy(l.Processors[pos+1:], l.Processors[pos:])
+	l.Processors[pos] = proc
+	return nil
+}
+
+func (l *Line) prev(pos int) mutable.Context {
+	if pos == 0 {
+		return l.Source.mctx
+	}
+	return l.Processors[pos-1].mctx
+}
+
+func (l *Line) next(pos int) mutable.Context {
+	if pos+1 == len(l.Processors) {
+		return l.Sink.mctx
+	}
+	return l.Processors[pos+1].mctx
 }
 
 func (r Routing) line(bufferSize int) (*Line, error) {
@@ -171,6 +209,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 	sink.mctx = m
 
 	return &Line{
+		bufferSize: bufferSize,
 		Source:     source,
 		Processors: processors,
 		Sink:       sink,

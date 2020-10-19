@@ -2,6 +2,7 @@ package pipe
 
 import (
 	"context"
+	"fmt"
 
 	"pipelined.dev/pipe/internal/async"
 	"pipelined.dev/pipe/mutable"
@@ -14,7 +15,6 @@ type (
 		ctx           context.Context
 		cancelFn      context.CancelFunc
 		mctx          mutable.Context
-		bufferSize    int
 		merger        *errorMerger
 		listeners     map[mutable.Context]chan mutable.Mutations
 		runners       map[mutable.Context]async.Runner
@@ -31,7 +31,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 	listeners := make(map[mutable.Context]chan mutable.Mutations)
 	for i := range p.Lines {
 		mutationsChan := make(chan mutable.Mutations, 1)
-		p.Lines[i].runners(ctx, p.bufferSize, mutationsChan, runners)
+		p.Lines[i].runners(ctx, mutationsChan, runners)
 		addListeners(listeners,
 			mutationsChan,
 			p.Lines[i].mutableContexts()...,
@@ -62,7 +62,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 			select {
 			case ms := <-mutationsChan:
 				for _, m := range ms {
-					// mutate pipe itself
+					// mutate the runner itself
 					if m.Context == runnerContext {
 						if err := m.Apply(); err != nil {
 							cancelFn()
@@ -70,10 +70,10 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 							errc <- err
 						}
 					} else {
-						for i := range ms {
-							if c := listeners[m.Context]; c != nil {
-								mutations[c] = mutations[c].Put(ms[i])
-							}
+						if c, ok := listeners[m.Context]; ok {
+							mutations[c] = mutations[c].Put(m)
+						} else {
+							panic("no listener found!")
 						}
 					}
 				}
@@ -93,7 +93,6 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 	return &Async{
 		ctx:           ctx,
 		cancelFn:      cancelFn,
-		bufferSize:    p.bufferSize,
 		mctx:          runnerContext,
 		mutations:     mutations,
 		mutationsChan: mutationsChan,
@@ -107,12 +106,12 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 // Line binds components. All allocators are executed and wrapped into
 // runners. If any of allocators failed, the error will be returned and
 // flush hooks won't be triggered.
-func (l *Line) runners(ctx context.Context, bufferSize int, mc chan mutable.Mutations, runners map[mutable.Context]async.Runner) {
+func (l *Line) runners(ctx context.Context, mc chan mutable.Mutations, runners map[mutable.Context]async.Runner) {
 	var r async.Runner
 	r = async.Source(
 		mc,
 		l.Source.mctx,
-		l.Source.Output.poolAllocator(bufferSize),
+		l.Source.Output.poolAllocator(l.bufferSize),
 		async.SourceFunc(l.Source.SourceFunc),
 		async.HookFunc(l.Source.StartFunc),
 		async.HookFunc(l.Source.FlushFunc),
@@ -125,8 +124,8 @@ func (l *Line) runners(ctx context.Context, bufferSize int, mc chan mutable.Muta
 		r = async.Processor(
 			l.Processors[i].mctx,
 			in,
-			props.poolAllocator(bufferSize),
-			l.Processors[i].Output.poolAllocator(bufferSize),
+			props.poolAllocator(l.bufferSize),
+			l.Processors[i].Output.poolAllocator(l.bufferSize),
 			async.ProcessFunc(l.Processors[i].ProcessFunc),
 			async.HookFunc(l.Processors[i].StartFunc),
 			async.HookFunc(l.Processors[i].FlushFunc),
@@ -139,7 +138,7 @@ func (l *Line) runners(ctx context.Context, bufferSize int, mc chan mutable.Muta
 	runners[l.Sink.mctx] = async.Sink(
 		l.Sink.mctx,
 		in,
-		props.poolAllocator(bufferSize),
+		props.poolAllocator(l.bufferSize),
 		async.SinkFunc(l.Sink.SinkFunc),
 		async.HookFunc(l.Sink.StartFunc),
 		async.HookFunc(l.Sink.FlushFunc),
@@ -186,81 +185,81 @@ func start(ctx context.Context, runners map[mutable.Context]async.Runner, contex
 	return errChans
 }
 
-// Push new mutators into pipe.
-// Calling this method after pipe is done will cause a panic.
+// Push new mutators into pipe. Calling this method after pipe is done will
+// cause a panic.
 func (a *Async) Push(mutations ...mutable.Mutation) {
 	a.mutationsChan <- mutations
 }
 
-// AddLine adds the line to the pipe.
-func (a *Async) AddLine(l *Line) mutable.Mutation {
+// StartLine adds the line to the running pipe. The result is a channel
+// that will be closed when line is started or the async execution is done.
+// Line should not be mutated while the returned channel is open.
+func (a *Async) StartLine(l *Line) <-chan struct{} {
+	ctx, cancelFn := context.WithCancel(a.ctx)
+	a.Push(a.startLineMut(l, cancelFn))
+	return ctx.Done()
+}
+
+func (a *Async) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Mutation {
 	mc := make(chan mutable.Mutations, 1)
-	l.runners(a.ctx, a.bufferSize, mc, a.runners)
+	l.runners(a.ctx, mc, a.runners)
 	ctxs := l.mutableContexts()
 	return a.mctx.Mutate(func() error {
 		addListeners(a.listeners, mc, ctxs...)
 		a.merger.add(start(a.ctx, a.runners, ctxs)...)
+		cancelFn()
 		return nil
 	})
 }
 
-// AddProcessor adds the processor to the running line. Pos is the index
-// where processor should be inserted relatively to other processors i.e:
-// pos 0 means that new processor will be inserted right after the pipe
-// source.
-func (a *Async) AddProcessor(l *Line, pos int, fn ProcessorAllocatorFunc) error {
-	// obtain signal properties of previous stage.
-	var (
-		output     SignalProperties
-		prevRunner async.Runner
-	)
-	if pos == 0 {
-		output = l.Source.Output
-		prevRunner = a.runners[l.Source.mctx]
-	} else {
-		output = l.Processors[pos-1].Output
-		prevRunner = a.runners[l.Processors[pos-1].mctx]
+// StartProcessor adds the processor to the running line. Pos is the index
+// of the processor that should be started. The result is a channel that
+// will be closed when processor is started or the async exection is done.
+// No other processors should be starting in this line while the returned
+// channel is open.
+func (a *Async) StartProcessor(l *Line, pos int) <-chan struct{} {
+	mc, ok := a.listeners[l.Source.mctx]
+	if !ok {
+		panic("line is not running")
 	}
+	proc := l.Processors[pos]
+	if _, ok := a.runners[proc.mctx]; ok {
+		panic(fmt.Sprintf("processor at %d position is already running", pos))
+	}
+	prev := a.runners[l.prev(pos)]
+	next := a.runners[l.next(pos)]
 
-	// allocate new processor
-	m := mutable.Mutable()
-	proc, err := fn(m, a.bufferSize, output)
-	if err != nil {
-		return err
-	}
-	proc.mctx = m
-
-	// obtain mutable context of the next stage.
-	var nextRunner async.Runner
-	if pos == len(l.Processors) {
-		nextRunner = a.runners[l.Sink.mctx]
-	} else {
-		nextRunner = a.runners[l.Processors[pos].mctx]
-	}
 	r := async.Processor(
-		m,
-		prevRunner.Out(),
-		output.poolAllocator(a.bufferSize),
-		proc.Output.poolAllocator(a.bufferSize),
+		proc.mctx,
+		prev.Out(),
+		prev.OutputPool(),
+		proc.Output.poolAllocator(l.bufferSize),
 		async.ProcessFunc(proc.ProcessFunc),
 		async.HookFunc(proc.StartFunc),
 		async.HookFunc(proc.FlushFunc),
 	)
-	// append processor
-	l.Processors = append(l.Processors, Processor{})
-	copy(l.Processors[pos+1:], l.Processors[pos:])
-	l.Processors[pos] = proc
+	a.runners[proc.mctx] = r
+	ctx, cancelFn := context.WithCancel(a.ctx)
 	a.Push(
-		a.mctx.Mutate(func() error {
-			addListeners(a.listeners, a.listeners[l.Source.mctx], m)
-			return nil
-		}),
-		nextRunner.Insert(r, func() error {
-			a.merger.add(start(a.ctx, map[mutable.Context]async.Runner{m: r}, []mutable.Context{m})...)
-			return nil
-		}),
+		a.addListenerMut(mc, proc.mctx),
+		next.Insert(r, a.startRunnerMutFunc(r, proc.mctx, cancelFn)),
 	)
-	return nil
+	return ctx.Done()
+}
+
+func (a *Async) addListenerMut(mc chan mutable.Mutations, mctx mutable.Context) mutable.Mutation {
+	return a.mctx.Mutate(func() error {
+		addListeners(a.listeners, mc, mctx)
+		return nil
+	})
+}
+
+func (a *Async) startRunnerMutFunc(r async.Runner, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
+	return func() error {
+		a.merger.add(start(a.ctx, map[mutable.Context]async.Runner{mctx: r}, []mutable.Context{mctx})...)
+		cancelFn()
+		return nil
+	}
 }
 
 // Await for successful finish or first error to occur.
