@@ -16,9 +16,9 @@ It implies the following constraints:
     There might be 0 to n Processors;
     All stages are executed sequentially.
 
-The implementation is based on the pipeline pattern explained in the go
-blog https://blog.golang.org/pipelines. Which means that stages are also
-executed asynchronously.
+Current implementation supports only asynchronous execution, when every
+stage is running in its own goroutine. It is inspired with the pipeline
+pattern explained in the go blog https://blog.golang.org/pipelines.
 
 Components
 
@@ -42,9 +42,9 @@ mutability package documentation.
 
 Routing and binding
 
-To run the pipeline, one first need to build it. It starts with a line:
+To run the pipeline, one first need to build it. It starts with a routing:
 
-    line := pipe.Line{
+    r1 := pipe.Routing{
         Source: wav.Source(reader),
         Processors: pipe.Processors(
             vst2.Open(vstPath1),
@@ -53,24 +53,25 @@ To run the pipeline, one first need to build it. It starts with a line:
         Sink: wav.Sink(writer),
     }
 
-Line defines the order in which DSP components form the pipeline. Once line
-is defined, components can be bound together. It's done by creating a pipe:
+Routing defines the order in which DSP components form the pipeline. Once
+routing is defined, components can be bound together. It's done by creating
+a pipe:
 
-    p, err := pipe.New(context.Background(), bufferSize, line)
+    p, err := pipe.New(bufferSize, r1)
 
-New executes all allocators provided in routing and binds components
-together.
+New executes all allocators provided by routings and binds components
+together into the pipe.
 
 Execution
 
-Once pipelined is built, it can be executed. To do that Run method should
-be called:
+Once pipe is built, it can be executed. To do that Async method should be
+called:
 
-    r := p.Run()
-    err := r.Wait()
+    r := p.Async()
+    err := r.Await()
 
-Run will start and asynchronously run all DSP components until either any
-of the following things happen: source is done; context is done; error
-occured.
+Async will start and asynchronously run all DSP components until either any
+of the following things happen: the source is done; the context is done; an
+error in any of the components occured.
 */
 package pipe
