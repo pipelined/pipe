@@ -19,6 +19,7 @@ type (
 	// Routing defines sequence of DSP components allocators. It has a
 	// single source, zero or many processors and single sink.
 	Routing struct {
+		mutable.Context
 		Source     SourceAllocatorFunc
 		Processors []ProcessorAllocatorFunc
 		Sink       SinkAllocatorFunc
@@ -50,7 +51,8 @@ type (
 
 	// Line bounds the routing to the context and buffer size.
 	Line struct {
-		bufferSize int
+		bufferSize       int
+		executionContext mutable.Context
 		Source
 		Processors []Processor
 		Sink
@@ -180,40 +182,66 @@ func (l *Line) next(pos int) mutable.Context {
 	return l.Processors[pos+1].mctx
 }
 
+func (fn SourceAllocatorFunc) allocate(mctx mutable.Context, bufferSize int) (Source, error) {
+	c, err := fn(mctx, bufferSize)
+	if err == nil {
+		c.mctx = mctx
+	}
+	return c, err
+}
+
+func (fn ProcessorAllocatorFunc) allocate(mctx mutable.Context, bufferSize int, input SignalProperties) (Processor, error) {
+	c, err := fn(mctx, bufferSize, input)
+	if err == nil {
+		c.mctx = mctx
+	}
+	return c, err
+}
+
+func (fn SinkAllocatorFunc) allocate(mctx mutable.Context, bufferSize int, input SignalProperties) (Sink, error) {
+	c, err := fn(mctx, bufferSize, input)
+	if err == nil {
+		c.mctx = mctx
+	}
+	return c, err
+}
+
 func (r Routing) line(bufferSize int) (*Line, error) {
-	m := mutable.Mutable()
-	source, err := r.Source(m, bufferSize)
+	source, err := r.Source.allocate(executionContext(r.Context), bufferSize)
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)
 	}
-	source.mctx = m
 
 	input := source.Output
 	processors := make([]Processor, 0, len(r.Processors))
 	for i := range r.Processors {
-		m = mutable.Mutable()
-		processor, err := r.Processors[i](m, bufferSize, input)
+		processor, err := r.Processors[i].allocate(executionContext(r.Context), bufferSize, input)
 		if err != nil {
 			return nil, fmt.Errorf("processor: %w", err)
 		}
-		processor.mctx = m
 		processors = append(processors, processor)
 		input = processor.Output
 	}
 
-	m = mutable.Mutable()
-	sink, err := r.Sink(m, bufferSize, input)
+	sink, err := r.Sink.allocate(executionContext(r.Context), bufferSize, input)
 	if err != nil {
 		return nil, fmt.Errorf("sink: %w", err)
 	}
-	sink.mctx = m
 
 	return &Line{
-		bufferSize: bufferSize,
-		Source:     source,
-		Processors: processors,
-		Sink:       sink,
+		executionContext: r.Context,
+		bufferSize:       bufferSize,
+		Source:           source,
+		Processors:       processors,
+		Sink:             sink,
 	}, nil
+}
+
+func executionContext(routeContext mutable.Context) mutable.Context {
+	if routeContext.IsMutable() {
+		return routeContext
+	}
+	return mutable.Mutable()
 }
 
 // Processors is a helper function to use in line constructors.
