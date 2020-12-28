@@ -146,7 +146,7 @@ func (p *Pipe) AddLine(r Routing) (*Line, error) {
 // InsertProcessor inserts the processor to the line. Pos is the index
 // where processor should be inserted relatively to other processors i.e:
 // pos 0 means that new processor will be inserted right after the source.
-func (l *Line) InsertProcessor(pos int, fn ProcessorAllocatorFunc) error {
+func (l *Line) InsertProcessor(pos int, allocator ProcessorAllocatorFunc) error {
 	var inputProps SignalProperties
 	if pos == 0 {
 		inputProps = l.Source.Output
@@ -155,12 +155,10 @@ func (l *Line) InsertProcessor(pos int, fn ProcessorAllocatorFunc) error {
 	}
 
 	// allocate new processor
-	m := mutable.Mutable()
-	proc, err := fn(m, l.bufferSize, inputProps)
+	proc, err := allocator.allocate(executionContext(l.executionContext), l.bufferSize, inputProps)
 	if err != nil {
 		return err
 	}
-	proc.mctx = m
 	// append processor
 	l.Processors = append(l.Processors, Processor{})
 	copy(l.Processors[pos+1:], l.Processors[pos:])
