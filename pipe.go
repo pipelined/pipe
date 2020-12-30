@@ -155,7 +155,7 @@ func (l *Line) InsertProcessor(pos int, allocator ProcessorAllocatorFunc) error 
 	}
 
 	// allocate new processor
-	proc, err := allocator.allocate(executionContext(l.executionContext), l.bufferSize, inputProps)
+	proc, err := allocator.allocate(componentContext(l.executionContext), l.bufferSize, inputProps)
 	if err != nil {
 		return err
 	}
@@ -205,7 +205,7 @@ func (fn SinkAllocatorFunc) allocate(mctx mutable.Context, bufferSize int, input
 }
 
 func (r Routing) line(bufferSize int) (*Line, error) {
-	source, err := r.Source.allocate(executionContext(r.Context), bufferSize)
+	source, err := r.Source.allocate(componentContext(r.Context), bufferSize)
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)
 	}
@@ -213,7 +213,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 	input := source.Output
 	processors := make([]Processor, 0, len(r.Processors))
 	for i := range r.Processors {
-		processor, err := r.Processors[i].allocate(executionContext(r.Context), bufferSize, input)
+		processor, err := r.Processors[i].allocate(componentContext(r.Context), bufferSize, input)
 		if err != nil {
 			return nil, fmt.Errorf("processor: %w", err)
 		}
@@ -221,7 +221,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 		input = processor.Output
 	}
 
-	sink, err := r.Sink.allocate(executionContext(r.Context), bufferSize, input)
+	sink, err := r.Sink.allocate(componentContext(r.Context), bufferSize, input)
 	if err != nil {
 		return nil, fmt.Errorf("sink: %w", err)
 	}
@@ -235,7 +235,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 	}, nil
 }
 
-func executionContext(routeContext mutable.Context) mutable.Context {
+func componentContext(routeContext mutable.Context) mutable.Context {
 	if routeContext.IsMutable() {
 		return routeContext
 	}
