@@ -51,8 +51,8 @@ type (
 
 	// Line bounds the routing to the context and buffer size.
 	Line struct {
-		bufferSize       int
-		executionContext mutable.Context
+		bufferSize int
+		mctx       mutable.Context
 		Source
 		Processors []Processor
 		Sink
@@ -155,7 +155,7 @@ func (l *Line) InsertProcessor(pos int, allocator ProcessorAllocatorFunc) error 
 	}
 
 	// allocate new processor
-	proc, err := allocator.allocate(componentContext(l.executionContext), l.bufferSize, inputProps)
+	proc, err := allocator.allocate(componentContext(l.mctx), l.bufferSize, inputProps)
 	if err != nil {
 		return err
 	}
@@ -227,11 +227,11 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 	}
 
 	return &Line{
-		executionContext: r.Context,
-		bufferSize:       bufferSize,
-		Source:           source,
-		Processors:       processors,
-		Sink:             sink,
+		mctx:       r.Context,
+		bufferSize: bufferSize,
+		Source:     source,
+		Processors: processors,
+		Sink:       sink,
 	}, nil
 }
 
