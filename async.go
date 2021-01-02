@@ -41,21 +41,19 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 	push(ctx, mutCache)
 	// start the pipe execution with new context
 	// cancel is required to stop the pipe in case of error
-	merger := errorMerger{
-		errorChan: make(chan error, 1),
-	}
-	merger.add(startAll(ctx, execCtxs)...)
-	go merger.wait()
-
 	a := Async{
 		ctx:           ctx,
 		mutCtx:        mutable.Mutable(),
+		execCtxs:      execCtxs,
 		cancelFn:      cancelFn,
 		mutationsChan: make(chan []mutable.Mutation, 1),
 		errorChan:     make(chan error, 1),
-		merger:        &merger,
-		execCtxs:      execCtxs,
+		merger: &errorMerger{
+			errorChan: make(chan error, 1),
+		},
 	}
+	a.merger.add(a.startAll()...)
+	go a.merger.wait()
 	go a.start(mutCache)
 	return &a
 }
@@ -168,12 +166,12 @@ func push(ctx context.Context, mutations map[chan mutable.Mutations]mutable.Muta
 }
 
 // start starts the execution of pipe.
-func startAll(ctx context.Context, executors map[mutable.Context]executionContext) []<-chan error {
+func (a *Async) startAll() []<-chan error {
 	// start all runners
 	// error channel for each component
-	errChans := make([]<-chan error, 0, len(executors))
-	for i := range executors {
-		errChans = append(errChans, executors[i].runner.Run(ctx))
+	errChans := make([]<-chan error, 0, len(a.execCtxs))
+	for i := range a.execCtxs {
+		errChans = append(errChans, a.execCtxs[i].runner.Run(a.ctx))
 	}
 	return errChans
 }
