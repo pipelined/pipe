@@ -45,7 +45,7 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 		errorChan: make(chan error, 1),
 	}
 	merger.add(startAll(ctx, execCtxs)...)
-	go merger.start()
+	go merger.wait()
 
 	a := Async{
 		ctx:           ctx,
@@ -83,7 +83,7 @@ func (a *Async) start(mutCache map[chan mutable.Mutations]mutable.Mutations) {
 			// if more errors happen, they will be ignored.
 			if ok {
 				a.cancelFn()
-				a.merger.await()
+				a.merger.drain()
 				a.errorChan <- err
 			}
 			return
