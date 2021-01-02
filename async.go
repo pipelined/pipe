@@ -31,14 +31,14 @@ type (
 func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Async {
 	ctx, cancelFn := context.WithCancel(ctx)
 	execCtxs := p.bind()
-	mutations := make(map[chan mutable.Mutations]mutable.Mutations)
+	mutCache := make(map[chan mutable.Mutations]mutable.Mutations)
 	for i := range initializers {
 		if c, ok := execCtxs[initializers[i].Context]; ok {
-			mutations[c.mutations] = mutations[c.mutations].Put(initializers[i])
+			mutCache[c.mutations] = mutCache[c.mutations].Put(initializers[i])
 		}
 	}
 	// push cached mutators at the start
-	push(ctx, mutations)
+	push(ctx, mutCache)
 	// start the pipe execution with new context
 	// cancel is required to stop the pipe in case of error
 	merger := errorMerger{
@@ -47,47 +47,47 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 	merger.add(startAll(ctx, execCtxs)...)
 	go merger.start()
 
-	errc := make(chan error, 1)
-	mutationsChan := make(chan []mutable.Mutation, 1)
-	pipeMutCtx := mutable.Mutable()
-	go func() {
-		defer close(errc)
-		for {
-			select {
-			case ms := <-mutationsChan:
-				for _, m := range ms {
-					// mutate the runner itself
-					if m.Context == pipeMutCtx {
-						m.Apply()
-					} else {
-						if c, ok := execCtxs[m.Context]; ok {
-							mutations[c.mutations] = mutations[c.mutations].Put(m)
-						} else {
-							panic("no listener found!")
-						}
-					}
-				}
-				push(ctx, mutations)
-			case err, ok := <-merger.errorChan:
-				// merger has buffer of one error,
-				// if more errors happen, they will be ignored.
-				if ok {
-					cancelFn()
-					merger.await()
-					errc <- err
-				}
-				return
-			}
-		}
-	}()
-	return &Async{
+	a := Async{
 		ctx:           ctx,
-		mutCtx:        pipeMutCtx,
+		mutCtx:        mutable.Mutable(),
 		cancelFn:      cancelFn,
-		mutationsChan: mutationsChan,
-		errorChan:     errc,
+		mutationsChan: make(chan []mutable.Mutation, 1),
+		errorChan:     make(chan error, 1),
 		merger:        &merger,
 		execCtxs:      execCtxs,
+	}
+	go a.start(mutCache)
+	return &a
+}
+
+func (a *Async) start(mutCache map[chan mutable.Mutations]mutable.Mutations) {
+	defer close(a.errorChan)
+	for {
+		select {
+		case ms := <-a.mutationsChan:
+			for _, m := range ms {
+				// mutate the runner itself
+				if m.Context == a.mutCtx {
+					m.Apply()
+				} else {
+					if c, ok := a.execCtxs[m.Context]; ok {
+						mutCache[c.mutations] = mutCache[c.mutations].Put(m)
+					} else {
+						panic("no listener found!")
+					}
+				}
+			}
+			push(a.ctx, mutCache)
+		case err, ok := <-a.merger.errorChan:
+			// merger has buffer of one error,
+			// if more errors happen, they will be ignored.
+			if ok {
+				a.cancelFn()
+				a.merger.await()
+				a.errorChan <- err
+			}
+			return
+		}
 	}
 }
 
