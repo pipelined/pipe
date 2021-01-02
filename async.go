@@ -156,17 +156,6 @@ func (l *Line) asyncExecution(exCtxs map[mutable.Context]executionContext) {
 	}
 }
 
-func (l *Line) mutableContexts() []mutable.Context {
-	ctxs := make([]mutable.Context, 0, 2+len(l.Processors))
-
-	ctxs = append(ctxs, l.Source.mctx, l.Sink.mctx)
-	for i := range l.Processors {
-		ctxs = append(ctxs, l.Processors[i].mctx)
-	}
-
-	return ctxs
-}
-
 func push(ctx context.Context, mutations map[chan mutable.Mutations]mutable.Mutations) {
 	for c, m := range mutations {
 		select {
@@ -189,18 +178,6 @@ func startAll(ctx context.Context, executors map[mutable.Context]executionContex
 	return errChans
 }
 
-// start starts the execution of pipe.
-// TODO: rewrite
-func start(ctx context.Context, runners map[mutable.Context]executionContext, contexts []mutable.Context) []<-chan error {
-	// start all runners
-	// error channel for each component
-	errChans := make([]<-chan error, 0, len(contexts))
-	for i := range contexts {
-		errChans = append(errChans, runners[contexts[i]].runner.Run(ctx))
-	}
-	return errChans
-}
-
 // Push new mutators into pipe. Calling this method after pipe is done will
 // cause a panic.
 func (a *Async) Push(mutations ...mutable.Mutation) {
@@ -211,19 +188,31 @@ func (a *Async) Push(mutations ...mutable.Mutation) {
 // that will be closed when line is started or the async execution is done.
 // Line should not be mutated while the returned channel is open.
 func (a *Async) StartLine(l *Line) <-chan struct{} {
-	ctx, cancelFn := context.WithCancel(a.ctx)
+	startCtx, cancelFn := context.WithCancel(a.ctx)
 	a.Push(a.startLineMut(l, cancelFn))
-	return ctx.Done()
+	return startCtx.Done()
 }
 
 func (a *Async) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Mutation {
 	// TODO sync execution
 	return a.mutCtx.Mutate(func() {
 		l.asyncExecution(a.execCtxs)
-		ctxs := l.mutableContexts()
-		a.merger.add(start(a.ctx, a.execCtxs, ctxs)...)
+		a.merger.add(a.startLine(a.ctx, l)...)
 		cancelFn()
 	})
+}
+
+// startLine starts the execution of line.
+func (a *Async) startLine(ctx context.Context, l *Line) []<-chan error {
+	// start all runners
+	// error channel for each component
+	errChans := make([]<-chan error, 0, l.numRunners())
+	errChans = append(errChans, a.execCtxs[l.Source.mctx].runner.Run(ctx))
+	for i := range l.Processors {
+		errChans = append(errChans, a.execCtxs[l.Processors[i].mctx].runner.Run(ctx))
+	}
+	errChans = append(errChans, a.execCtxs[l.Sink.mctx].runner.Run(ctx))
+	return errChans
 }
 
 // StartProcessor adds the processor to the running line. Pos is the index
@@ -264,7 +253,7 @@ func (a *Async) StartProcessor(l *Line, pos int) <-chan struct{} {
 
 func (a *Async) startRunnerMutFunc(r async.Runner, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
 	return func() {
-		a.merger.add(start(a.ctx, map[mutable.Context]executionContext{mctx: {runner: r}}, []mutable.Context{mctx})...)
+		a.merger.add(r.Run(a.ctx))
 		cancelFn()
 	}
 }

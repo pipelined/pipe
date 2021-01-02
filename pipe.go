@@ -250,3 +250,7 @@ func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 func (sp SignalProperties) poolAllocator(bufferSize int) *signal.PoolAllocator {
 	return signal.GetPoolAllocator(sp.Channels, bufferSize, bufferSize)
 }
+
+func (l *Line) numRunners() int {
+	return 2 + len(l.Processors)
+}
