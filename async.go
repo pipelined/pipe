@@ -218,9 +218,9 @@ func (a *Async) StartLine(l *Line) <-chan struct{} {
 
 func (a *Async) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Mutation {
 	// TODO sync execution
-	l.asyncExecution(a.execCtxs)
-	ctxs := l.mutableContexts()
 	return a.mutCtx.Mutate(func() {
+		l.asyncExecution(a.execCtxs)
+		ctxs := l.mutableContexts()
 		a.merger.add(start(a.ctx, a.execCtxs, ctxs)...)
 		cancelFn()
 	})
