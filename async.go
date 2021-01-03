@@ -25,26 +25,30 @@ type (
 		runner    async.Runner
 		mutations chan mutable.Mutations
 	}
+
+	mutationsCache map[chan mutable.Mutations]mutable.Mutations
 )
 
-// Async creates and starts new pipe.
-func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Async {
-	ctx, cancelFn := context.WithCancel(ctx)
-	execCtxs := p.bind()
+func newMutationsCache(execCtxs map[mutable.Context]executionContext, initializers []mutable.Mutation) mutationsCache {
 	mutCache := make(map[chan mutable.Mutations]mutable.Mutations)
 	for i := range initializers {
 		if c, ok := execCtxs[initializers[i].Context]; ok {
 			mutCache[c.mutations] = mutCache[c.mutations].Put(initializers[i])
 		}
 	}
-	// push cached mutators at the start
-	push(ctx, mutCache)
-	// start the pipe execution with new context
+	return mutCache
+}
+
+// Async creates and starts new pipe.
+func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Async {
 	// cancel is required to stop the pipe in case of error
+	ctx, cancelFn := context.WithCancel(ctx)
+
+	// start the pipe execution with new context
 	a := Async{
 		ctx:           ctx,
 		mutCtx:        mutable.Mutable(),
-		execCtxs:      execCtxs,
+		execCtxs:      make(map[mutable.Context]executionContext),
 		cancelFn:      cancelFn,
 		mutationsChan: make(chan []mutable.Mutation, 1),
 		errorChan:     make(chan error, 1),
@@ -52,13 +56,19 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 			errorChan: make(chan error, 1),
 		},
 	}
+	for i := range p.Lines {
+		a.bindLine(p.Lines[i])
+	}
 	a.merger.add(a.startAll()...)
+	// push initializers at the start
+	mutCache := newMutationsCache(a.execCtxs, initializers)
+	mutCache.push(ctx)
 	go a.merger.wait()
 	go a.start(mutCache)
 	return &a
 }
 
-func (a *Async) start(mutCache map[chan mutable.Mutations]mutable.Mutations) {
+func (a *Async) start(mc mutationsCache) {
 	defer close(a.errorChan)
 	for {
 		select {
@@ -69,13 +79,13 @@ func (a *Async) start(mutCache map[chan mutable.Mutations]mutable.Mutations) {
 					m.Apply()
 				} else {
 					if c, ok := a.execCtxs[m.Context]; ok {
-						mutCache[c.mutations] = mutCache[c.mutations].Put(m)
+						mc[c.mutations] = mc[c.mutations].Put(m)
 					} else {
 						panic("no listener found!")
 					}
 				}
 			}
-			push(a.ctx, mutCache)
+			mc.push(a.ctx)
 		case err, ok := <-a.merger.errorChan:
 			// merger has buffer of one error,
 			// if more errors happen, they will be ignored.
@@ -89,23 +99,11 @@ func (a *Async) start(mutCache map[chan mutable.Mutations]mutable.Mutations) {
 	}
 }
 
-func (p *Pipe) bind() map[mutable.Context]executionContext {
-	ectxs := make(map[mutable.Context]executionContext)
-	for _, l := range p.Lines {
-		// TODO sync context
-		// if l.mctx.IsMutable() {
-		// 	continue
-		// }
-
-		l.asyncExecution(ectxs)
-	}
-	return ectxs
-}
-
 // Line binds components. All allocators are executed and wrapped into
 // executionContext. If any of allocators failed, the error will be returned and
 // flush hooks won't be triggered.
-func (l *Line) asyncExecution(exCtxs map[mutable.Context]executionContext) {
+func (a *Async) bindLine(l *Line) {
+	// TODO sync context
 	mc := make(chan mutable.Mutations, 1)
 	var r async.Runner
 	r = async.Source(
@@ -116,7 +114,7 @@ func (l *Line) asyncExecution(exCtxs map[mutable.Context]executionContext) {
 		async.HookFunc(l.Source.StartFunc),
 		async.HookFunc(l.Source.FlushFunc),
 	)
-	exCtxs[l.Source.mctx] = executionContext{
+	a.execCtxs[l.Source.mctx] = executionContext{
 		mutations: mc,
 		runner:    r,
 	}
@@ -133,7 +131,7 @@ func (l *Line) asyncExecution(exCtxs map[mutable.Context]executionContext) {
 			async.HookFunc(l.Processors[i].StartFunc),
 			async.HookFunc(l.Processors[i].FlushFunc),
 		)
-		exCtxs[l.Processors[i].mctx] = executionContext{
+		a.execCtxs[l.Processors[i].mctx] = executionContext{
 			mutations: mc,
 			runner:    r,
 		}
@@ -141,7 +139,7 @@ func (l *Line) asyncExecution(exCtxs map[mutable.Context]executionContext) {
 		props = l.Processors[i].Output
 	}
 
-	exCtxs[l.Sink.mctx] = executionContext{
+	a.execCtxs[l.Sink.mctx] = executionContext{
 		mutations: mc,
 		runner: async.Sink(
 			l.Sink.mctx,
@@ -154,11 +152,11 @@ func (l *Line) asyncExecution(exCtxs map[mutable.Context]executionContext) {
 	}
 }
 
-func push(ctx context.Context, mutations map[chan mutable.Mutations]mutable.Mutations) {
-	for c, m := range mutations {
+func (mc mutationsCache) push(ctx context.Context) {
+	for c, m := range mc {
 		select {
 		case c <- m:
-			delete(mutations, c)
+			delete(mc, c)
 		case <-ctx.Done():
 			return
 		}
@@ -194,7 +192,7 @@ func (a *Async) StartLine(l *Line) <-chan struct{} {
 func (a *Async) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Mutation {
 	// TODO sync execution
 	return a.mutCtx.Mutate(func() {
-		l.asyncExecution(a.execCtxs)
+		a.bindLine(l)
 		a.merger.add(a.startLine(a.ctx, l)...)
 		cancelFn()
 	})
