@@ -61,10 +61,10 @@ func (p *Pipe) Async(ctx context.Context, initializers ...mutable.Mutation) *Asy
 	for i := range p.Lines {
 		a.bindLine(p.Lines[i])
 	}
-	a.merger.add(a.startAll()...)
-	// push initializers at the start
+	// push initializers before start
 	mutCache := newMutationsCache(a.execCtxs, initializers)
 	mutCache.push(ctx)
+	a.merger.add(a.startAll()...)
 	go a.merger.wait()
 	go a.start(mutCache)
 	return &a
@@ -105,8 +105,8 @@ func (a *Async) start(mc mutationsCache) {
 // executionContext. If any of allocators failed, the error will be
 // returned and flush hooks won't be triggered.
 func (a *Async) bindLine(l *Line) {
-	// TODO sync context
 	mc := make(chan mutable.Mutations, 1)
+	// TODO sync context
 	var r async.Runner
 	r = async.Source(
 		mc,
