@@ -21,6 +21,8 @@ type (
 		errorChan     chan error
 	}
 
+	// exectutionContext is a runner of component with a channel which is
+	// used as a source of mutations for the component.
 	executionContext struct {
 		runner    async.Runner
 		mutations chan mutable.Mutations
@@ -87,8 +89,8 @@ func (a *Async) start(mc mutationsCache) {
 			}
 			mc.push(a.ctx)
 		case err, ok := <-a.merger.errorChan:
-			// merger has buffer of one error,
-			// if more errors happen, they will be ignored.
+			// merger has buffer of one error, if more errors happen, they
+			// will be ignored.
 			if ok {
 				a.cancelFn()
 				a.merger.drain()
@@ -100,8 +102,8 @@ func (a *Async) start(mc mutationsCache) {
 }
 
 // Line binds components. All allocators are executed and wrapped into
-// executionContext. If any of allocators failed, the error will be returned and
-// flush hooks won't be triggered.
+// executionContext. If any of allocators failed, the error will be
+// returned and flush hooks won't be triggered.
 func (a *Async) bindLine(l *Line) {
 	// TODO sync context
 	mc := make(chan mutable.Mutations, 1)
@@ -165,8 +167,7 @@ func (mc mutationsCache) push(ctx context.Context) {
 
 // start starts the execution of pipe.
 func (a *Async) startAll() []<-chan error {
-	// start all runners
-	// error channel for each component
+	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, len(a.execCtxs))
 	for i := range a.execCtxs {
 		errChans = append(errChans, a.execCtxs[i].runner.Run(a.ctx))
@@ -200,8 +201,7 @@ func (a *Async) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Mutat
 
 // startLine starts the execution of line.
 func (a *Async) startLine(ctx context.Context, l *Line) []<-chan error {
-	// start all runners
-	// error channel for each component
+	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, l.numRunners())
 	errChans = append(errChans, a.execCtxs[l.Source.mctx].runner.Run(ctx))
 	for i := range l.Processors {
