@@ -43,9 +43,6 @@ func TestSimplePipe(t *testing.T) {
 
 func TestReset(t *testing.T) {
 	source := &mock.Source{
-		Mutator: mock.Mutator{
-			Mutability: mutable.Mutable(),
-		},
 		Limit:    862 * bufferSize,
 		Channels: 2,
 	}
@@ -71,6 +68,30 @@ func TestReset(t *testing.T) {
 	assertNil(t, "error", err)
 	assertEqual(t, "messages", sink.Counter.Messages, 2*862)
 	assertEqual(t, "samples", sink.Counter.Samples, 2*862*bufferSize)
+}
+
+func TestSync(t *testing.T) {
+	source := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink := &mock.Sink{Discard: true}
+
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Routing{
+			Context: mutable.Mutable(),
+			Source:  source.Source(),
+			Sink:    sink.Sink(),
+		},
+	)
+	assertNil(t, "error", err)
+	r := p.Async(context.Background())
+	// start
+	err = r.Await()
+	assertNil(t, "error", err)
+	assertEqual(t, "messages", source.Counter.Messages, 862)
+	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 }
 
 // This benchmark runs next line:

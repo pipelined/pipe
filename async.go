@@ -106,6 +106,24 @@ func (a *Async) start(mc mutationsCache) {
 // returned and flush hooks won't be triggered.
 func (a *Async) bindLine(l *Line) {
 	mc := make(chan mutable.Mutations, 1)
+	if l.mctx.IsMutable() {
+		r := linesRunner{
+			bufferSize: l.bufferSize,
+			lines: []lineRunner{
+				{
+					mutations:  mc,
+					Source:     l.Source,
+					Processors: l.Processors,
+					Sink:       l.Sink,
+				},
+			},
+		}
+		a.execCtxs[l.mctx] = executionContext{
+			mutations: mc,
+			runner:    r,
+		}
+		return
+	}
 	// TODO sync context
 	var r async.Runner
 	r = async.Source(
