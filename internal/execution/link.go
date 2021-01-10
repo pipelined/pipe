@@ -16,6 +16,7 @@ type (
 
 	Sender interface {
 		Send(context.Context, Message) bool
+		Close()
 	}
 
 	Receiver interface {
@@ -51,6 +52,10 @@ func (l syncLink) Receive(context.Context) (Message, bool) {
 	return l.message, true
 }
 
+func (l syncLink) Close() {
+	return
+}
+
 func (l asyncLink) Send(ctx context.Context, m Message) bool {
 	select {
 	case <-ctx.Done():
@@ -61,11 +66,18 @@ func (l asyncLink) Send(ctx context.Context, m Message) bool {
 }
 
 func (l asyncLink) Receive(ctx context.Context) (Message, bool) {
-	var m Message
+	var (
+		m  Message
+		ok bool
+	)
 	select {
 	case <-ctx.Done():
-		return m, false
-	case m = <-l:
-		return m, true
+	case m, ok = <-l:
 	}
+	return m, ok
+}
+
+func (l asyncLink) Close() {
+	close(l)
+	return
 }
