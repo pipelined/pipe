@@ -110,12 +110,12 @@ func TestAddLine(t *testing.T) {
 	assertNil(t, "error", err)
 
 	// start
-	a := p.Async(context.Background())
+	r := p.Run(context.Background())
 	l, err := p.AddLine(route2)
 	assertNil(t, "error", err)
-	<-a.StartLine(l)
+	<-r.StartLine(l)
 
-	err = a.Await()
+	err = r.Wait()
 	assertEqual(t, "messages", sink1.Counter.Messages, 862)
 	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
 	assertEqual(t, "messages", sink2.Counter.Messages, 862)
