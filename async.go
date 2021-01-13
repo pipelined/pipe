@@ -2,9 +2,9 @@ package pipe
 
 import (
 	"context"
-	"fmt"
 
 	"pipelined.dev/pipe/internal/async"
+	"pipelined.dev/pipe/internal/execution"
 	"pipelined.dev/pipe/mutable"
 )
 
@@ -21,10 +21,18 @@ type (
 		errorChan     chan error
 	}
 
+	// Starter is asynchronous component executor.
+	Starter interface {
+		Start(context.Context) <-chan error
+		// Out() <-chan Message
+		// OutputPool() *signal.PoolAllocator
+		// Insert(Runner, mutable.MutatorFunc) mutable.Mutation
+	}
+
 	// exectutionContext is a runner of component with a channel which is
 	// used as a source of mutations for the component.
 	executionContext struct {
-		runner    async.Runner
+		starter   Starter
 		mutations chan mutable.Mutations
 	}
 
@@ -107,68 +115,58 @@ func (a *Async) start(mc mutationsCache) {
 func (a *Async) bindLine(l *Line) {
 	mc := make(chan mutable.Mutations, 1)
 	if l.mctx.IsMutable() {
-		r := linesRunner{
-			bufferSize: l.bufferSize,
-			lines: []lineRunner{
-				{
-					mutations:  mc,
-					Source:     l.Source,
-					Processors: l.Processors,
-					Sink:       l.Sink,
-				},
-			},
-		}
-		a.execCtxs[l.mctx] = executionContext{
-			mutations: mc,
-			runner:    r,
-		}
+		a.bindSync(l, mc)
 		return
 	}
+	a.bindAsync(l, mc)
 	// TODO sync context
-	var r async.Runner
-	r = async.Source(
-		mc,
-		l.Source.mctx,
-		l.Source.Output.poolAllocator(l.bufferSize),
-		async.SourceFunc(l.Source.SourceFunc),
-		async.HookFunc(l.Source.StartFunc),
-		async.HookFunc(l.Source.FlushFunc),
-	)
+}
+
+func (a *Async) bindSync(l *Line, mc chan mutable.Mutations) {
+	executors := make([]async.Executor, 0, 2+len(l.Processors))
+	sender := execution.SyncLink()
+	executors = append(executors, l.Source.Executor(mc, l.bufferSize, sender))
+
+	inputProps := l.Source.Output
+	receiver, sender := sender, execution.AsyncLink()
+	for i := range l.Processors {
+		executors = append(executors, l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender))
+	}
+	executors = append(executors, l.Sink.Executor(l.bufferSize, inputProps, receiver))
+
+	if e, ok := a.execCtxs[l.mctx]; ok {
+		_ = e.starter.(*async.LineStarter)
+		// TODO: add
+	} else {
+		a.execCtxs[l.mctx] = executionContext{
+			mutations: mc,
+			starter: &async.LineStarter{
+				Executors: []async.Executor{&execution.Line{Executors: executors}},
+			},
+		}
+	}
+	return
+}
+
+func (a *Async) bindAsync(l *Line, mc chan mutable.Mutations) {
+	sender := execution.AsyncLink()
 	a.execCtxs[l.Source.mctx] = executionContext{
 		mutations: mc,
-		runner:    r,
+		starter:   async.Starter(l.Source.Executor(mc, l.bufferSize, sender)),
 	}
-
-	in := r.Out()
-	props := l.Source.Output
+	inputProps := l.Source.Output
+	receiver, sender := sender, execution.AsyncLink()
 	for i := range l.Processors {
-		r = async.Processor(
-			l.Processors[i].mctx,
-			in,
-			props.poolAllocator(l.bufferSize),
-			l.Processors[i].Output.poolAllocator(l.bufferSize),
-			async.ProcessFunc(l.Processors[i].ProcessFunc),
-			async.HookFunc(l.Processors[i].StartFunc),
-			async.HookFunc(l.Processors[i].FlushFunc),
-		)
 		a.execCtxs[l.Processors[i].mctx] = executionContext{
 			mutations: mc,
-			runner:    r,
+			starter:   async.Starter(l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender)),
 		}
-		in = r.Out()
-		props = l.Processors[i].Output
+		inputProps = l.Processors[i].Output
+		receiver, sender = sender, execution.AsyncLink()
 	}
-
 	a.execCtxs[l.Sink.mctx] = executionContext{
 		mutations: mc,
-		runner: async.Sink(
-			l.Sink.mctx,
-			in,
-			props.poolAllocator(l.bufferSize),
-			async.SinkFunc(l.Sink.SinkFunc),
-			async.HookFunc(l.Sink.StartFunc),
-			async.HookFunc(l.Sink.FlushFunc),
-		),
+		starter:   async.Starter(l.Sink.Executor(l.bufferSize, inputProps, receiver)),
 	}
 }
 
@@ -188,7 +186,7 @@ func (a *Async) startAll() []<-chan error {
 	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, len(a.execCtxs))
 	for i := range a.execCtxs {
-		errChans = append(errChans, a.execCtxs[i].runner.Run(a.ctx))
+		errChans = append(errChans, a.execCtxs[i].starter.Start(a.ctx))
 	}
 	return errChans
 }
@@ -221,11 +219,11 @@ func (a *Async) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Mutat
 func (a *Async) startLine(ctx context.Context, l *Line) []<-chan error {
 	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, l.numRunners())
-	errChans = append(errChans, a.execCtxs[l.Source.mctx].runner.Run(ctx))
+	errChans = append(errChans, a.execCtxs[l.Source.mctx].starter.Start(ctx))
 	for i := range l.Processors {
-		errChans = append(errChans, a.execCtxs[l.Processors[i].mctx].runner.Run(ctx))
+		errChans = append(errChans, a.execCtxs[l.Processors[i].mctx].starter.Start(ctx))
 	}
-	errChans = append(errChans, a.execCtxs[l.Sink.mctx].runner.Run(ctx))
+	errChans = append(errChans, a.execCtxs[l.Sink.mctx].starter.Start(ctx))
 	return errChans
 }
 
@@ -234,40 +232,40 @@ func (a *Async) startLine(ctx context.Context, l *Line) []<-chan error {
 // will be closed when processor is started or the async exection is done.
 // No other processors should be starting in this line while the returned
 // channel is open.
-func (a *Async) StartProcessor(l *Line, pos int) <-chan struct{} {
-	if _, ok := a.execCtxs[l.Source.mctx]; !ok {
-		panic("line is not running")
-	}
-	proc := l.Processors[pos]
-	if _, ok := a.execCtxs[proc.mctx]; ok {
-		panic(fmt.Sprintf("processor at %d position is already running", pos))
-	}
-	prev := a.execCtxs[l.prev(pos)]
-	next := a.execCtxs[l.next(pos)]
+// func (a *Async) StartProcessor(l *Line, pos int) <-chan struct{} {
+// 	if _, ok := a.execCtxs[l.Source.mctx]; !ok {
+// 		panic("line is not running")
+// 	}
+// 	proc := l.Processors[pos]
+// 	if _, ok := a.execCtxs[proc.mctx]; ok {
+// 		panic(fmt.Sprintf("processor at %d position is already running", pos))
+// 	}
+// 	prev := a.execCtxs[l.prev(pos)]
+// 	next := a.execCtxs[l.next(pos)]
 
-	r := async.Processor(
-		proc.mctx,
-		prev.runner.Out(),
-		prev.runner.OutputPool(),
-		proc.Output.poolAllocator(l.bufferSize),
-		async.ProcessFunc(proc.ProcessFunc),
-		async.HookFunc(proc.StartFunc),
-		async.HookFunc(proc.FlushFunc),
-	)
-	a.execCtxs[proc.mctx] = executionContext{
-		mutations: prev.mutations,
-		runner:    r,
-	}
-	ctx, cancelFn := context.WithCancel(a.ctx)
-	a.Push(
-		next.runner.Insert(r, a.startRunnerMutFunc(r, proc.mctx, cancelFn)),
-	)
-	return ctx.Done()
-}
+// 	r := async.Processor(
+// 		proc.mctx,
+// 		prev.runner.Out(),
+// 		prev.runner.OutputPool(),
+// 		proc.Output.poolAllocator(l.bufferSize),
+// 		async.ProcessFunc(proc.ProcessFunc),
+// 		async.HookFunc(proc.StartFunc),
+// 		async.HookFunc(proc.FlushFunc),
+// 	)
+// 	a.execCtxs[proc.mctx] = executionContext{
+// 		mutations: prev.mutations,
+// 		runner:    r,
+// 	}
+// 	ctx, cancelFn := context.WithCancel(a.ctx)
+// 	a.Push(
+// 		next.runner.Insert(r, a.startRunnerMutFunc(r, proc.mctx, cancelFn)),
+// 	)
+// 	return ctx.Done()
+// }
 
-func (a *Async) startRunnerMutFunc(r async.Runner, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
+func (a *Async) startRunnerMutFunc(r Starter, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
 	return func() {
-		a.merger.add(r.Run(a.ctx))
+		a.merger.add(r.Start(a.ctx))
 		cancelFn()
 	}
 }
@@ -280,4 +278,43 @@ func (a *Async) Await() error {
 		}
 	}
 	return nil
+}
+
+// Executor returns executor for source component.
+func (s Source) Executor(mc chan mutable.Mutations, bufferSize int, sender execution.Link) async.Executor {
+	return execution.Source{
+		Mutations:  mc,
+		Context:    s.mctx,
+		OutputPool: s.Output.poolAllocator(bufferSize),
+		SourceFn:   execution.SourceFunc(s.SourceFunc),
+		StartFunc:  execution.StartFunc(s.StartFunc),
+		FlushFunc:  execution.FlushFunc(s.FlushFunc),
+		Sender:     sender,
+	}
+}
+
+// Executor returns executor for processor component.
+func (p Processor) Executor(bufferSize int, input SignalProperties, receiver, sender execution.Link) async.Executor {
+	return execution.Processor{
+		Context:    p.mctx,
+		InputPool:  input.poolAllocator(bufferSize),
+		OutputPool: p.Output.poolAllocator(bufferSize),
+		ProcessFn:  execution.ProcessFunc(p.ProcessFunc),
+		StartFunc:  execution.StartFunc(p.StartFunc),
+		FlushFunc:  execution.FlushFunc(p.FlushFunc),
+		Receiver:   receiver,
+		Sender:     sender,
+	}
+}
+
+// Executor returns executor for processor component.
+func (s Sink) Executor(bufferSize int, input SignalProperties, receiver execution.Link) async.Executor {
+	return execution.Sink{
+		Context:   s.mctx,
+		InputPool: input.poolAllocator(bufferSize),
+		SinkFn:    execution.SinkFunc(s.SinkFunc),
+		StartFunc: execution.StartFunc(s.StartFunc),
+		FlushFunc: execution.FlushFunc(s.FlushFunc),
+		Receiver:  receiver,
+	}
 }

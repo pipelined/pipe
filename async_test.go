@@ -8,78 +8,78 @@ import (
 	"pipelined.dev/pipe/mock"
 )
 
-func TestInsertProcessor(t *testing.T) {
-	bufferSize := 2
-	testInsert := func(pos int) func(*testing.T) {
-		return func(t *testing.T) {
-			t.Helper()
-			p, err := pipe.New(bufferSize, pipe.Routing{
-				Source: (&mock.Source{
-					Limit:    500,
-					Channels: 2,
-				}).Source(),
-				Processors: pipe.Processors((&mock.Processor{}).Processor()),
-				Sink:       (&mock.Sink{Discard: true}).Sink(),
-			})
-			assertNil(t, "pipe error", err)
+// func TestInsertProcessor(t *testing.T) {
+// 	bufferSize := 2
+// 	testInsert := func(pos int) func(*testing.T) {
+// 		return func(t *testing.T) {
+// 			t.Helper()
+// 			p, err := pipe.New(bufferSize, pipe.Routing{
+// 				Source: (&mock.Source{
+// 					Limit:    500,
+// 					Channels: 2,
+// 				}).Source(),
+// 				Processors: pipe.Processors((&mock.Processor{}).Processor()),
+// 				Sink:       (&mock.Sink{Discard: true}).Sink(),
+// 			})
+// 			assertNil(t, "pipe error", err)
 
-			l := p.Lines[0]
-			a := p.Async(context.Background())
+// 			l := p.Lines[0]
+// 			a := p.Async(context.Background())
 
-			proc := &mock.Processor{}
-			err = l.InsertProcessor(pos, proc.Processor())
-			assertNil(t, "add error", err)
+// 			proc := &mock.Processor{}
+// 			err = l.InsertProcessor(pos, proc.Processor())
+// 			assertNil(t, "add error", err)
 
-			<-a.StartProcessor(l, pos)
-			err = a.Await()
-			assertNil(t, "await error", err)
-			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
-		}
-	}
-	t.Run("before processor", testInsert(0))
-	t.Run("before sink", testInsert(1))
-}
+// 			<-a.StartProcessor(l, pos)
+// 			err = a.Await()
+// 			assertNil(t, "await error", err)
+// 			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
+// 		}
+// 	}
+// 	t.Run("before processor", testInsert(0))
+// 	t.Run("before sink", testInsert(1))
+// }
 
-func TestInsertMultiple(t *testing.T) {
-	bufferSize := 2
-	insert := func(pos int) func(*testing.T) {
-		return func(t *testing.T) {
-			t.Helper()
-			samples := 500
-			sink := &mock.Sink{Discard: true}
-			p, err := pipe.New(bufferSize, pipe.Routing{
-				Source: (&mock.Source{
-					Limit:    samples,
-					Channels: 2,
-				}).Source(),
-				Processors: pipe.Processors((&mock.Processor{}).Processor()),
-				Sink:       sink.Sink(),
-			})
-			assertNil(t, "pipe error", err)
+// func TestInsertMultiple(t *testing.T) {
+// 	bufferSize := 2
+// 	insert := func(pos int) func(*testing.T) {
+// 		return func(t *testing.T) {
+// 			t.Helper()
+// 			samples := 500
+// 			sink := &mock.Sink{Discard: true}
+// 			p, err := pipe.New(bufferSize, pipe.Routing{
+// 				Source: (&mock.Source{
+// 					Limit:    samples,
+// 					Channels: 2,
+// 				}).Source(),
+// 				Processors: pipe.Processors((&mock.Processor{}).Processor()),
+// 				Sink:       sink.Sink(),
+// 			})
+// 			assertNil(t, "pipe error", err)
 
-			l := p.Lines[0]
-			a := p.Async(context.Background())
+// 			l := p.Lines[0]
+// 			a := p.Async(context.Background())
 
-			proc1 := &mock.Processor{}
-			err = l.InsertProcessor(pos, proc1.Processor())
-			assertNil(t, "add 1 error", err)
-			<-a.StartProcessor(l, pos)
+// 			proc1 := &mock.Processor{}
+// 			err = l.InsertProcessor(pos, proc1.Processor())
+// 			assertNil(t, "add 1 error", err)
+// 			<-a.StartProcessor(l, pos)
 
-			proc2 := &mock.Processor{}
-			err = l.InsertProcessor(pos, proc2.Processor())
-			assertNil(t, "add 2 error", err)
-			<-a.StartProcessor(l, pos)
+// 			proc2 := &mock.Processor{}
+// 			err = l.InsertProcessor(pos, proc2.Processor())
+// 			assertNil(t, "add 2 error", err)
+// 			<-a.StartProcessor(l, pos)
 
-			err = a.Await()
-			assertNil(t, "await error", err)
-			assertEqual(t, "sink processed", sink.Counter.Samples, samples)
-			assertEqual(t, "processed 1", proc1.Counter.Messages > 0, true)
-			assertEqual(t, "processed 2", proc2.Counter.Messages > 0, true)
-		}
-	}
-	t.Run("before processor", insert(0))
-	t.Run("before sink", insert(1))
-}
+// 			err = a.Await()
+// 			assertNil(t, "await error", err)
+// 			assertEqual(t, "sink processed", sink.Counter.Samples, samples)
+// 			assertEqual(t, "processed 1", proc1.Counter.Messages > 0, true)
+// 			assertEqual(t, "processed 2", proc2.Counter.Messages > 0, true)
+// 		}
+// 	}
+// 	t.Run("before processor", insert(0))
+// 	t.Run("before sink", insert(1))
+// }
 
 func TestAddLine(t *testing.T) {
 	source1 := &mock.Source{

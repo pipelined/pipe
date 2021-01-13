@@ -22,12 +22,11 @@ const (
 )
 
 func TestSource(t *testing.T) {
-	setupSource := func(sourceAllocator pipe.SourceAllocatorFunc, mutationsChan chan mutable.Mutations) async.Runner {
+	setupSource := func(sourceAllocator pipe.SourceAllocatorFunc, mutationsChan chan mutable.Mutations) async.Starter {
 		m := mutable.Mutable()
 		source, _ := sourceAllocator(m, bufferSize)
-		return async.Source(
-			mutationsChan,
-			m,
+		return async.Starter(
+			mutationsChan, -m,
 			signal.GetPoolAllocator(source.Output.Channels, bufferSize, bufferSize),
 			async.SourceFunc(source.SourceFunc),
 			async.HookFunc(source.StartFunc),
@@ -118,7 +117,7 @@ func TestSource(t *testing.T) {
 }
 
 func TestProcessor(t *testing.T) {
-	setupRunner := func(processorAllocator pipe.ProcessorAllocatorFunc, alloc signal.Allocator) (async.Runner, chan<- async.Message) {
+	setupRunner := func(processorAllocator pipe.ProcessorAllocatorFunc, alloc signal.Allocator) (async.Starter, chan<- async.Message) {
 		m := mutable.Mutable()
 		processor, _ := processorAllocator(m, bufferSize, pipe.SignalProperties{Channels: channels})
 		in := make(chan async.Message, 1)
@@ -222,7 +221,7 @@ func TestProcessor(t *testing.T) {
 }
 
 func TestSink(t *testing.T) {
-	setupRunner := func(sinkAllocator pipe.SinkAllocatorFunc, alloc signal.Allocator) (async.Runner, chan<- async.Message) {
+	setupRunner := func(sinkAllocator pipe.SinkAllocatorFunc, alloc signal.Allocator) (async.Starter, chan<- async.Message) {
 		m := mutable.Mutable()
 		sink, _ := sinkAllocator(m, bufferSize, pipe.SignalProperties{Channels: channels})
 		in := make(chan async.Message, 1)
