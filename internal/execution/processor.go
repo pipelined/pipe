@@ -13,6 +13,8 @@ type Processor struct {
 	InputPool  *signal.PoolAllocator
 	OutputPool *signal.PoolAllocator
 	ProcessFn  ProcessFunc
+	StartFunc
+	FlushFunc
 	Receiver
 	Sender
 }

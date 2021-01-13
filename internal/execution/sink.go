@@ -12,6 +12,8 @@ type Sink struct {
 	mutable.Context
 	InputPool *signal.PoolAllocator
 	SinkFn    SinkFunc
+	StartFunc
+	FlushFunc
 	Receiver
 }
 

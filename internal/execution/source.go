@@ -12,6 +12,8 @@ type Source struct {
 	mutable.Context
 	OutputPool *signal.PoolAllocator
 	SourceFn   SourceFunc
+	StartFunc
+	FlushFunc
 	Sender
 }
 

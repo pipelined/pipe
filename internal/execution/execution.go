@@ -18,21 +18,26 @@ type (
 	SinkFunc func(in signal.Floating) error
 )
 
-// TBD
-type out chan Message
+type (
+	// StartFunc is a closure that triggers pipe component start hook.
+	StartFunc func(ctx context.Context) error
+	// FlushFunc is a closure that triggers pipe component start hook.
+	FlushFunc func(ctx context.Context) error
+)
 
-func (o out) Out() <-chan Message {
-	return o
+// Start calls the start hook.
+func (fn StartFunc) Start(ctx context.Context) error {
+	return callHook(ctx, fn)
 }
 
-// HookFunc is a closure that triggers pipe component hook function.
-type HookFunc func(ctx context.Context) error
+// Flush calls the flush hook.
+func (fn StartFunc) Flush(ctx context.Context) error {
+	return callHook(ctx, fn)
+}
 
-func (fn HookFunc) call(ctx context.Context) error {
-	if fn == nil {
+func callHook(ctx context.Context, hook func(context.Context) error) error {
+	if hook == nil {
 		return nil
 	}
-	return fn(ctx)
+	return hook(ctx)
 }
-
-// TBD

@@ -36,23 +36,23 @@ type (
 )
 
 func SyncLink() Link {
-	return syncLink{}
+	return &syncLink{}
 }
 
 func AsyncLink() Link {
 	return asyncLink(make(chan Message, 1))
 }
 
-func (l syncLink) Send(_ context.Context, m Message) bool {
+func (l *syncLink) Send(_ context.Context, m Message) bool {
 	l.message = m
 	return true
 }
 
-func (l syncLink) Receive(context.Context) (Message, bool) {
+func (l *syncLink) Receive(context.Context) (Message, bool) {
 	return l.message, true
 }
 
-func (l syncLink) Close() {
+func (l *syncLink) Close() {
 	return
 }
 
