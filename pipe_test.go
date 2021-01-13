@@ -33,8 +33,8 @@ func TestSimplePipe(t *testing.T) {
 	assertNil(t, "error", err)
 
 	// start
-	r := p.Async(context.Background())
-	err = r.Await()
+	r := p.Run(context.Background())
+	err = r.Wait()
 	assertNil(t, "error", err)
 
 	assertEqual(t, "messages", source.Counter.Messages, 862)
@@ -56,15 +56,15 @@ func TestReset(t *testing.T) {
 		},
 	)
 	assertNil(t, "error", err)
-	r := p.Async(context.Background())
+	r := p.Run(context.Background())
 	// start
-	err = r.Await()
+	err = r.Wait()
 	assertNil(t, "error", err)
 	assertEqual(t, "messages", source.Counter.Messages, 862)
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 
-	r = p.Async(context.Background(), source.Reset())
-	_ = r.Await()
+	r = p.Run(context.Background(), source.Reset())
+	_ = r.Wait()
 	assertNil(t, "error", err)
 	assertEqual(t, "messages", sink.Counter.Messages, 2*862)
 	assertEqual(t, "samples", sink.Counter.Samples, 2*862*bufferSize)
@@ -86,9 +86,9 @@ func TestSync(t *testing.T) {
 		},
 	)
 	assertNil(t, "error", err)
-	r := p.Async(context.Background())
+	r := p.Run(context.Background())
 	// start
-	err = r.Await()
+	err = r.Wait()
 	assertNil(t, "error", err)
 	assertEqual(t, "messages", source.Counter.Messages, 862)
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
@@ -114,7 +114,7 @@ func BenchmarkSingleLine(b *testing.B) {
 		Sink: sink.Sink(),
 	})
 	for i := 0; i < b.N; i++ {
-		_ = p.Async(context.Background(), source.Reset()).Await()
+		_ = p.Run(context.Background(), source.Reset()).Wait()
 	}
 	b.Logf("recieved messages: %d samples: %d", sink.Messages, sink.Samples)
 }

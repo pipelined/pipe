@@ -26,7 +26,7 @@ func TestSource(t *testing.T) {
 		m := mutable.Mutable()
 		source, _ := sourceAllocator(m, bufferSize)
 		return async.Starter(
-			mutationsChan, -m,
+			mutationsChan, m,
 			signal.GetPoolAllocator(source.Output.Channels, bufferSize, bufferSize),
 			async.SourceFunc(source.SourceFunc),
 			async.HookFunc(source.StartFunc),

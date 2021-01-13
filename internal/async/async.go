@@ -45,13 +45,6 @@ func (o out) Out() <-chan Message {
 	return o
 }
 
-// Starter returns async runner for pipe.source components.
-func Starter(e Executor) *ComponentStarter {
-	return &ComponentStarter{
-		Executor: e,
-	}
-}
-
 // Start starts the component runner.
 func (r *ComponentStarter) Start(ctx context.Context) <-chan error {
 	errc := make(chan error, 1)

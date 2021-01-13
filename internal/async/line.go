@@ -14,7 +14,6 @@ type LineStarter struct {
 }
 
 func (r *LineStarter) Start(ctx context.Context) <-chan error {
-	// todo: determine buffer size
 	errc := make(chan error, 1)
 	go r.run(ctx, errc)
 	return errc

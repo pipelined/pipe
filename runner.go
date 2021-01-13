@@ -152,21 +152,21 @@ func (a *Runner) bindAsync(l *Line, mc chan mutable.Mutations) {
 	sender := execution.AsyncLink()
 	a.execCtxs[l.Source.mctx] = executionContext{
 		mutations: mc,
-		starter:   async.Starter(l.Source.Executor(mc, l.bufferSize, sender)),
+		starter:   &async.ComponentStarter{Executor: l.Source.Executor(mc, l.bufferSize, sender)},
 	}
 	inputProps := l.Source.Output
 	receiver, sender := sender, execution.AsyncLink()
 	for i := range l.Processors {
 		a.execCtxs[l.Processors[i].mctx] = executionContext{
 			mutations: mc,
-			starter:   async.Starter(l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender)),
+			starter:   &async.ComponentStarter{Executor: l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender)},
 		}
 		inputProps = l.Processors[i].Output
 		receiver, sender = sender, execution.AsyncLink()
 	}
 	a.execCtxs[l.Sink.mctx] = executionContext{
 		mutations: mc,
-		starter:   async.Starter(l.Sink.Executor(l.bufferSize, inputProps, receiver)),
+		starter:   &async.ComponentStarter{Executor: l.Sink.Executor(l.bufferSize, inputProps, receiver)},
 	}
 }
 
