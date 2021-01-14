@@ -54,6 +54,7 @@ func (r *Lines) Flush(ctx context.Context) error {
 func (r *Lines) Execute(ctx context.Context) error {
 	for i := range r.Lines {
 		if err := r.Lines[i].Execute(ctx); err != nil {
+			// TODO: handle EOF
 			return err
 		}
 	}

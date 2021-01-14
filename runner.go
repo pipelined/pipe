@@ -133,16 +133,18 @@ func (a *Runner) bindSync(l *Line, mc chan mutable.Mutations) {
 	}
 	executors = append(executors, l.Sink.Executor(l.bufferSize, inputProps, receiver))
 
-	if e, ok := a.execCtxs[l.mctx]; ok {
-		_ = e.executor.(*runtime.Lines)
-		// TODO: add
-	} else {
+	if e, ok := a.execCtxs[l.mctx]; !ok {
 		a.execCtxs[l.mctx] = executionContext{
 			mutations: mc,
 			executor:  &runtime.Lines{Lines: []runtime.Line{{Executors: executors}}},
 		}
+	} else {
+		if ex, ok := e.executor.(*runtime.Lines); ok {
+			ex.Lines = append(ex.Lines, runtime.Line{Executors: executors})
+		} else {
+			panic("add executors to component context")
+		}
 	}
-	return
 }
 
 func (a *Runner) bindAsync(l *Line, mc chan mutable.Mutations) {

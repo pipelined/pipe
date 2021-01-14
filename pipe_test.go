@@ -94,6 +94,43 @@ func TestSync(t *testing.T) {
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 }
 
+func TestSyncMultiple(t *testing.T) {
+	source1 := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink1 := &mock.Sink{Discard: true}
+	source2 := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink2 := &mock.Sink{Discard: true}
+
+	mctx := mutable.Mutable()
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Routing{
+			Context: mctx,
+			Source:  source1.Source(),
+			Sink:    sink1.Sink(),
+		},
+		pipe.Routing{
+			Context: mctx,
+			Source:  source2.Source(),
+			Sink:    sink2.Sink(),
+		},
+	)
+	assertNil(t, "error", err)
+	r := p.Run(context.Background())
+	// start
+	err = r.Wait()
+	assertNil(t, "error", err)
+	assertEqual(t, "messages", source1.Counter.Messages, 862)
+	assertEqual(t, "samples", source1.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", source2.Counter.Messages, 862)
+	assertEqual(t, "samples", source2.Counter.Samples, 862*bufferSize)
+}
+
 // This benchmark runs next line:
 // 1 Source, 2 Processors, 1 Sink, 862 buffers of 512 samples with 2 channels.
 func BenchmarkSingleLine(b *testing.B) {
