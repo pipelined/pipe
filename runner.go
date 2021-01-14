@@ -135,13 +135,13 @@ func (a *Runner) bindSync(l *Line, mc chan mutable.Mutations) {
 	executors = append(executors, l.Sink.Executor(l.bufferSize, inputProps, receiver))
 
 	if e, ok := a.execCtxs[l.mctx]; ok {
-		_ = e.starter.(*async.LineStarter)
+		_ = e.starter.(*async.ComponentStarter)
 		// TODO: add
 	} else {
 		a.execCtxs[l.mctx] = executionContext{
 			mutations: mc,
-			starter: &async.LineStarter{
-				Executors: []async.Executor{&execution.Line{Executors: executors}},
+			starter: &async.ComponentStarter{
+				Executor: &execution.Lines{Lines: []execution.Line{{Executors: executors}}},
 			},
 		}
 	}
