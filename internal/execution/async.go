@@ -1,20 +1,10 @@
-package async
+package execution
 
 import (
 	"context"
 	"fmt"
 	"io"
-
-	"pipelined.dev/signal"
-
-	"pipelined.dev/pipe/mutable"
 )
-
-// Message is a main structure for pipe transport
-type Message struct {
-	Signal            signal.Floating // Buffer of message.
-	mutable.Mutations                 // Mutators for pipe.
-}
 
 type (
 	// Executor executes a single DSP operation.
@@ -29,21 +19,6 @@ type (
 		Executor
 	}
 )
-
-type (
-	// SourceFunc is a wrapper type of source closure.
-	SourceFunc func(out signal.Floating) (int, error)
-	// ProcessFunc is a wrapper type of processor closure.
-	ProcessFunc func(in, out signal.Floating) error
-	// SinkFunc is a wrapper type of sink closure.
-	SinkFunc func(in signal.Floating) error
-)
-
-type out chan Message
-
-func (o out) Out() <-chan Message {
-	return o
-}
 
 // Start starts the component runner.
 func (r *ComponentStarter) Start(ctx context.Context) <-chan error {

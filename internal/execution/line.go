@@ -3,13 +3,11 @@ package execution
 import (
 	"context"
 	"strings"
-
-	"pipelined.dev/pipe/internal/async"
 )
 
 type Line struct {
 	started   int
-	Executors []async.Executor
+	Executors []Executor
 }
 
 func (l *Line) Execute(ctx context.Context) error {
