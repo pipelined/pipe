@@ -3,7 +3,7 @@ package pipe
 import (
 	"context"
 
-	"pipelined.dev/pipe/internal/execution"
+	"pipelined.dev/pipe/internal/runtime"
 	"pipelined.dev/pipe/mutable"
 )
 
@@ -31,7 +31,7 @@ type (
 	// exectutionContext is a runner of component with a channel which is
 	// used as a source of mutations for the component.
 	executionContext struct {
-		executor  execution.Executor
+		executor  runtime.Executor
 		mutations chan mutable.Mutations
 	}
 
@@ -122,44 +122,44 @@ func (a *Runner) bindLine(l *Line) {
 }
 
 func (a *Runner) bindSync(l *Line, mc chan mutable.Mutations) {
-	executors := make([]execution.Executor, 0, 2+len(l.Processors))
-	sender := execution.SyncLink()
+	executors := make([]runtime.Executor, 0, 2+len(l.Processors))
+	sender := runtime.SyncLink()
 	executors = append(executors, l.Source.Executor(mc, l.bufferSize, sender))
 
 	inputProps := l.Source.Output
-	receiver, sender := sender, execution.AsyncLink()
+	receiver, sender := sender, runtime.AsyncLink()
 	for i := range l.Processors {
 		executors = append(executors, l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender))
 	}
 	executors = append(executors, l.Sink.Executor(l.bufferSize, inputProps, receiver))
 
 	if e, ok := a.execCtxs[l.mctx]; ok {
-		_ = e.executor.(*execution.Lines)
+		_ = e.executor.(*runtime.Lines)
 		// TODO: add
 	} else {
 		a.execCtxs[l.mctx] = executionContext{
 			mutations: mc,
-			executor:  &execution.Lines{Lines: []execution.Line{{Executors: executors}}},
+			executor:  &runtime.Lines{Lines: []runtime.Line{{Executors: executors}}},
 		}
 	}
 	return
 }
 
 func (a *Runner) bindAsync(l *Line, mc chan mutable.Mutations) {
-	sender := execution.AsyncLink()
+	sender := runtime.AsyncLink()
 	a.execCtxs[l.Source.mctx] = executionContext{
 		mutations: mc,
 		executor:  l.Source.Executor(mc, l.bufferSize, sender),
 	}
 	inputProps := l.Source.Output
-	receiver, sender := sender, execution.AsyncLink()
+	receiver, sender := sender, runtime.AsyncLink()
 	for i := range l.Processors {
 		a.execCtxs[l.Processors[i].mctx] = executionContext{
 			mutations: mc,
 			executor:  l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender),
 		}
 		inputProps = l.Processors[i].Output
-		receiver, sender = sender, execution.AsyncLink()
+		receiver, sender = sender, runtime.AsyncLink()
 	}
 	a.execCtxs[l.Sink.mctx] = executionContext{
 		mutations: mc,
@@ -183,7 +183,7 @@ func (a *Runner) startAll() []<-chan error {
 	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, len(a.execCtxs))
 	for i := range a.execCtxs {
-		errChans = append(errChans, execution.Start(a.ctx, a.execCtxs[i].executor))
+		errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[i].executor))
 	}
 	return errChans
 }
@@ -216,11 +216,11 @@ func (a *Runner) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Muta
 func (a *Runner) startLine(ctx context.Context, l *Line) []<-chan error {
 	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, l.numRunners())
-	errChans = append(errChans, execution.Start(a.ctx, a.execCtxs[l.Source.mctx].executor))
+	errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Source.mctx].executor))
 	for i := range l.Processors {
-		errChans = append(errChans, execution.Start(a.ctx, a.execCtxs[l.Processors[i].mctx].executor))
+		errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Processors[i].mctx].executor))
 	}
-	errChans = append(errChans, execution.Start(a.ctx, a.execCtxs[l.Sink.mctx].executor))
+	errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Sink.mctx].executor))
 	return errChans
 }
 
@@ -240,14 +240,14 @@ func (a *Runner) startLine(ctx context.Context, l *Line) []<-chan error {
 // 	prev := a.execCtxs[l.prev(pos)]
 // 	next := a.execCtxs[l.next(pos)]
 
-// 	r := execution.Processor(
+// 	r := runtime.Processor(
 // 		proc.mctx,
 // 		prev.runner.Out(),
 // 		prev.runner.OutputPool(),
 // 		proc.Output.poolAllocator(l.bufferSize),
-// 		execution.ProcessFunc(proc.ProcessFunc),
-// 		execution.HookFunc(proc.StartFunc),
-// 		execution.HookFunc(proc.FlushFunc),
+// 		runtime.ProcessFunc(proc.ProcessFunc),
+// 		runtime.HookFunc(proc.StartFunc),
+// 		runtime.HookFunc(proc.FlushFunc),
 // 	)
 // 	a.execCtxs[proc.mctx] = executionContext{
 // 		mutations: prev.mutations,
@@ -278,40 +278,40 @@ func (a *Runner) Wait() error {
 }
 
 // Executor returns executor for source component.
-func (s Source) Executor(mc chan mutable.Mutations, bufferSize int, sender execution.Link) execution.Executor {
-	return execution.Source{
+func (s Source) Executor(mc chan mutable.Mutations, bufferSize int, sender runtime.Link) runtime.Executor {
+	return runtime.Source{
 		Mutations:  mc,
 		Context:    s.mctx,
 		OutputPool: s.Output.poolAllocator(bufferSize),
-		SourceFn:   execution.SourceFunc(s.SourceFunc),
-		StartFunc:  execution.StartFunc(s.StartFunc),
-		FlushFunc:  execution.FlushFunc(s.FlushFunc),
+		SourceFn:   runtime.SourceFunc(s.SourceFunc),
+		StartFunc:  runtime.StartFunc(s.StartFunc),
+		FlushFunc:  runtime.FlushFunc(s.FlushFunc),
 		Sender:     sender,
 	}
 }
 
 // Executor returns executor for processor component.
-func (p Processor) Executor(bufferSize int, input SignalProperties, receiver, sender execution.Link) execution.Executor {
-	return execution.Processor{
+func (p Processor) Executor(bufferSize int, input SignalProperties, receiver, sender runtime.Link) runtime.Executor {
+	return runtime.Processor{
 		Context:    p.mctx,
 		InputPool:  input.poolAllocator(bufferSize),
 		OutputPool: p.Output.poolAllocator(bufferSize),
-		ProcessFn:  execution.ProcessFunc(p.ProcessFunc),
-		StartFunc:  execution.StartFunc(p.StartFunc),
-		FlushFunc:  execution.FlushFunc(p.FlushFunc),
+		ProcessFn:  runtime.ProcessFunc(p.ProcessFunc),
+		StartFunc:  runtime.StartFunc(p.StartFunc),
+		FlushFunc:  runtime.FlushFunc(p.FlushFunc),
 		Receiver:   receiver,
 		Sender:     sender,
 	}
 }
 
 // Executor returns executor for processor component.
-func (s Sink) Executor(bufferSize int, input SignalProperties, receiver execution.Link) execution.Executor {
-	return execution.Sink{
+func (s Sink) Executor(bufferSize int, input SignalProperties, receiver runtime.Link) runtime.Executor {
+	return runtime.Sink{
 		Context:   s.mctx,
 		InputPool: input.poolAllocator(bufferSize),
-		SinkFn:    execution.SinkFunc(s.SinkFunc),
-		StartFunc: execution.StartFunc(s.StartFunc),
-		FlushFunc: execution.FlushFunc(s.FlushFunc),
+		SinkFn:    runtime.SinkFunc(s.SinkFunc),
+		StartFunc: runtime.StartFunc(s.StartFunc),
+		FlushFunc: runtime.FlushFunc(s.FlushFunc),
 		Receiver:  receiver,
 	}
 }
