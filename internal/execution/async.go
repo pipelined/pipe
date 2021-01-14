@@ -13,35 +13,30 @@ type (
 		Start(context.Context) error
 		Flush(context.Context) error
 	}
-
-	// ComponentStarter executes components.
-	ComponentStarter struct {
-		Executor
-	}
 )
 
 // Start starts the component runner.
-func (r *ComponentStarter) Start(ctx context.Context) <-chan error {
+func Start(ctx context.Context, e Executor) <-chan error {
 	errc := make(chan error, 1)
-	go r.run(ctx, errc)
+	go run(ctx, e, errc)
 	return errc
 }
 
-func (r *ComponentStarter) run(ctx context.Context, errc chan<- error) {
+func run(ctx context.Context, e Executor, errc chan<- error) {
 	defer close(errc)
-	if err := r.Executor.Start(ctx); err != nil {
+	if err := e.Start(ctx); err != nil {
 		errc <- fmt.Errorf("error starting component: %w", err)
 		return
 	}
 	defer func() {
-		if err := r.Flush(ctx); err != nil {
+		if err := e.Flush(ctx); err != nil {
 			errc <- fmt.Errorf("error flushing component: %w", err)
 		}
 	}()
 
 	var err error
 	for err == nil {
-		err = r.Executor.Execute(ctx)
+		err = e.Execute(ctx)
 	}
 	if err != io.EOF {
 		errc <- fmt.Errorf("error running component: %w", err)

@@ -21,17 +21,17 @@ type (
 	}
 
 	// Starter is asynchronous component executor.
-	Starter interface {
-		Start(context.Context) <-chan error
-		// Out() <-chan Message
-		// OutputPool() *signal.PoolAllocator
-		// Insert(Runner, mutable.MutatorFunc) mutable.Mutation
-	}
+	// Starter interface {
+	// 	Start(context.Context) <-chan error
+	// 	// Out() <-chan Message
+	// 	// OutputPool() *signal.PoolAllocator
+	// 	// Insert(Runner, mutable.MutatorFunc) mutable.Mutation
+	// }
 
 	// exectutionContext is a runner of component with a channel which is
 	// used as a source of mutations for the component.
 	executionContext struct {
-		starter   Starter
+		executor  execution.Executor
 		mutations chan mutable.Mutations
 	}
 
@@ -134,14 +134,12 @@ func (a *Runner) bindSync(l *Line, mc chan mutable.Mutations) {
 	executors = append(executors, l.Sink.Executor(l.bufferSize, inputProps, receiver))
 
 	if e, ok := a.execCtxs[l.mctx]; ok {
-		_ = e.starter.(*execution.ComponentStarter)
+		_ = e.executor.(*execution.Lines)
 		// TODO: add
 	} else {
 		a.execCtxs[l.mctx] = executionContext{
 			mutations: mc,
-			starter: &execution.ComponentStarter{
-				Executor: &execution.Lines{Lines: []execution.Line{{Executors: executors}}},
-			},
+			executor:  &execution.Lines{Lines: []execution.Line{{Executors: executors}}},
 		}
 	}
 	return
@@ -151,21 +149,21 @@ func (a *Runner) bindAsync(l *Line, mc chan mutable.Mutations) {
 	sender := execution.AsyncLink()
 	a.execCtxs[l.Source.mctx] = executionContext{
 		mutations: mc,
-		starter:   &execution.ComponentStarter{Executor: l.Source.Executor(mc, l.bufferSize, sender)},
+		executor:  l.Source.Executor(mc, l.bufferSize, sender),
 	}
 	inputProps := l.Source.Output
 	receiver, sender := sender, execution.AsyncLink()
 	for i := range l.Processors {
 		a.execCtxs[l.Processors[i].mctx] = executionContext{
 			mutations: mc,
-			starter:   &execution.ComponentStarter{Executor: l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender)},
+			executor:  l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender),
 		}
 		inputProps = l.Processors[i].Output
 		receiver, sender = sender, execution.AsyncLink()
 	}
 	a.execCtxs[l.Sink.mctx] = executionContext{
 		mutations: mc,
-		starter:   &execution.ComponentStarter{Executor: l.Sink.Executor(l.bufferSize, inputProps, receiver)},
+		executor:  l.Sink.Executor(l.bufferSize, inputProps, receiver),
 	}
 }
 
@@ -185,7 +183,7 @@ func (a *Runner) startAll() []<-chan error {
 	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, len(a.execCtxs))
 	for i := range a.execCtxs {
-		errChans = append(errChans, a.execCtxs[i].starter.Start(a.ctx))
+		errChans = append(errChans, execution.Start(a.ctx, a.execCtxs[i].executor))
 	}
 	return errChans
 }
@@ -218,11 +216,11 @@ func (a *Runner) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Muta
 func (a *Runner) startLine(ctx context.Context, l *Line) []<-chan error {
 	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, l.numRunners())
-	errChans = append(errChans, a.execCtxs[l.Source.mctx].starter.Start(ctx))
+	errChans = append(errChans, execution.Start(a.ctx, a.execCtxs[l.Source.mctx].executor))
 	for i := range l.Processors {
-		errChans = append(errChans, a.execCtxs[l.Processors[i].mctx].starter.Start(ctx))
+		errChans = append(errChans, execution.Start(a.ctx, a.execCtxs[l.Processors[i].mctx].executor))
 	}
-	errChans = append(errChans, a.execCtxs[l.Sink.mctx].starter.Start(ctx))
+	errChans = append(errChans, execution.Start(a.ctx, a.execCtxs[l.Sink.mctx].executor))
 	return errChans
 }
 
@@ -262,12 +260,12 @@ func (a *Runner) startLine(ctx context.Context, l *Line) []<-chan error {
 // 	return ctx.Done()
 // }
 
-func (a *Runner) startRunnerMutFunc(r Starter, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
-	return func() {
-		a.merger.add(r.Start(a.ctx))
-		cancelFn()
-	}
-}
+// func (a *Runner) startRunnerMutFunc(r Starter, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
+// 	return func() {
+// 		a.merger.add(r.Start(a.ctx))
+// 		cancelFn()
+// 	}
+// }
 
 // Wait for successful finish or first error to occur.
 func (a *Runner) Wait() error {
