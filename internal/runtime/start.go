@@ -38,6 +38,7 @@ func run(ctx context.Context, e Executor, errc chan<- error) {
 	for err == nil {
 		err = e.Execute(ctx)
 	}
+	// TODO: handle ErrContextDone
 	if err != io.EOF {
 		errc <- fmt.Errorf("error running component: %w", err)
 	}
