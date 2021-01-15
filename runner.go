@@ -280,7 +280,7 @@ func (a *Runner) Wait() error {
 }
 
 // Executor returns executor for source component.
-func (s Source) Executor(mc chan mutable.Mutations, bufferSize int, sender runtime.Link) runtime.Executor {
+func (s Source) Executor(mc chan mutable.Mutations, bufferSize int, sender runtime.Link) runtime.Source {
 	return runtime.Source{
 		Mutations:  mc,
 		Context:    s.mctx,
@@ -293,7 +293,7 @@ func (s Source) Executor(mc chan mutable.Mutations, bufferSize int, sender runti
 }
 
 // Executor returns executor for processor component.
-func (p Processor) Executor(bufferSize int, input SignalProperties, receiver, sender runtime.Link) runtime.Executor {
+func (p Processor) Executor(bufferSize int, input SignalProperties, receiver, sender runtime.Link) runtime.Processor {
 	return runtime.Processor{
 		Context:    p.mctx,
 		InputPool:  input.poolAllocator(bufferSize),
@@ -307,7 +307,7 @@ func (p Processor) Executor(bufferSize int, input SignalProperties, receiver, se
 }
 
 // Executor returns executor for processor component.
-func (s Sink) Executor(bufferSize int, input SignalProperties, receiver runtime.Link) runtime.Executor {
+func (s Sink) Executor(bufferSize int, input SignalProperties, receiver runtime.Link) runtime.Sink {
 	return runtime.Sink{
 		Context:   s.mctx,
 		InputPool: input.poolAllocator(bufferSize),
