@@ -105,7 +105,6 @@ func (e *Lines) Execute(ctx context.Context) error {
 	for i := range e.Lines {
 		if err := e.Lines[i].Execute(ctx); err != nil {
 			// TODO: handle EOF
-			// TODO: handle ErrContextDone
 			return err
 		}
 	}
