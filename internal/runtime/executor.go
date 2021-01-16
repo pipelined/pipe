@@ -9,6 +9,7 @@ import (
 )
 
 type (
+	// Source is the executor for source component.
 	Source struct {
 		Mutations chan mutable.Mutations
 		mutable.Context
@@ -21,6 +22,7 @@ type (
 	// SourceFunc is a wrapper type of source closure.
 	SourceFunc func(out signal.Floating) (int, error)
 
+	// Processor is the executor for processor component.
 	Processor struct {
 		mutable.Context
 		InputPool  *signal.PoolAllocator
@@ -34,6 +36,7 @@ type (
 	// ProcessFunc is a wrapper type of processor closure.
 	ProcessFunc func(in, out signal.Floating) error
 
+	// Sink is the executor for processor component.
 	Sink struct {
 		mutable.Context
 		InputPool *signal.PoolAllocator
@@ -70,6 +73,8 @@ func callHook(ctx context.Context, hook func(context.Context) error) error {
 	return hook(ctx)
 }
 
+// Execute does a single iteration of source component. io.EOF is returned
+// if context is done.
 func (e Source) Execute(ctx context.Context) error {
 	var ms mutable.Mutations
 	select {
@@ -102,6 +107,8 @@ func (e Source) Execute(ctx context.Context) error {
 	return nil
 }
 
+// Execute does a single iteration of processor component. io.EOF is
+// returned if context is done.
 func (e Processor) Execute(ctx context.Context) error {
 	m, ok := e.Receiver.Receive(ctx)
 	if !ok {
@@ -125,6 +132,8 @@ func (e Processor) Execute(ctx context.Context) error {
 	return nil
 }
 
+// Execute does a single iteration of sink component. io.EOF is returned if
+// context is done.
 func (e Sink) Execute(ctx context.Context) error {
 	m, ok := e.Receiver.Receive(ctx)
 	if !ok {
