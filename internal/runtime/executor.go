@@ -2,14 +2,11 @@ package runtime
 
 import (
 	"context"
-	"errors"
 	"io"
 
 	"pipelined.dev/pipe/mutable"
 	"pipelined.dev/signal"
 )
-
-var ErrContextDone = errors.New("context is done")
 
 type (
 	Source struct {
@@ -62,7 +59,7 @@ func (fn StartFunc) Start(ctx context.Context) error {
 }
 
 // Flush calls the flush hook.
-func (fn StartFunc) Flush(ctx context.Context) error {
+func (fn FlushFunc) Flush(ctx context.Context) error {
 	return callHook(ctx, fn)
 }
 
@@ -80,7 +77,7 @@ func (e Source) Execute(ctx context.Context) error {
 		ms.ApplyTo(e.Context)
 	case <-ctx.Done():
 		e.Sender.Close()
-		return ErrContextDone
+		return io.EOF
 	default:
 	}
 
@@ -100,7 +97,7 @@ func (e Source) Execute(ctx context.Context) error {
 
 	if !e.Sender.Send(ctx, Message{Signal: out, Mutations: ms}) {
 		e.Sender.Close()
-		return ErrContextDone
+		return io.EOF
 	}
 	return nil
 }
@@ -122,7 +119,7 @@ func (e Processor) Execute(ctx context.Context) error {
 	if !e.Sender.Send(ctx, Message{Signal: out, Mutations: m.Mutations}) {
 		e.Sender.Close()
 		out.Free(e.OutputPool)
-		return ErrContextDone
+		return io.EOF
 	}
 	m.Signal.Free(e.InputPool)
 	return nil

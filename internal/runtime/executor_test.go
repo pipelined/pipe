@@ -3,6 +3,7 @@ package runtime_test
 import (
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"testing"
 
@@ -13,23 +14,40 @@ import (
 
 var mockError = errors.New("mock error")
 
-func TestSource(t *testing.T) {
-	var (
-		errHook = errors.New("hook failed")
-		hookOk  = func(context.Context) error {
+func TestHooks(t *testing.T) {
+	testOk := func(t *testing.T) {
+		ctx := context.Background()
+		hookOk := func(context.Context) error {
 			return nil
 		}
-		_ = func(context.Context) error {
-			return errHook
-		}
-	)
+		err := runtime.StartFunc(hookOk).Start(ctx)
+		assertEqual(t, "start error", err, nil)
+		err = runtime.FlushFunc(hookOk).Flush(ctx)
+		assertEqual(t, "flush error", err, nil)
+	}
 
+	testNil := func(t *testing.T) {
+		ctx := context.Background()
+		var start runtime.StartFunc
+		err := start.Start(ctx)
+		assertEqual(t, "start error", err, nil)
+		var flush runtime.FlushFunc
+		err = flush.Flush(ctx)
+		assertEqual(t, "flush error", err, nil)
+	}
+
+	t.Run("hooks ok", testOk)
+	t.Run("hooks nil", testNil)
+}
+
+func TestSource(t *testing.T) {
 	testOk := func() func(*testing.T) {
 		return func(t *testing.T) {
 			ctx := context.Background()
 			link := runtime.SyncLink()
 			e := runtime.Source{
 				OutputPool: signal.GetPoolAllocator(2, 4, 4),
+				Sender:     link,
 				SourceFn: func(out signal.Floating) (int, error) {
 					return signal.WriteStripedFloat64(
 						[][]float64{
@@ -39,30 +57,12 @@ func TestSource(t *testing.T) {
 						out,
 					), nil
 				},
-				StartFunc: hookOk,
-				FlushFunc: hookOk,
-				Sender:    link,
 			}
-			var err error
-			err = e.Start(ctx)
-			assertEqual(t, "start error", err, nil)
-			err = e.Execute(ctx)
+			err := e.Execute(ctx)
 			assertEqual(t, "execute error", err, nil)
-			err = e.Flush(ctx)
-			assertEqual(t, "flush error", err, nil)
 			result, ok := link.Receive(ctx)
 			assertEqual(t, "result ok", ok, true)
 			assertEqual(t, "result length", result.Signal.Len(), 6)
-		}
-	}
-	testNilHooks := func() func(*testing.T) {
-		return func(t *testing.T) {
-			ctx := context.Background()
-			e := runtime.Source{}
-			err := e.Start(ctx)
-			assertEqual(t, "start error", err, nil)
-			err = e.Flush(ctx)
-			assertEqual(t, "flush error", err, nil)
 		}
 	}
 	testMutations := func() func(*testing.T) {
@@ -117,7 +117,7 @@ func TestSource(t *testing.T) {
 				Sender: runtime.AsyncLink(),
 			}
 			err := e.Execute(ctx)
-			assertEqual(t, "execute error", err, runtime.ErrContextDone)
+			assertEqual(t, "execute error", err, io.EOF)
 		}
 	}
 	testContextDoneOnSend := func() func(*testing.T) {
@@ -140,15 +140,36 @@ func TestSource(t *testing.T) {
 				cancelFn()
 			}))
 			err := e.Execute(ctx)
-			assertEqual(t, "execute error", err, runtime.ErrContextDone)
+			assertEqual(t, "execute error", err, io.EOF)
 		}
 	}
 	t.Run("source ok", testOk())
-	t.Run("source nil hooks", testNilHooks())
 	t.Run("source mutations ok", testMutations())
 	t.Run("source execution error", testExecutionError())
 	t.Run("source context done", testContextDone())
 	t.Run("source context done on send", testContextDoneOnSend())
+}
+
+func TestProcessor(t *testing.T) {
+	testOk := func(t *testing.T) {
+		ctx := context.Background()
+		receiver, sender := runtime.AsyncLink(), runtime.AsyncLink()
+		pool := signal.GetPoolAllocator(2, 4, 4)
+		receiver.Send(ctx, runtime.Message{Signal: pool.GetFloat64()})
+		e := runtime.Processor{
+			InputPool:  pool,
+			OutputPool: signal.GetPoolAllocator(2, 4, 4),
+			Receiver:   receiver,
+			Sender:     sender,
+			ProcessFn: func(in, out signal.Floating) error {
+				signal.FloatingAsFloating(in, out)
+				return nil
+			},
+		}
+		err := e.Execute(ctx)
+		assertEqual(t, "execute error", err, nil)
+	}
+	t.Run("processor ok", testOk)
 }
 
 func assertEqual(t *testing.T, name string, result, expected interface{}) {
