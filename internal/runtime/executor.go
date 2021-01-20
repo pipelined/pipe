@@ -73,6 +73,11 @@ func callHook(ctx context.Context, hook func(context.Context) error) error {
 	return hook(ctx)
 }
 
+// Run starts executor for source component.
+func (e Source) Run(ctx context.Context) <-chan error {
+	return start(ctx, e)
+}
+
 // Execute does a single iteration of source component. io.EOF is returned
 // if context is done.
 func (e Source) Execute(ctx context.Context) error {
@@ -107,6 +112,11 @@ func (e Source) Execute(ctx context.Context) error {
 	return nil
 }
 
+// Run starts executor for processor component.
+func (e Processor) Run(ctx context.Context) <-chan error {
+	return start(ctx, e)
+}
+
 // Execute does a single iteration of processor component. io.EOF is
 // returned if context is done.
 func (e Processor) Execute(ctx context.Context) error {
@@ -130,6 +140,11 @@ func (e Processor) Execute(ctx context.Context) error {
 	}
 	m.Signal.Free(e.InputPool)
 	return nil
+}
+
+// Run starts executor for sink component.
+func (e Sink) Run(ctx context.Context) <-chan error {
+	return start(ctx, e)
 }
 
 // Execute does a single iteration of sink component. io.EOF is returned if

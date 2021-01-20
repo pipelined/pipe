@@ -8,12 +8,13 @@ import (
 	"pipelined.dev/pipe/mutable"
 )
 
+// Line represents a sequence of components executors.
 type Line struct {
 	started   int
 	Executors []Executor
 }
 
-func (l *Line) Execute(ctx context.Context) error {
+func (l *Line) execute(ctx context.Context) error {
 	for _, e := range l.Executors {
 		if err := e.Execute(ctx); err != nil {
 			return err
@@ -22,7 +23,7 @@ func (l *Line) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (l *Line) Flush(ctx context.Context) error {
+func (l *Line) flush(ctx context.Context) error {
 	var errs lineErrors
 	for i := 0; i < l.started; i++ {
 		if err := l.Executors[i].Flush(ctx); err != nil {
@@ -33,7 +34,7 @@ func (l *Line) Flush(ctx context.Context) error {
 	return errs.ret()
 }
 
-func (l *Line) Start(ctx context.Context) error {
+func (l *Line) start(ctx context.Context) error {
 	var errs lineErrors
 	for _, e := range l.Executors {
 		if err := e.Start(ctx); err != nil {
@@ -63,15 +64,23 @@ func (e lineErrors) ret() error {
 	return nil
 }
 
+// Lines executes multiple lines in the same goroutine.
 type Lines struct {
 	Mutations chan mutable.Mutations
 	Lines     []Line
 }
 
+// Run starts executor for lines component.
+func (e *Lines) Run(ctx context.Context) <-chan error {
+	return start(ctx, e)
+}
+
+// Start calls start for every line. If any line fails to start, it will
+// try to flush successfully started lines.
 func (e *Lines) Start(ctx context.Context) error {
 	var startErr lineErrors
 	for i := range e.Lines {
-		if err := e.Lines[i].Start(ctx); err != nil {
+		if err := e.Lines[i].start(ctx); err != nil {
 			startErr = append(startErr, err)
 			break
 		}
@@ -91,34 +100,24 @@ func (e *Lines) Start(ctx context.Context) error {
 	return err
 }
 
+// Flush flushes all lines.
 func (e *Lines) Flush(ctx context.Context) error {
 	var flushErr lineErrors
 	for i := range e.Lines {
-		if err := e.Lines[i].Flush(ctx); err != nil {
+		if err := e.Lines[i].flush(ctx); err != nil {
 			flushErr = append(flushErr, err)
 		}
 	}
 	return flushErr.ret()
 }
 
+// Execute executes all lines.
 func (e *Lines) Execute(ctx context.Context) error {
 	for i := range e.Lines {
-		if err := e.Lines[i].Execute(ctx); err != nil {
+		if err := e.Lines[i].execute(ctx); err != nil {
 			// TODO: handle EOF
 			return err
 		}
 	}
 	return nil
 }
-
-// func (lr Lines) Out() <-chan Message {
-// 	return nil
-// }
-
-// func (lr Lines) OutputPool() *signal.PoolAllocator {
-// 	return nil
-// }
-
-// func (lr Lines) Insert(Starter, mutable.MutatorFunc) mutable.Mutation {
-// 	return mutable.Mutation{}
-// }

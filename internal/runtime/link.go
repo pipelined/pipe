@@ -14,15 +14,19 @@ type (
 		mutable.Mutations                 // Mutators for pipe.
 	}
 
+	// Sender sends the message.
 	Sender interface {
 		Send(context.Context, Message) bool
 		Close()
 	}
 
+	// Receiver receives the message.
 	Receiver interface {
 		Receive(context.Context) (Message, bool)
 	}
 
+	// Link implements both Sender and Receiver. It's used to link two pipe
+	// components.
 	Link interface {
 		Sender
 		Receiver
@@ -35,10 +39,14 @@ type (
 	asyncLink chan Message
 )
 
+// SyncLink is a link that connects two components executed in the same
+// goroutine.
 func SyncLink() Link {
 	return &syncLink{}
 }
 
+// AsyncLink is a link that connects two components executed in different
+// goroutines.
 func AsyncLink() Link {
 	return asyncLink(make(chan Message, 1))
 }
