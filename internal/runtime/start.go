@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-
-	"pipelined.dev/pipe"
 )
 
 type (
@@ -15,12 +13,10 @@ type (
 		Start(context.Context) error
 		Flush(context.Context) error
 	}
-
-	Pipe *pipe.Pipe
 )
 
-// start the component runner.
-func start(ctx context.Context, e Executor) <-chan error {
+// Start the component runner.
+func Start(ctx context.Context, e Executor) <-chan error {
 	errc := make(chan error, 1)
 	go run(ctx, e, errc)
 	return errc

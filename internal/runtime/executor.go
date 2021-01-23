@@ -91,7 +91,7 @@ func callHook(ctx context.Context, hook func(context.Context) error) error {
 
 // Run starts executor for source component.
 func (e Source) Run(ctx context.Context) <-chan error {
-	return start(ctx, e)
+	return Start(ctx, e)
 }
 
 // Execute does a single iteration of source component. io.EOF is returned
@@ -130,7 +130,7 @@ func (e Source) Execute(ctx context.Context) error {
 
 // Run starts executor for processor component.
 func (e Processor) Run(ctx context.Context) <-chan error {
-	return start(ctx, e)
+	return Start(ctx, e)
 }
 
 // Execute does a single iteration of processor component. io.EOF is
@@ -160,7 +160,7 @@ func (e Processor) Execute(ctx context.Context) error {
 
 // Run starts executor for sink component.
 func (e Sink) Run(ctx context.Context) <-chan error {
-	return start(ctx, e)
+	return Start(ctx, e)
 }
 
 // Execute does a single iteration of sink component. io.EOF is returned if
@@ -179,7 +179,7 @@ func (e Sink) Execute(ctx context.Context) error {
 
 // Run starts executor for lines component.
 func (e *Lines) Run(ctx context.Context) <-chan error {
-	return start(ctx, e)
+	return Start(ctx, e)
 }
 
 // Start calls start for every line. If any line fails to start, it will
