@@ -282,6 +282,13 @@ func TestSink(t *testing.T) {
 	t.Run("sink context done", testContextDone)
 }
 
+func TestLines(t *testing.T) {
+	// ls := runtime.Lines{
+	// 	Mutations: make(chan mutable.Mutations, 1),
+	// 	Lines:     []runtime.Line{},
+	// }
+}
+
 func assertEqual(t *testing.T, name string, result, expected interface{}) {
 	t.Helper()
 	if !reflect.DeepEqual(expected, result) {

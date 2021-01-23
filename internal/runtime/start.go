@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+
+	"pipelined.dev/pipe"
 )
 
 type (
@@ -13,6 +15,8 @@ type (
 		Start(context.Context) error
 		Flush(context.Context) error
 	}
+
+	Pipe *pipe.Pipe
 )
 
 // start the component runner.
