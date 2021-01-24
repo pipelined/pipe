@@ -52,7 +52,7 @@ type (
 	// Line bounds the routing to the context and buffer size.
 	Line struct {
 		bufferSize int
-		mctx       mutable.Context
+		mutable.Context
 		Source
 		Processors []Processor
 		Sink
@@ -62,7 +62,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
-		mctx   mutable.Context
+		mutable.Context
 		Output SignalProperties
 		SourceFunc
 		StartFunc
@@ -77,7 +77,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Processor struct {
-		mctx   mutable.Context
+		mutable.Context
 		Output SignalProperties
 		ProcessFunc
 		StartFunc
@@ -92,7 +92,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Sink struct {
-		mctx   mutable.Context
+		mutable.Context
 		Output SignalProperties
 		SinkFunc
 		StartFunc
@@ -155,7 +155,7 @@ func (l *Line) InsertProcessor(pos int, allocator ProcessorAllocatorFunc) error 
 	}
 
 	// allocate new processor
-	proc, err := allocator.allocate(componentContext(l.mctx), l.bufferSize, inputProps)
+	proc, err := allocator.allocate(componentContext(l.Context), l.bufferSize, inputProps)
 	if err != nil {
 		return err
 	}
@@ -168,22 +168,22 @@ func (l *Line) InsertProcessor(pos int, allocator ProcessorAllocatorFunc) error 
 
 func (l *Line) prev(pos int) mutable.Context {
 	if pos == 0 {
-		return l.Source.mctx
+		return l.Source.Context
 	}
-	return l.Processors[pos-1].mctx
+	return l.Processors[pos-1].Context
 }
 
 func (l *Line) next(pos int) mutable.Context {
 	if pos+1 == len(l.Processors) {
-		return l.Sink.mctx
+		return l.Sink.Context
 	}
-	return l.Processors[pos+1].mctx
+	return l.Processors[pos+1].Context
 }
 
 func (fn SourceAllocatorFunc) allocate(mctx mutable.Context, bufferSize int) (Source, error) {
 	c, err := fn(mctx, bufferSize)
 	if err == nil {
-		c.mctx = mctx
+		c.Context = mctx
 	}
 	return c, err
 }
@@ -191,7 +191,7 @@ func (fn SourceAllocatorFunc) allocate(mctx mutable.Context, bufferSize int) (So
 func (fn ProcessorAllocatorFunc) allocate(mctx mutable.Context, bufferSize int, input SignalProperties) (Processor, error) {
 	c, err := fn(mctx, bufferSize, input)
 	if err == nil {
-		c.mctx = mctx
+		c.Context = mctx
 	}
 	return c, err
 }
@@ -199,7 +199,7 @@ func (fn ProcessorAllocatorFunc) allocate(mctx mutable.Context, bufferSize int, 
 func (fn SinkAllocatorFunc) allocate(mctx mutable.Context, bufferSize int, input SignalProperties) (Sink, error) {
 	c, err := fn(mctx, bufferSize, input)
 	if err == nil {
-		c.mctx = mctx
+		c.Context = mctx
 	}
 	return c, err
 }
@@ -227,7 +227,7 @@ func (r Routing) line(bufferSize int) (*Line, error) {
 	}
 
 	return &Line{
-		mctx:       r.Context,
+		Context:    r.Context,
 		bufferSize: bufferSize,
 		Source:     source,
 		Processors: processors,
@@ -247,10 +247,18 @@ func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 	return processors
 }
 
-func (sp SignalProperties) poolAllocator(bufferSize int) *signal.PoolAllocator {
-	return signal.GetPoolAllocator(sp.Channels, bufferSize, bufferSize)
+func (l *Line) SourceOutputPool() *signal.PoolAllocator {
+	return l.Source.Output.PoolAllocator(l.bufferSize)
 }
 
-func (l *Line) numRunners() int {
-	return 2 + len(l.Processors)
+func (l *Line) SinkOutputPool() *signal.PoolAllocator {
+	return l.Sink.Output.PoolAllocator(l.bufferSize)
+}
+
+func (l *Line) ProcessorOutputPool(i int) *signal.PoolAllocator {
+	return l.Processors[i].Output.PoolAllocator(l.bufferSize)
+}
+
+func (sp SignalProperties) PoolAllocator(bufferSize int) *signal.PoolAllocator {
+	return signal.GetPoolAllocator(sp.Channels, bufferSize, bufferSize)
 }

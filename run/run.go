@@ -1,16 +1,17 @@
-package pipe
+package run
 
 import (
 	"context"
 
+	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/internal/runtime"
 	"pipelined.dev/pipe/mutable"
+	"pipelined.dev/signal"
 )
 
 type (
-	// Runner executes the pipe asynchronously. Every pipe component is
-	// executed in its own goroutine.
-	Runner struct {
+	// Run executes the pipe asynchronously.
+	Run struct {
 		ctx           context.Context
 		mutCtx        mutable.Context
 		execCtxs      map[mutable.Context]executionContext
@@ -48,13 +49,13 @@ func newMutationsCache(execCtxs map[mutable.Context]executionContext, initialize
 	return mutCache
 }
 
-// Run creates and starts new pipe.
-func (p *Pipe) Run(ctx context.Context, initializers ...mutable.Mutation) *Runner {
+// New creates and starts new pipe.
+func New(ctx context.Context, p *pipe.Pipe, initializers ...mutable.Mutation) *Run {
 	// cancel is required to stop the pipe in case of error
 	ctx, cancelFn := context.WithCancel(ctx)
 
 	// start the pipe execution with new context
-	a := Runner{
+	a := Run{
 		ctx:           ctx,
 		mutCtx:        mutable.Mutable(),
 		execCtxs:      make(map[mutable.Context]executionContext),
@@ -77,7 +78,7 @@ func (p *Pipe) Run(ctx context.Context, initializers ...mutable.Mutation) *Runne
 	return &a
 }
 
-func (a *Runner) start(mc mutationsCache) {
+func (a *Run) start(mc mutationsCache) {
 	defer close(a.errorChan)
 	for {
 		select {
@@ -111,61 +112,54 @@ func (a *Runner) start(mc mutationsCache) {
 // Line binds components. All allocators are executed and wrapped into
 // executionContext. If any of allocators failed, the error will be
 // returned and flush hooks won't be triggered.
-func (a *Runner) bindLine(l *Line) {
+func (a *Run) bindLine(l *pipe.Line) {
 	mc := make(chan mutable.Mutations, 1)
-	if l.mctx.IsMutable() {
+	if l.Context.IsMutable() {
 		a.bindSync(l, mc)
 		return
 	}
 	a.bindAsync(l, mc)
-	// TODO sync context
 }
 
-func (a *Runner) bindSync(l *Line, mc chan mutable.Mutations) {
-	executors := make([]runtime.Executor, 0, 2+len(l.Processors))
-	sender := runtime.SyncLink()
-	executors = append(executors, l.Source.Executor(mc, l.bufferSize, sender))
+func (a *Run) bindSync(l *pipe.Line, mc chan mutable.Mutations) {
+	line := runtime.LineExecutor(l, mc)
 
-	inputProps := l.Source.Output
-	receiver, sender := sender, runtime.AsyncLink()
-	for i := range l.Processors {
-		executors = append(executors, l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender))
-	}
-	executors = append(executors, l.Sink.Executor(l.bufferSize, inputProps, receiver))
-
-	if e, ok := a.execCtxs[l.mctx]; !ok {
-		a.execCtxs[l.mctx] = executionContext{
+	if e, ok := a.execCtxs[l.Context]; !ok {
+		a.execCtxs[l.Context] = executionContext{
 			mutations: mc,
-			executor:  &runtime.Lines{Lines: []runtime.Line{{Executors: executors}}},
+			executor:  &runtime.Lines{Lines: []runtime.Line{line}},
 		}
 	} else {
 		if ex, ok := e.executor.(*runtime.Lines); ok {
-			ex.Lines = append(ex.Lines, runtime.Line{Executors: executors})
+			ex.Lines = append(ex.Lines, line)
 		} else {
 			panic("add executors to component context")
 		}
 	}
 }
 
-func (a *Runner) bindAsync(l *Line, mc chan mutable.Mutations) {
-	sender := runtime.AsyncLink()
-	a.execCtxs[l.Source.mctx] = executionContext{
+func (a *Run) bindAsync(l *pipe.Line, mc chan mutable.Mutations) {
+	var (
+		sender, receiver runtime.Link
+		input, output    *signal.PoolAllocator
+	)
+	sender = runtime.AsyncLink()
+	output = l.SourceOutputPool()
+	a.execCtxs[l.Source.Context] = executionContext{
 		mutations: mc,
-		executor:  l.Source.Executor(mc, l.bufferSize, sender),
+		executor:  runtime.SourceExecutor(l.Source, mc, output, sender),
 	}
-	inputProps := l.Source.Output
-	receiver, sender := sender, runtime.AsyncLink()
 	for i := range l.Processors {
-		a.execCtxs[l.Processors[i].mctx] = executionContext{
-			mutations: mc,
-			executor:  l.Processors[i].Executor(l.bufferSize, inputProps, receiver, sender),
-		}
-		inputProps = l.Processors[i].Output
 		receiver, sender = sender, runtime.AsyncLink()
+		input, output = output, l.ProcessorOutputPool(i)
+		a.execCtxs[l.Processors[i].Context] = executionContext{
+			mutations: mc,
+			executor:  runtime.ProcessExecutor(l.Processors[i], input, output, receiver, sender),
+		}
 	}
-	a.execCtxs[l.Sink.mctx] = executionContext{
+	a.execCtxs[l.Sink.Context] = executionContext{
 		mutations: mc,
-		executor:  l.Sink.Executor(l.bufferSize, inputProps, receiver),
+		executor:  runtime.SinkExecutor(l.Sink, output, sender),
 	}
 }
 
@@ -181,7 +175,7 @@ func (mc mutationsCache) push(ctx context.Context) {
 }
 
 // start starts the execution of pipe.
-func (a *Runner) startAll() []<-chan error {
+func (a *Run) startAll() []<-chan error {
 	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, len(a.execCtxs))
 	for i := range a.execCtxs {
@@ -192,20 +186,20 @@ func (a *Runner) startAll() []<-chan error {
 
 // Push new mutators into pipe. Calling this method after pipe is done will
 // cause a panic.
-func (a *Runner) Push(mutations ...mutable.Mutation) {
+func (a *Run) Push(mutations ...mutable.Mutation) {
 	a.mutationsChan <- mutations
 }
 
 // StartLine adds the line to the running pipe. The result is a channel
 // that will be closed when line is started or the async execution is done.
 // Line should not be mutated while the returned channel is open.
-func (a *Runner) StartLine(l *Line) <-chan struct{} {
+func (a *Run) StartLine(l *pipe.Line) <-chan struct{} {
 	startCtx, cancelFn := context.WithCancel(a.ctx)
 	a.Push(a.startLineMut(l, cancelFn))
 	return startCtx.Done()
 }
 
-func (a *Runner) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Mutation {
+func (a *Run) startLineMut(l *pipe.Line, cancelFn context.CancelFunc) mutable.Mutation {
 	// TODO sync execution
 	return a.mutCtx.Mutate(func() {
 		a.bindLine(l)
@@ -215,14 +209,14 @@ func (a *Runner) startLineMut(l *Line, cancelFn context.CancelFunc) mutable.Muta
 }
 
 // startLine starts the execution of line.
-func (a *Runner) startLine(ctx context.Context, l *Line) []<-chan error {
+func (a *Run) startLine(ctx context.Context, l *pipe.Line) []<-chan error {
 	// start all runners error channel for each component
-	errChans := make([]<-chan error, 0, l.numRunners())
-	errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Source.mctx].executor))
+	errChans := make([]<-chan error, 0, numRunners(l))
+	errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Source.Context].executor))
 	for i := range l.Processors {
-		errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Processors[i].mctx].executor))
+		errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Processors[i].Context].executor))
 	}
-	errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Sink.mctx].executor))
+	errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Sink.Context].executor))
 	return errChans
 }
 
@@ -270,7 +264,7 @@ func (a *Runner) startLine(ctx context.Context, l *Line) []<-chan error {
 // }
 
 // Wait for successful finish or first error to occur.
-func (a *Runner) Wait() error {
+func (a *Run) Wait() error {
 	for err := range a.errorChan {
 		if err != nil {
 			return err
@@ -279,41 +273,6 @@ func (a *Runner) Wait() error {
 	return nil
 }
 
-// Executor returns executor for source component.
-func (s Source) Executor(mc chan mutable.Mutations, bufferSize int, sender runtime.Link) runtime.Source {
-	return runtime.Source{
-		Mutations:  mc,
-		Context:    s.mctx,
-		OutputPool: s.Output.poolAllocator(bufferSize),
-		SourceFn:   runtime.SourceFunc(s.SourceFunc),
-		StartFunc:  runtime.StartFunc(s.StartFunc),
-		FlushFunc:  runtime.FlushFunc(s.FlushFunc),
-		Sender:     sender,
-	}
-}
-
-// Executor returns executor for processor component.
-func (p Processor) Executor(bufferSize int, input SignalProperties, receiver, sender runtime.Link) runtime.Processor {
-	return runtime.Processor{
-		Context:    p.mctx,
-		InputPool:  input.poolAllocator(bufferSize),
-		OutputPool: p.Output.poolAllocator(bufferSize),
-		ProcessFn:  runtime.ProcessFunc(p.ProcessFunc),
-		StartFunc:  runtime.StartFunc(p.StartFunc),
-		FlushFunc:  runtime.FlushFunc(p.FlushFunc),
-		Receiver:   receiver,
-		Sender:     sender,
-	}
-}
-
-// Executor returns executor for processor component.
-func (s Sink) Executor(bufferSize int, input SignalProperties, receiver runtime.Link) runtime.Sink {
-	return runtime.Sink{
-		Context:   s.mctx,
-		InputPool: input.poolAllocator(bufferSize),
-		SinkFn:    runtime.SinkFunc(s.SinkFunc),
-		StartFunc: runtime.StartFunc(s.StartFunc),
-		FlushFunc: runtime.FlushFunc(s.FlushFunc),
-		Receiver:  receiver,
-	}
+func numRunners(l *pipe.Line) int {
+	return 2 + len(l.Processors)
 }

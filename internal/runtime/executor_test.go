@@ -47,7 +47,7 @@ func TestSource(t *testing.T) {
 		e := runtime.Source{
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
 			Sender:     link,
-			SourceFn: func(out signal.Floating) (int, error) {
+			SourceFunc: func(out signal.Floating) (int, error) {
 				return signal.WriteStripedFloat64(
 					[][]float64{
 						{1, 2, 3},
@@ -70,7 +70,7 @@ func TestSource(t *testing.T) {
 			Context:    mutable.Mutable(),
 			Mutations:  make(chan mutable.Mutations, 1),
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
-			SourceFn: func(out signal.Floating) (int, error) {
+			SourceFunc: func(out signal.Floating) (int, error) {
 				return 0, nil
 			},
 			Sender: link,
@@ -91,7 +91,7 @@ func TestSource(t *testing.T) {
 		ctx := context.Background()
 		e := runtime.Source{
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
-			SourceFn: func(out signal.Floating) (int, error) {
+			SourceFunc: func(out signal.Floating) (int, error) {
 				return 0, mockError
 			},
 			Sender: runtime.SyncLink(),
@@ -104,7 +104,7 @@ func TestSource(t *testing.T) {
 		cancelFn()
 		e := runtime.Source{
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
-			SourceFn: func(out signal.Floating) (int, error) {
+			SourceFunc: func(out signal.Floating) (int, error) {
 				return 0, mockError
 			},
 			Sender: runtime.AsyncLink(),
@@ -119,7 +119,7 @@ func TestSource(t *testing.T) {
 			Context:    mutable.Mutable(),
 			Mutations:  make(chan mutable.Mutations, 1),
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
-			SourceFn: func(out signal.Floating) (int, error) {
+			SourceFunc: func(out signal.Floating) (int, error) {
 				return 0, nil
 			},
 			Sender: link,
@@ -151,7 +151,7 @@ func TestProcessor(t *testing.T) {
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
 			Receiver:   receiver,
 			Sender:     sender,
-			ProcessFn: func(in, out signal.Floating) error {
+			ProcessFunc: func(in, out signal.Floating) error {
 				signal.FloatingAsFloating(in, out)
 				return nil
 			},
@@ -181,7 +181,7 @@ func TestProcessor(t *testing.T) {
 		e := runtime.Processor{
 			InputPool:  signal.GetPoolAllocator(2, 4, 4),
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
-			ProcessFn: func(io, out signal.Floating) error {
+			ProcessFunc: func(io, out signal.Floating) error {
 				return mockError
 			},
 			Receiver: receiver,
@@ -197,7 +197,7 @@ func TestProcessor(t *testing.T) {
 		e := runtime.Processor{
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
 			InputPool:  signal.GetPoolAllocator(2, 4, 4),
-			ProcessFn: func(io, out signal.Floating) error {
+			ProcessFunc: func(io, out signal.Floating) error {
 				return mockError
 			},
 			Receiver: runtime.AsyncLink(),
@@ -214,7 +214,7 @@ func TestProcessor(t *testing.T) {
 			Context:    mutable.Mutable(),
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
 			InputPool:  signal.GetPoolAllocator(2, 4, 4),
-			ProcessFn: func(io, out signal.Floating) error {
+			ProcessFunc: func(io, out signal.Floating) error {
 				return nil
 			},
 			Receiver: receiver,
@@ -248,7 +248,7 @@ func TestSink(t *testing.T) {
 			Context:   mutable.Mutable(),
 			InputPool: signal.GetPoolAllocator(2, 4, 4),
 			Receiver:  link,
-			SinkFn: func(in signal.Floating) error {
+			SinkFunc: func(in signal.Floating) error {
 				return nil
 			},
 		}

@@ -42,5 +42,6 @@ func run(ctx context.Context, e Executor, errc chan<- error) {
 	if err != io.EOF {
 		errc <- fmt.Errorf("error running component: %w", err)
 	}
+	fmt.Printf("done: %T\n", e)
 	return
 }

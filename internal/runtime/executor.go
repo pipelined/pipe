@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mutable"
 	"pipelined.dev/signal"
 )
@@ -16,39 +17,33 @@ type (
 		Mutations chan mutable.Mutations
 		mutable.Context
 		OutputPool *signal.PoolAllocator
-		SourceFn   SourceFunc
+		pipe.SourceFunc
 		StartFunc
 		FlushFunc
 		Sender
 	}
-	// SourceFunc is a wrapper type of source closure.
-	SourceFunc func(out signal.Floating) (int, error)
 
 	// Processor is the executor for processor component.
 	Processor struct {
 		mutable.Context
 		InputPool  *signal.PoolAllocator
 		OutputPool *signal.PoolAllocator
-		ProcessFn  ProcessFunc
+		pipe.ProcessFunc
 		StartFunc
 		FlushFunc
 		Receiver
 		Sender
 	}
-	// ProcessFunc is a wrapper type of processor closure.
-	ProcessFunc func(in, out signal.Floating) error
 
 	// Sink is the executor for processor component.
 	Sink struct {
 		mutable.Context
 		InputPool *signal.PoolAllocator
-		SinkFn    SinkFunc
+		pipe.SinkFunc
 		StartFunc
 		FlushFunc
 		Receiver
 	}
-	// SinkFunc is a wrapper type of sink closure.
-	SinkFunc func(in signal.Floating) error
 )
 
 type (
@@ -112,7 +107,7 @@ func (e Source) Execute(ctx context.Context) error {
 		read int
 		err  error
 	)
-	if read, err = e.SourceFn(out); err != nil {
+	if read, err = e.SourceFunc(out); err != nil {
 		e.Sender.Close()
 		out.Free(e.OutputPool)
 		return err
@@ -138,13 +133,14 @@ func (e Processor) Run(ctx context.Context) <-chan error {
 func (e Processor) Execute(ctx context.Context) error {
 	m, ok := e.Receiver.Receive(ctx)
 	if !ok {
+		fmt.Printf("processor not ok")
 		e.Sender.Close()
 		return io.EOF
 	}
 	m.Mutations.ApplyTo(e.Context)
 
 	out := e.OutputPool.GetFloat64()
-	if err := e.ProcessFn(m.Signal, out); err != nil {
+	if err := e.ProcessFunc(m.Signal, out); err != nil {
 		e.Sender.Close()
 		return err
 	}
@@ -172,7 +168,7 @@ func (e Sink) Execute(ctx context.Context) error {
 	}
 	m.Mutations.ApplyTo(e.Context)
 
-	err := e.SinkFn(m.Signal)
+	err := e.SinkFunc(m.Signal)
 	m.Signal.Free(e.InputPool)
 	return err
 }
@@ -277,4 +273,79 @@ func (e lineErrors) ret() error {
 		return e
 	}
 	return nil
+}
+
+// SourceExecutor returns executor for source component.
+func SourceExecutor(s pipe.Source, mc chan mutable.Mutations, output *signal.PoolAllocator, sender Link) Source {
+	return Source{
+		Mutations:  mc,
+		Context:    s.Context,
+		OutputPool: output,
+		SourceFunc: s.SourceFunc,
+		StartFunc:  StartFunc(s.StartFunc),
+		FlushFunc:  FlushFunc(s.FlushFunc),
+		Sender:     sender,
+	}
+}
+
+// ProcessExecutor returns executor for processor component.
+func ProcessExecutor(p pipe.Processor, input, output *signal.PoolAllocator, receiver, sender Link) Processor {
+	return Processor{
+		Context:     p.Context,
+		InputPool:   input,
+		OutputPool:  output,
+		ProcessFunc: p.ProcessFunc,
+		StartFunc:   StartFunc(p.StartFunc),
+		FlushFunc:   FlushFunc(p.FlushFunc),
+		Receiver:    receiver,
+		Sender:      sender,
+	}
+}
+
+// SinkExecutor returns executor for sink component.
+func SinkExecutor(s pipe.Sink, input *signal.PoolAllocator, receiver Link) Sink {
+	return Sink{
+		Context:   s.Context,
+		InputPool: input,
+		SinkFunc:  s.SinkFunc,
+		StartFunc: StartFunc(s.StartFunc),
+		FlushFunc: FlushFunc(s.FlushFunc),
+		Receiver:  receiver,
+	}
+}
+
+func LineExecutor(l *pipe.Line, mc chan mutable.Mutations) Line {
+	line := Line{
+		Executors: make([]Executor, 0, 2+len(l.Processors)),
+	}
+	var (
+		sender, receiver Link
+		input, output    *signal.PoolAllocator
+	)
+	sender = SyncLink()
+	output = l.SourceOutputPool()
+	line.Executors = append(line.Executors,
+		SourceExecutor(
+			l.Source,
+			mc,
+			output,
+			sender,
+		),
+	)
+
+	for i := range l.Processors {
+		receiver, sender = sender, AsyncLink()
+		input, output = output, l.ProcessorOutputPool(i)
+		line.Executors = append(line.Executors,
+			ProcessExecutor(
+				l.Processors[i],
+				input,
+				output,
+				receiver,
+				sender,
+			),
+		)
+	}
+	line.Executors = append(line.Executors, SinkExecutor(l.Sink, output, sender))
+	return line
 }
