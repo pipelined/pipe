@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"pipelined.dev/pipe"
-	"pipelined.dev/pipe/internal/runtime"
 	"pipelined.dev/pipe/mutable"
+	"pipelined.dev/pipe/run/internal/runtime"
 	"pipelined.dev/signal"
 )
 
@@ -20,14 +20,6 @@ type (
 		mutationsChan chan []mutable.Mutation
 		errorChan     chan error
 	}
-
-	// Starter is asynchronous component executor.
-	// Starter interface {
-	// 	Start(context.Context) <-chan error
-	// 	// Out() <-chan Message
-	// 	// OutputPool() *signal.PoolAllocator
-	// 	// Insert(Runner, mutable.MutatorFunc) mutable.Mutation
-	// }
 
 	// exectutionContext is a runner of component with a channel which is
 	// used as a source of mutations for the component.

@@ -1,7 +1,7 @@
 package runtime_test
 
 import (
-	"pipelined.dev/pipe/internal/runtime"
+	"pipelined.dev/pipe/run/internal/runtime"
 )
 
 var (
