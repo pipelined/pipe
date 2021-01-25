@@ -26,6 +26,12 @@ type (
 		ErrorOnFlush error
 	}
 
+	// Starter allows to mock components hooks.
+	Starter struct {
+		Started      bool
+		ErrorOnStart error
+	}
+
 	// Mutator allows to mock mutations.
 	Mutator struct {
 		Mutability mutable.Context
@@ -45,10 +51,17 @@ func (f *Flusher) Flush(context.Context) error {
 	return f.ErrorOnFlush
 }
 
+// Start implements pipe.Flusher.
+func (s *Starter) Start(context.Context) error {
+	s.Started = true
+	return s.ErrorOnStart
+}
+
 // Source are settings for pipe.Source mock.
 type Source struct {
 	Mutator
 	Counter
+	Starter
 	Flusher
 	Interval    time.Duration
 	Limit       int
@@ -68,6 +81,7 @@ func (m *Source) Source() pipe.SourceAllocatorFunc {
 					SampleRate: m.SampleRate,
 					Channels:   m.Channels,
 				},
+				StartFunc: m.Starter.Start,
 				FlushFunc: m.Flusher.Flush,
 				SourceFunc: func(s signal.Floating) (int, error) {
 					if m.ErrorOnCall != nil {
@@ -114,6 +128,7 @@ func (m *Mutator) MockMutation() mutable.Mutation {
 type Processor struct {
 	Mutator
 	Counter
+	Starter
 	Flusher
 	ErrorOnCall error
 	ErrorOnMake error
@@ -125,6 +140,7 @@ func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
 		m.Mutator.Mutability = mut
 		return pipe.Processor{
 			Output:    props,
+			StartFunc: m.Starter.Start,
 			FlushFunc: m.Flusher.Flush,
 			ProcessFunc: func(in, out signal.Floating) (int, error) {
 				if m.ErrorOnCall != nil {
@@ -142,6 +158,7 @@ func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
 type Sink struct {
 	Mutator
 	Counter
+	Starter
 	Flusher
 	Discard     bool
 	ErrorOnCall error
@@ -156,6 +173,7 @@ func (m *Sink) Sink() pipe.SinkAllocatorFunc {
 			m.Counter.Values = signal.Allocator{Channels: props.Channels, Capacity: bufferSize}.Float64()
 		}
 		return pipe.Sink{
+			StartFunc: m.Starter.Start,
 			FlushFunc: m.Flusher.Flush,
 			SinkFunc: func(in signal.Floating) error {
 				if m.ErrorOnCall != nil {
