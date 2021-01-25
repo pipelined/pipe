@@ -27,11 +27,6 @@ type (
 	lineErrors []error
 )
 
-// Run starts executor for lines component.
-func (e *Lines) Run(ctx context.Context) <-chan error {
-	return Start(ctx, e)
-}
-
 // Start calls start for every line. If any line fails to start, it will
 // try to flush successfully started lines.
 func (e *Lines) Start(ctx context.Context) error {

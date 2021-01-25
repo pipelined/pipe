@@ -35,11 +35,6 @@ func ProcessExecutor(p pipe.Processor, input, output *signal.PoolAllocator, rece
 	}
 }
 
-// Run starts executor for processor component.
-func (e Processor) Run(ctx context.Context) <-chan error {
-	return Start(ctx, e)
-}
-
 // Execute does a single iteration of processor component. io.EOF is
 // returned if context is done.
 func (e Processor) Execute(ctx context.Context) error {

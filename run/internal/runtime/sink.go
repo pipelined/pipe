@@ -31,11 +31,6 @@ func SinkExecutor(s pipe.Sink, input *signal.PoolAllocator, receiver Link) Sink 
 	}
 }
 
-// Run starts executor for sink component.
-func (e Sink) Run(ctx context.Context) <-chan error {
-	return Start(ctx, e)
-}
-
 // Execute does a single iteration of sink component. io.EOF is returned if
 // context is done.
 func (e Sink) Execute(ctx context.Context) error {

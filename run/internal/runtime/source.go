@@ -34,9 +34,9 @@ func SourceExecutor(s pipe.Source, mc chan mutable.Mutations, output *signal.Poo
 }
 
 // Run starts executor for source component.
-func (e Source) Run(ctx context.Context) <-chan error {
-	return Start(ctx, e)
-}
+// func (e Source) Run(ctx context.Context) <-chan error {
+// 	return Run(ctx, e)
+// }
 
 // Execute does a single iteration of source component. io.EOF is returned
 // if context is done.

@@ -53,7 +53,7 @@ func TestLines(t *testing.T) {
 			for i := range p.Lines {
 				lines.Lines = append(lines.Lines, runtime.LineExecutor(p.Lines[i], mc))
 			}
-			errChan := lines.Run(context.Background())
+			errChan := runtime.Run(context.Background(), &lines)
 			for err := range errChan {
 				assertEqual(t, "exec error", err, nil)
 			}

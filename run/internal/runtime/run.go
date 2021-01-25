@@ -15,8 +15,8 @@ type (
 	}
 )
 
-// Start the component runner.
-func Start(ctx context.Context, e Executor) <-chan error {
+// Run the component runner.
+func Run(ctx context.Context, e Executor) <-chan error {
 	errc := make(chan error, 1)
 	go run(ctx, e, errc)
 	return errc

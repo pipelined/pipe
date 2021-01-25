@@ -171,7 +171,7 @@ func (a *Run) startAll() []<-chan error {
 	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, len(a.execCtxs))
 	for i := range a.execCtxs {
-		errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[i].executor))
+		errChans = append(errChans, runtime.Run(a.ctx, a.execCtxs[i].executor))
 	}
 	return errChans
 }
@@ -204,11 +204,11 @@ func (a *Run) startLineMut(l *pipe.Line, cancelFn context.CancelFunc) mutable.Mu
 func (a *Run) startLine(ctx context.Context, l *pipe.Line) []<-chan error {
 	// start all runners error channel for each component
 	errChans := make([]<-chan error, 0, numRunners(l))
-	errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Source.Context].executor))
+	errChans = append(errChans, runtime.Run(a.ctx, a.execCtxs[l.Source.Context].executor))
 	for i := range l.Processors {
-		errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Processors[i].Context].executor))
+		errChans = append(errChans, runtime.Run(a.ctx, a.execCtxs[l.Processors[i].Context].executor))
 	}
-	errChans = append(errChans, runtime.Start(a.ctx, a.execCtxs[l.Sink.Context].executor))
+	errChans = append(errChans, runtime.Run(a.ctx, a.execCtxs[l.Sink.Context].executor))
 	return errChans
 }
 
