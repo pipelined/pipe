@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"pipelined.dev/pipe"
@@ -69,22 +70,41 @@ func (e *Lines) Flush(ctx context.Context) error {
 
 // Execute executes all lines.
 func (e *Lines) Execute(ctx context.Context) error {
-	for i := range e.Lines {
-		if err := e.Lines[i].execute(ctx); err != nil {
-			// TODO: handle EOF
-			return err
+	var err error
+	for i := 0; i < len(e.Lines); {
+		if err = e.Lines[i].execute(ctx); err == nil {
+			i++
+			continue
 		}
+		if err == io.EOF {
+			if flushErr := e.Lines[i].flush(ctx); flushErr != nil {
+				return flushErr
+			}
+			e.Lines = append(e.Lines[:i], e.Lines[i+1:]...)
+			if len(e.Lines) > 0 {
+				continue
+			}
+		}
+		return err
 	}
 	return nil
 }
 
+// Execute all components of the line one-by-one.
 func (l *Line) execute(ctx context.Context) error {
+	var err error
 	for _, e := range l.Executors {
-		if err := e.Execute(ctx); err != nil {
-			return err
+		if err = e.Execute(ctx); err == nil {
+			continue
 		}
+		if err == io.EOF {
+			// continue execution to propagate EOF
+			continue
+		}
+		return err
 	}
-	return nil
+	// if no other errors were met, EOF will be returned
+	return err
 }
 
 func (l *Line) flush(ctx context.Context) error {
