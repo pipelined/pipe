@@ -33,6 +33,7 @@ type (
 	}
 
 	syncLink struct {
+		closed  bool
 		message Message
 	}
 
@@ -52,15 +53,22 @@ func AsyncLink() Link {
 }
 
 func (l *syncLink) Send(_ context.Context, m Message) bool {
+	if l.closed {
+		return false
+	}
 	l.message = m
 	return true
 }
 
 func (l *syncLink) Receive(context.Context) (Message, bool) {
+	if l.closed {
+		return l.message, false
+	}
 	return l.message, true
 }
 
 func (l *syncLink) Close() {
+	l.closed = true
 	return
 }
 
