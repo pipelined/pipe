@@ -86,7 +86,7 @@ type (
 
 	// ProcessFunc takes the input buffer, applies processing logic and
 	// writes the result into output buffer.
-	ProcessFunc func(in, out signal.Floating) error
+	ProcessFunc func(in, out signal.Floating) (int, error)
 
 	// Sink is a destination of signal data. Optinaly, mutability can be
 	// provided to handle mutations and flush hook to handle resource clean

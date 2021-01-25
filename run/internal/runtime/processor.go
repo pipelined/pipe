@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"pipelined.dev/pipe"
@@ -46,16 +45,17 @@ func (e Processor) Run(ctx context.Context) <-chan error {
 func (e Processor) Execute(ctx context.Context) error {
 	m, ok := e.Receiver.Receive(ctx)
 	if !ok {
-		fmt.Printf("processor not ok")
 		e.Sender.Close()
 		return io.EOF
 	}
 	m.Mutations.ApplyTo(e.Context)
 
 	out := e.OutputPool.GetFloat64()
-	if err := e.ProcessFunc(m.Signal, out); err != nil {
+	if processed, err := e.ProcessFunc(m.Signal, out); err != nil {
 		e.Sender.Close()
 		return err
+	} else if processed != e.OutputPool.Length {
+		out = out.Slice(0, processed)
 	}
 
 	if !e.Sender.Send(ctx, Message{Signal: out, Mutations: m.Mutations}) {

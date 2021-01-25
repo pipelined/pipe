@@ -126,12 +126,13 @@ func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
 		return pipe.Processor{
 			Output:    props,
 			FlushFunc: m.Flusher.Flush,
-			ProcessFunc: func(in, out signal.Floating) error {
+			ProcessFunc: func(in, out signal.Floating) (int, error) {
 				if m.ErrorOnCall != nil {
-					return m.ErrorOnCall
+					return 0, m.ErrorOnCall
 				}
-				m.Counter.advance(signal.FloatingAsFloating(in, out))
-				return nil
+				n := signal.FloatingAsFloating(in, out)
+				m.Counter.advance(n)
+				return n, nil
 			},
 		}, m.ErrorOnMake
 	}

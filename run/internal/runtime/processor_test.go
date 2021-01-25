@@ -21,9 +21,8 @@ func TestProcessor(t *testing.T) {
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
 			Receiver:   receiver,
 			Sender:     sender,
-			ProcessFunc: func(in, out signal.Floating) error {
-				signal.FloatingAsFloating(in, out)
-				return nil
+			ProcessFunc: func(in, out signal.Floating) (int, error) {
+				return signal.FloatingAsFloating(in, out), nil
 			},
 		}
 		var called bool
@@ -51,8 +50,8 @@ func TestProcessor(t *testing.T) {
 		e := runtime.Processor{
 			InputPool:  signal.GetPoolAllocator(2, 4, 4),
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
-			ProcessFunc: func(io, out signal.Floating) error {
-				return mockError
+			ProcessFunc: func(in, out signal.Floating) (int, error) {
+				return 0, mockError
 			},
 			Receiver: receiver,
 			Sender:   runtime.SyncLink(),
@@ -67,8 +66,8 @@ func TestProcessor(t *testing.T) {
 		e := runtime.Processor{
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
 			InputPool:  signal.GetPoolAllocator(2, 4, 4),
-			ProcessFunc: func(io, out signal.Floating) error {
-				return mockError
+			ProcessFunc: func(in, out signal.Floating) (int, error) {
+				return 0, mockError
 			},
 			Receiver: runtime.AsyncLink(),
 			Sender:   runtime.AsyncLink(),
@@ -84,8 +83,8 @@ func TestProcessor(t *testing.T) {
 			Context:    mutable.Mutable(),
 			OutputPool: signal.GetPoolAllocator(2, 4, 4),
 			InputPool:  signal.GetPoolAllocator(2, 4, 4),
-			ProcessFunc: func(io, out signal.Floating) error {
-				return nil
+			ProcessFunc: func(in, out signal.Floating) (int, error) {
+				return 0, nil
 			},
 			Receiver: receiver,
 			Sender:   sender,
