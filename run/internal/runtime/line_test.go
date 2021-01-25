@@ -3,6 +3,7 @@ package runtime_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -24,8 +25,9 @@ func TestLines(t *testing.T) {
 			*mock.Sink
 		}
 
-		assertFunc func(t *testing.T, mocks ...mockLine)
+		assertFunc func(t *testing.T, err error, mocks ...mockLine)
 	)
+	mockError := fmt.Errorf("mock error")
 
 	assertLine := func(t *testing.T, m mockLine, messages, samples int) {
 		assertEqual(t, "src messages", m.Source.Counter.Messages, messages)
@@ -54,15 +56,14 @@ func TestLines(t *testing.T) {
 				lines.Lines = append(lines.Lines, runtime.LineExecutor(p.Lines[i], mc))
 			}
 			errChan := runtime.Run(context.Background(), &lines)
-			for err := range errChan {
-				assertEqual(t, "exec error", err, nil)
-			}
-			assertFn(t, mocks...)
+			err = <-errChan
+			assertFn(t, err, mocks...)
 		}
 	}
 
 	t.Run("single line ok", testLines(
-		func(t *testing.T, mocks ...mockLine) {
+		func(t *testing.T, err error, mocks ...mockLine) {
+			assertEqual(t, "exec error", err, nil)
 			m := mocks[0]
 			assertEqual(t, "src flushed", m.Source.Flushed, true)
 			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
@@ -81,7 +82,8 @@ func TestLines(t *testing.T) {
 		},
 	))
 	t.Run("two lines ok", testLines(
-		func(t *testing.T, mocks ...mockLine) {
+		func(t *testing.T, err error, mocks ...mockLine) {
+			assertEqual(t, "exec error", err, nil)
 			var m mockLine
 			m = mocks[0]
 			assertEqual(t, "src flushed", m.Source.Flushed, true)
@@ -116,7 +118,8 @@ func TestLines(t *testing.T) {
 		},
 	))
 	t.Run("three lines ok", testLines(
-		func(t *testing.T, mocks ...mockLine) {
+		func(t *testing.T, err error, mocks ...mockLine) {
+			assertEqual(t, "exec error", err, nil)
 			var m mockLine
 			m = mocks[0]
 			assertEqual(t, "src flushed", m.Source.Flushed, true)
@@ -163,6 +166,27 @@ func TestLines(t *testing.T) {
 				Discard: true,
 			},
 			Processor: &mock.Processor{},
+		},
+	))
+	t.Run("single processor error", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			assertEqual(t, "error", errors.Is(err, mockError), true)
+			m := mocks[0]
+			assertEqual(t, "src flushed", m.Source.Flushed, true)
+			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Sink: &mock.Sink{
+				Discard: true,
+			},
+			Processor: &mock.Processor{
+				ErrorOnCall: mockError,
+			},
 		},
 	))
 }
