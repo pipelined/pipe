@@ -57,6 +57,7 @@ func TestLines(t *testing.T) {
 			}
 			errChan := runtime.Run(context.Background(), &lines)
 			err = <-errChan
+			<-errChan
 			assertFn(t, err, mocks...)
 		}
 	}
