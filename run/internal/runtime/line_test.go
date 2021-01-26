@@ -61,13 +61,118 @@ func TestLines(t *testing.T) {
 		}
 	}
 
+	t.Run("two lines processor start error source flush error", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			// assertEqual(t, "error", err, mockError)
+			m := mocks[0]
+			assertEqual(t, "line 1 src started", m.Source.Started, true)
+			assertEqual(t, "line 1 proc started", m.Processor.Started, true)
+			assertEqual(t, "line 1 sink started", m.Sink.Started, true)
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, true)
+			m = mocks[1]
+			assertEqual(t, "line 2 src started", m.Source.Started, true)
+			assertEqual(t, "line 2 proc started", m.Processor.Started, true)
+			assertEqual(t, "line 2 sink started", m.Sink.Started, false)
+			assertEqual(t, "line 2 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 2 proc flushed", m.Processor.Flushed, false)
+			assertEqual(t, "line 2 sink flushed", m.Sink.Flushed, false)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+				Flusher: mock.Flusher{
+					ErrorOnFlush: mockError,
+				},
+			},
+			Processor: &mock.Processor{},
+			Sink:      &mock.Sink{},
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Processor: &mock.Processor{
+				Starter: mock.Starter{
+					ErrorOnStart: mockError,
+				},
+			},
+			Sink: &mock.Sink{},
+		},
+	))
+	t.Run("two lines processor start error", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			// assertEqual(t, "error", err, mockError)
+			m := mocks[0]
+			assertEqual(t, "src started", m.Source.Started, true)
+			assertEqual(t, "proc started", m.Processor.Started, true)
+			assertEqual(t, "sink started", m.Sink.Started, true)
+			assertEqual(t, "src flushed", m.Source.Flushed, true)
+			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+			m = mocks[1]
+			assertEqual(t, "line 2 src started", m.Source.Started, true)
+			assertEqual(t, "line 2 proc started", m.Processor.Started, true)
+			assertEqual(t, "line 2 sink started", m.Sink.Started, false)
+			assertEqual(t, "line 2 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 2 proc flushed", m.Processor.Flushed, false)
+			assertEqual(t, "line 2 sink flushed", m.Sink.Flushed, false)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Processor: &mock.Processor{},
+			Sink:      &mock.Sink{},
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Processor: &mock.Processor{
+				Starter: mock.Starter{
+					ErrorOnStart: mockError,
+				},
+			},
+			Sink: &mock.Sink{},
+		},
+	))
+	t.Run("single line processor start error", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			// assertEqual(t, "error", errors.Is(err, mockError), true)
+			m := mocks[0]
+			assertEqual(t, "line 1 src started", m.Source.Started, true)
+			assertEqual(t, "line 1 proc started", m.Processor.Started, true)
+			assertEqual(t, "line 1 sink started", m.Sink.Started, false)
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, false)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, false)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Processor: &mock.Processor{
+				Starter: mock.Starter{
+					ErrorOnStart: mockError,
+				},
+			},
+			Sink: &mock.Sink{},
+		},
+	))
 	t.Run("single line ok", testLines(
 		func(t *testing.T, err error, mocks ...mockLine) {
 			assertEqual(t, "exec error", err, nil)
 			m := mocks[0]
-			assertEqual(t, "src flushed", m.Source.Flushed, true)
-			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
-			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, true)
 			assertLine(t, m, 3, 1040)
 		},
 		mockLine{
@@ -86,14 +191,14 @@ func TestLines(t *testing.T) {
 			assertEqual(t, "exec error", err, nil)
 			var m mockLine
 			m = mocks[0]
-			assertEqual(t, "src flushed", m.Source.Flushed, true)
-			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
-			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, true)
 			assertLine(t, m, 3, 1040)
 			m = mocks[1]
-			assertEqual(t, "src flushed", m.Source.Flushed, true)
-			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
-			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+			assertEqual(t, "line 2 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 2 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 2 sink flushed", m.Sink.Flushed, true)
 			assertLine(t, m, 4, 1640)
 		},
 		mockLine{
@@ -122,19 +227,19 @@ func TestLines(t *testing.T) {
 			assertEqual(t, "exec error", err, nil)
 			var m mockLine
 			m = mocks[0]
-			assertEqual(t, "src flushed", m.Source.Flushed, true)
-			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
-			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, true)
 			assertLine(t, m, 6, 3048)
 			m = mocks[1]
-			assertEqual(t, "src flushed", m.Source.Flushed, true)
-			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
-			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+			assertEqual(t, "line 2 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 2 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 2 sink flushed", m.Sink.Flushed, true)
 			assertLine(t, m, 4, 1640)
 			m = mocks[2]
-			assertEqual(t, "src flushed", m.Source.Flushed, true)
-			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
-			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+			assertEqual(t, "line 3 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 3 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 3 sink flushed", m.Sink.Flushed, true)
 			assertLine(t, m, 8, 4096)
 		},
 		mockLine{
@@ -189,6 +294,7 @@ func TestLines(t *testing.T) {
 			},
 		},
 	))
+
 }
 
 func assertEqual(t *testing.T, name string, result, expected interface{}) {

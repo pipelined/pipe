@@ -107,7 +107,6 @@ func (l *Line) flush(ctx context.Context) error {
 	for i := 0; i < l.started; i++ {
 		if err := l.Executors[i].Flush(ctx); err != nil {
 			errs = append(errs, err)
-			break
 		}
 	}
 	return errs.ret()
