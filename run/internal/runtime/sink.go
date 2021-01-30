@@ -38,7 +38,9 @@ func (e Sink) Execute(ctx context.Context) error {
 	if !ok {
 		return io.EOF
 	}
-	m.Mutations.ApplyTo(e.Context)
+	if err := m.Mutations.ApplyTo(e.Context); err != nil {
+		return err
+	}
 
 	err := e.SinkFunc(m.Signal)
 	m.Signal.Free(e.InputPool)

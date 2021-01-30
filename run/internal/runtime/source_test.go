@@ -47,8 +47,9 @@ func TestSource(t *testing.T) {
 		}
 		var called bool
 		var ms mutable.Mutations
-		e.Mutations <- ms.Put(e.Mutate(func() {
+		e.Mutations <- ms.Put(e.Mutate(func() error {
 			called = true
+			return nil
 		}))
 		err := e.Execute(ctx)
 		assertEqual(t, "execute error", err, nil)
@@ -97,8 +98,9 @@ func TestSource(t *testing.T) {
 		// to fill the channel buffer
 		link.Send(ctx, runtime.Message{})
 		var ms mutable.Mutations
-		e.Mutations <- ms.Put(e.Mutate(func() {
+		e.Mutations <- ms.Put(e.Mutate(func() error {
 			cancelFn()
+			return nil
 		}))
 		err := e.Execute(ctx)
 		assertEqual(t, "execute error", err, io.EOF)

@@ -43,7 +43,9 @@ func (e Processor) Execute(ctx context.Context) error {
 		e.Sender.Close()
 		return io.EOF
 	}
-	m.Mutations.ApplyTo(e.Context)
+	if err := m.Mutations.ApplyTo(e.Context); err != nil {
+		return err
+	}
 
 	out := e.OutputPool.GetFloat64()
 	if processed, err := e.ProcessFunc(m.Signal, out); err != nil {

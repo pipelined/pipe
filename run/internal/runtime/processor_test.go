@@ -27,8 +27,9 @@ func TestProcessor(t *testing.T) {
 		}
 		var called bool
 		var ms mutable.Mutations
-		ms = ms.Put(e.Mutate(func() {
+		ms = ms.Put(e.Mutate(func() error {
 			called = true
+			return nil
 		}))
 		receiver.Send(ctx,
 			runtime.Message{
@@ -90,8 +91,9 @@ func TestProcessor(t *testing.T) {
 			Sender:   sender,
 		}
 		var ms mutable.Mutations
-		ms = ms.Put(e.Mutate(func() {
+		ms = ms.Put(e.Mutate(func() error {
 			cancelFn()
+			return nil
 		}))
 		receiver.Send(ctx, runtime.Message{
 			Signal:    e.InputPool.GetFloat64(),

@@ -111,16 +111,18 @@ func (m *Source) Source() pipe.SourceAllocatorFunc {
 // Reset allows to reset source.
 func (m *Source) Reset() mutable.Mutation {
 	return m.Mutator.Mutability.Mutate(
-		func() {
+		func() error {
 			m.Counter = Counter{}
+			return nil
 		})
 }
 
 // MockMutation mocks mutation, so errors can be simulated.
 func (m *Mutator) MockMutation() mutable.Mutation {
 	return m.Mutability.Mutate(
-		func() {
+		func() error {
 			m.Mutated = true
+			return nil
 		})
 }
 

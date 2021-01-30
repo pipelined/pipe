@@ -24,8 +24,9 @@ func TestSink(t *testing.T) {
 		}
 		var called bool
 		var ms mutable.Mutations
-		ms = ms.Put(e.Mutate(func() {
+		ms = ms.Put(e.Mutate(func() error {
 			called = true
+			return nil
 		}))
 		link.Send(ctx, runtime.Message{
 			Signal:    e.InputPool.GetFloat64(),

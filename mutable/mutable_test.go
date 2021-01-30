@@ -17,8 +17,9 @@ type mutableMock struct {
 
 // mutators closure to mutable.value
 func (m *mutableMock) AddDelta(delta int) mutable.Mutation {
-	return m.Mutability.Mutate(func() {
+	return m.Mutability.Mutate(func() error {
 		m.value += delta
+		return nil
 	})
 }
 
@@ -188,7 +189,9 @@ func TestMutability(t *testing.T) {
 	mut = mutable.Mutable()
 	assertEqual(t, "mutable", mut.IsMutable(), true)
 	assertPanic(t, func() {
-		mutable.Immutable().Mutate(func() {})
+		mutable.Immutable().Mutate(func() error {
+			return nil
+		})
 	})
 	mock := &mutableMock{
 		Mutability: mutable.Mutable(),
