@@ -21,7 +21,7 @@ type (
 	Mutations map[Context][]MutatorFunc
 
 	// MutatorFunc mutates the object.
-	MutatorFunc func()
+	MutatorFunc func() error
 )
 
 // Mutable returns new mutable mutable.
@@ -76,16 +76,21 @@ func (ms Mutations) Put(m Mutation) Mutations {
 }
 
 // ApplyTo consumes Mutations defined for consumer in this param set.
-func (ms Mutations) ApplyTo(id Context) {
+func (ms Mutations) ApplyTo(id Context) error {
 	if ms == nil || id == immutable {
-		return
+		return nil
 	}
 	if fns, ok := ms[id]; ok {
+		var err error
 		for _, fn := range fns {
-			fn()
+			err = fn()
+			if err != nil {
+				return err
+			}
 		}
 		delete(ms, id)
 	}
+	return nil
 }
 
 // Append param set to another set.

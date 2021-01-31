@@ -119,7 +119,7 @@ func TestProcessor(t *testing.T) {
 			in, out := alloc.Float64(), alloc.Float64()
 			signal.WriteFloat64(p.in, in)
 
-			err := processor.ProcessFunc(in, out)
+			_, err := processor.ProcessFunc(in, out)
 			assertEqual(t, "error", err, processorMock.ErrorOnCall)
 			if err != nil {
 				return

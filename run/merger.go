@@ -1,4 +1,4 @@
-package pipe
+package run
 
 import (
 	"sync"
@@ -30,21 +30,19 @@ func (m *errorMerger) listen(ec <-chan error) {
 	m.wg.Done()
 }
 
-// start waits for all underlying error channels to be closed and then
+// wait waits for all underlying error channels to be closed and then
 // closes the output error channels.
-func (m *errorMerger) start() {
+func (m *errorMerger) wait() {
 	m.wg.Wait()
 	close(m.errorChan)
 }
 
 // TODO: merge all errors
 // TODO: distinguish context timeout error
-func (m *errorMerger) await() {
+func (m *errorMerger) drain() {
 	// wait until all groutines stop.
-	for {
-		// only the first error is propagated.
-		if _, ok := <-m.errorChan; !ok {
-			break
-		}
+	// only the first error is propagated.
+	for range m.errorChan {
+		break
 	}
 }
