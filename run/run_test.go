@@ -2,7 +2,6 @@ package run_test
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 
@@ -155,53 +154,6 @@ func BenchmarkSingleLine(b *testing.B) {
 		_ = run.New(context.Background(), p, source.Reset()).Wait()
 	}
 	b.Logf("recieved messages: %d samples: %d", sink.Messages, sink.Samples)
-}
-
-func TestLineBindingFail(t *testing.T) {
-	var (
-		errorBinding = errors.New("binding error")
-		bufferSize   = 512
-	)
-	testBinding := func(l pipe.Routing) func(*testing.T) {
-		return func(t *testing.T) {
-			t.Helper()
-			_, err := pipe.New(bufferSize, l)
-			assertEqual(t, "error", errors.Is(err, errorBinding), true)
-		}
-	}
-	t.Run("source", testBinding(
-		pipe.Routing{
-			Source: (&mock.Source{
-				ErrorOnMake: errorBinding,
-			}).Source(),
-			Processors: pipe.Processors(
-				(&mock.Processor{}).Processor(),
-			),
-			Sink: (&mock.Sink{}).Sink(),
-		},
-	))
-	t.Run("processor", testBinding(
-		pipe.Routing{
-			Source: (&mock.Source{}).Source(),
-			Processors: pipe.Processors(
-				(&mock.Processor{
-					ErrorOnMake: errorBinding,
-				}).Processor(),
-			),
-			Sink: (&mock.Sink{}).Sink(),
-		},
-	))
-	t.Run("sink", testBinding(
-		pipe.Routing{
-			Source: (&mock.Source{}).Source(),
-			Processors: pipe.Processors(
-				(&mock.Processor{}).Processor(),
-			),
-			Sink: (&mock.Sink{
-				ErrorOnMake: errorBinding,
-			}).Sink(),
-		},
-	))
 }
 
 func TestAddLine(t *testing.T) {
