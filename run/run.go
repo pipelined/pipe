@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"fmt"
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mutable"
@@ -205,14 +206,23 @@ func (r *Run) startLineMut(l *pipe.Line, cancelFn context.CancelFunc) mutable.Mu
 		if e, ok := r.execCtxs[l.Context]; ok {
 			r.Push(l.Mutate(func() error {
 				line := runtime.LineExecutor(l, e.mutations)
-				linesEx := e.executor.(*runtime.Lines)
-				linesEx.Lines = append(linesEx.Lines, line)
-				cancelFn()
-				return nil
+				err := line.Start(r.ctx)
+				if err == nil {
+					linesEx := e.executor.(*runtime.Lines)
+					linesEx.Lines = append(linesEx.Lines, line)
+					cancelFn()
+					return nil
+				}
+
+				if flushErr := line.Flush(r.ctx); flushErr != nil {
+					err = fmt.Errorf("error flushing lines: %w during start error: %v", flushErr, err)
+				}
+				return err
 			}))
 			return nil
 		}
 		r.bindSync(l)
+		r.merger.add(r.startLine(r.ctx, l)...)
 		cancelFn()
 		return nil
 	})
@@ -238,7 +248,7 @@ func (r *Run) startLine(ctx context.Context, l *pipe.Line) []<-chan error {
 // will be closed when processor is started or the async exection is done.
 // No other processors should be starting in this line while the returned
 // channel is open.
-// func (a *Async) StartProcessor(l *Line, pos int) <-chan struct{} {
+// func (a *Run) StartProcessor(l *Line, pos int) <-chan struct{} {
 // 	if _, ok := a.execCtxs[l.Source.mctx]; !ok {
 // 		panic("line is not running")
 // 	}
@@ -249,15 +259,7 @@ func (r *Run) startLine(ctx context.Context, l *pipe.Line) []<-chan error {
 // 	prev := a.execCtxs[l.prev(pos)]
 // 	next := a.execCtxs[l.next(pos)]
 
-// 	r := runtime.Processor(
-// 		proc.mctx,
-// 		prev.runner.Out(),
-// 		prev.runner.OutputPool(),
-// 		proc.Output.poolAllocator(l.bufferSize),
-// 		runtime.ProcessFunc(proc.ProcessFunc),
-// 		runtime.HookFunc(proc.StartFunc),
-// 		runtime.HookFunc(proc.FlushFunc),
-// 	)
+// 	r := runtime.ProcessExecutor(p)
 // 	a.execCtxs[proc.mctx] = executionContext{
 // 		mutations: prev.mutations,
 // 		runner:    r,
@@ -269,12 +271,13 @@ func (r *Run) startLine(ctx context.Context, l *pipe.Line) []<-chan error {
 // 	return ctx.Done()
 // }
 
-// func (a *Runner) startRunnerMutFunc(r Starter, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
-// 	return func() {
-// 		a.merger.add(r.Start(a.ctx))
-// 		cancelFn()
-// 	}
-// }
+func (r *Run) startRunnerMutFunc(e runtime.Executor, mctx mutable.Context, cancelFn context.CancelFunc) mutable.MutatorFunc {
+	return func() error {
+		r.merger.add(runtime.Run(r.ctx, e))
+		cancelFn()
+		return nil
+	}
+}
 
 // Wait for successful finish or first error to occur.
 func (r *Run) Wait() error {

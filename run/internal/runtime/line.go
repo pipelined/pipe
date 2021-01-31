@@ -32,7 +32,7 @@ type (
 func (e *Lines) Start(ctx context.Context) error {
 	var startErr lineErrors
 	for i := range e.Lines {
-		if err := e.Lines[i].start(ctx); err != nil {
+		if err := e.Lines[i].Start(ctx); err != nil {
 			startErr = append(startErr, err)
 			break
 		}
@@ -47,7 +47,7 @@ func (e *Lines) Start(ctx context.Context) error {
 	// need to flush sucessfully started components
 	flushErr := e.Flush(ctx)
 	if flushErr != nil {
-		err = fmt.Errorf("error flushing lines during start error: %w", flushErr)
+		err = fmt.Errorf("error flushing lines: %w during start error: %v", flushErr, err)
 	}
 	return err
 }
@@ -56,7 +56,7 @@ func (e *Lines) Start(ctx context.Context) error {
 func (e *Lines) Flush(ctx context.Context) error {
 	var flushErr lineErrors
 	for i := range e.Lines {
-		if err := e.Lines[i].flush(ctx); err != nil {
+		if err := e.Lines[i].Flush(ctx); err != nil {
 			flushErr = append(flushErr, err)
 		}
 	}
@@ -72,7 +72,7 @@ func (e *Lines) Execute(ctx context.Context) error {
 			continue
 		}
 		if err == io.EOF {
-			if flushErr := e.Lines[i].flush(ctx); flushErr != nil {
+			if flushErr := e.Lines[i].Flush(ctx); flushErr != nil {
 				return flushErr
 			}
 			e.Lines = append(e.Lines[:i], e.Lines[i+1:]...)
@@ -102,7 +102,7 @@ func (l *Line) execute(ctx context.Context) error {
 	return err
 }
 
-func (l *Line) flush(ctx context.Context) error {
+func (l *Line) Flush(ctx context.Context) error {
 	var errs lineErrors
 	for i := 0; i < l.started; i++ {
 		if err := l.Executors[i].Flush(ctx); err != nil {
@@ -112,7 +112,7 @@ func (l *Line) flush(ctx context.Context) error {
 	return errs.ret()
 }
 
-func (l *Line) start(ctx context.Context) error {
+func (l *Line) Start(ctx context.Context) error {
 	var errs lineErrors
 	for _, e := range l.Executors {
 		if err := e.Start(ctx); err != nil {

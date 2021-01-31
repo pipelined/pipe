@@ -245,18 +245,25 @@ func TestAddLine(t *testing.T) {
 	assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
 }
 
-func TestAddLineSync(t *testing.T) {
+func TestAddLineSyncSameContext(t *testing.T) {
 	mctx := mutable.Mutable()
 	source1 := &mock.Source{
 		Limit:    862 * bufferSize,
 		Channels: 2,
 	}
 	sink1 := &mock.Sink{Discard: true}
-	route1 := pipe.Routing{
-		Context: mctx,
-		Source:  source1.Source(),
-		Sink:    sink1.Sink(),
-	}
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Routing{
+			Context: mctx,
+			Source:  source1.Source(),
+			Sink:    sink1.Sink(),
+		},
+	)
+	assertNil(t, "error", err)
+
+	// start
+	r := run.New(context.Background(), p)
 
 	source2 := &mock.Source{
 		Limit:    862 * bufferSize,
@@ -264,21 +271,11 @@ func TestAddLineSync(t *testing.T) {
 		Value:    2,
 	}
 	sink2 := &mock.Sink{Discard: true}
-	route2 := pipe.Routing{
+	l, err := p.AddLine(pipe.Routing{
 		Context: mctx,
 		Source:  source2.Source(),
 		Sink:    sink2.Sink(),
-	}
-
-	p, err := pipe.New(
-		bufferSize,
-		route1,
-	)
-	assertNil(t, "error", err)
-
-	// start
-	r := run.New(context.Background(), p)
-	l, err := p.AddLine(route2)
+	})
 	assertNil(t, "error", err)
 	<-r.StartLine(l)
 
@@ -287,6 +284,52 @@ func TestAddLineSync(t *testing.T) {
 	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
 	assertEqual(t, "messages", sink2.Counter.Messages, 862)
 	assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "sink 2 started", sink2.Started, true)
+	assertEqual(t, "sink 2 flushed", sink2.Flushed, true)
+}
+
+func TestAddLineSyncNewContext(t *testing.T) {
+	source1 := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink1 := &mock.Sink{Discard: true}
+
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Routing{
+			Context: mutable.Mutable(),
+			Source:  source1.Source(),
+			Sink:    sink1.Sink(),
+		},
+	)
+	assertNil(t, "error", err)
+
+	// start
+	r := run.New(context.Background(), p)
+
+	// add second route
+	source2 := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+		Value:    2,
+	}
+	sink2 := &mock.Sink{Discard: true}
+	l, err := p.AddLine(pipe.Routing{
+		Context: mutable.Mutable(),
+		Source:  source2.Source(),
+		Sink:    sink2.Sink(),
+	})
+	assertNil(t, "error", err)
+	<-r.StartLine(l)
+
+	err = r.Wait()
+	assertEqual(t, "messages", sink1.Counter.Messages, 862)
+	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", sink2.Counter.Messages, 862)
+	assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "sink 2 started", sink2.Started, true)
+	assertEqual(t, "sink 2 flushed", sink2.Flushed, true)
 }
 
 func assertNil(t *testing.T, name string, result interface{}) {
