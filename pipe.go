@@ -3,9 +3,11 @@ package pipe
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"pipelined.dev/signal"
 
+	"pipelined.dev/pipe/internal/fitting"
 	"pipelined.dev/pipe/mutable"
 )
 
@@ -62,11 +64,13 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
+		mutations chan mutable.Mutations
 		mutable.Context
 		Output SignalProperties
 		SourceFunc
 		StartFunc
 		FlushFunc
+		out output
 	}
 
 	// SourceFunc takes the output buffer and fills it with a signal data.
@@ -82,6 +86,8 @@ type (
 		ProcessFunc
 		StartFunc
 		FlushFunc
+		in  input
+		out output
 	}
 
 	// ProcessFunc takes the input buffer, applies processing logic and
@@ -97,6 +103,7 @@ type (
 		SinkFunc
 		StartFunc
 		FlushFunc
+		in input
 	}
 
 	// SinkFunc takes the input buffer and writes that to the underlying
@@ -108,6 +115,18 @@ type (
 	// FlushFunc provides a hook to flush all buffers for the component or
 	// execute any other form of finalization logic.
 	FlushFunc func(ctx context.Context) error
+)
+
+type (
+	output struct {
+		fitting.Sender
+		*signal.PoolAllocator
+	}
+
+	input struct {
+		fitting.Receiver
+		*signal.PoolAllocator
+	}
 )
 
 // New returns a new Pipe that binds multiple lines using the provided
@@ -222,6 +241,104 @@ func componentContext(routeContext mutable.Context) mutable.Context {
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 	return processors
+}
+
+// Execute does a single iteration of source component. io.EOF is returned
+// if context is done.
+func (s Source) Execute(ctx context.Context) error {
+	var ms mutable.Mutations
+	select {
+	case ms = <-s.mutations:
+		if err := ms.ApplyTo(s.Context); err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		s.out.Close()
+		return io.EOF
+	default:
+	}
+
+	output := s.out.GetFloat64()
+	var (
+		read int
+		err  error
+	)
+	if read, err = s.SourceFunc(output); err != nil {
+		s.out.Close()
+		output.Free(s.out.PoolAllocator)
+		return err
+	}
+	if read != output.Length() {
+		output = output.Slice(0, read)
+	}
+
+	if !s.out.Send(ctx, fitting.Message{Signal: output, Mutations: ms}) {
+		s.out.Close()
+		return io.EOF
+	}
+	return nil
+}
+
+// Execute does a single iteration of processor component. io.EOF is
+// returned if context is done.
+func (p Processor) Execute(ctx context.Context) error {
+	m, ok := p.in.Receive(ctx)
+	if !ok {
+		p.out.Close()
+		return io.EOF
+	}
+	if err := m.Mutations.ApplyTo(p.Context); err != nil {
+		return err
+	}
+
+	output := p.out.GetFloat64()
+	if processed, err := p.ProcessFunc(m.Signal, output); err != nil {
+		p.out.Close()
+		return err
+	} else if processed != p.out.Length {
+		output = output.Slice(0, processed)
+	}
+
+	if !p.out.Send(ctx, fitting.Message{Signal: output, Mutations: m.Mutations}) {
+		p.out.Close()
+		output.Free(p.out.PoolAllocator)
+		return io.EOF
+	}
+	m.Signal.Free(p.in.PoolAllocator)
+	return nil
+}
+
+// Execute does a single iteration of sink component. io.EOF is returned if
+// context is done.
+func (s Sink) Execute(ctx context.Context) error {
+	m, ok := s.in.Receive(ctx)
+	if !ok {
+		return io.EOF
+	}
+	if err := m.Mutations.ApplyTo(s.Context); err != nil {
+		return err
+	}
+
+	err := s.SinkFunc(m.Signal)
+	m.Signal.Free(s.in.PoolAllocator)
+	return err
+}
+
+// Start calls the start hook.
+func (fn StartFunc) Start(ctx context.Context) error {
+	return callHook(ctx, fn)
+}
+
+// Flush calls the flush hook.
+func (fn FlushFunc) Flush(ctx context.Context) error {
+	return callHook(ctx, fn)
+}
+
+func callHook(ctx context.Context, hook func(context.Context) error) error {
+	if hook == nil {
+		return nil
+	}
+	return hook(ctx)
 }
 
 func (l *Line) SourceOutputPool() *signal.PoolAllocator {
