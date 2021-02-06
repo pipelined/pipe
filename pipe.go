@@ -49,28 +49,27 @@ type (
 	Pipe struct {
 		bufferSize int
 		Lines      []*Line
+		contexts   map[mutable.Context]chan mutable.Mutations
 	}
 
 	// Line bounds the routing to the context and buffer size.
 	Line struct {
 		bufferSize int
 		mutable.Context
-		Source
-		Processors []Processor
-		Sink
+		Executors []executor
 	}
 
 	// Source is a source of signal data. Optinaly, mutability can be
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
-		mutations chan mutable.Mutations
 		mutable.Context
-		Output SignalProperties
 		SourceFunc
 		StartFunc
 		FlushFunc
-		out output
+		SignalProperties
+		out       connector
+		mutations chan mutable.Mutations
 	}
 
 	// SourceFunc takes the output buffer and fills it with a signal data.
@@ -82,12 +81,12 @@ type (
 	// up.
 	Processor struct {
 		mutable.Context
-		Output SignalProperties
 		ProcessFunc
 		StartFunc
 		FlushFunc
-		in  input
-		out output
+		SignalProperties
+		in  connector
+		out connector
 	}
 
 	// ProcessFunc takes the input buffer, applies processing logic and
@@ -99,11 +98,11 @@ type (
 	// up.
 	Sink struct {
 		mutable.Context
-		Output SignalProperties
 		SinkFunc
 		StartFunc
 		FlushFunc
-		in input
+		SignalProperties
+		in connector
 	}
 
 	// SinkFunc takes the input buffer and writes that to the underlying
@@ -118,16 +117,20 @@ type (
 )
 
 type (
-	output struct {
-		fitting.Sender
-		*signal.PoolAllocator
-	}
-
-	input struct {
-		fitting.Receiver
+	connector struct {
+		fitting.Fitting
 		*signal.PoolAllocator
 	}
 )
+
+// Executor executes a single DSP operation.
+type executor interface {
+	Execute(context.Context) error
+	Start(context.Context) error
+	Flush(context.Context) error
+}
+
+type fittingFunc func() fitting.Fitting
 
 // New returns a new Pipe that binds multiple lines using the provided
 // buffer size.
@@ -139,7 +142,7 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 	// will be cancelled if any binding failes.
 	lines := make([]*Line, 0, len(routes))
 	for i := range routes {
-		l, err := routes[i].line(bufferSize)
+		l, err := routes[i].line(nil, bufferSize)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +157,7 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 
 // AddLine creates the line for provied route and adds it to the pipe.
 func (p *Pipe) AddLine(r Routing) (*Line, error) {
-	l, err := r.line(p.bufferSize)
+	l, err := r.line(nil, p.bufferSize)
 	if err != nil {
 		return nil, err
 	}
@@ -162,73 +165,84 @@ func (p *Pipe) AddLine(r Routing) (*Line, error) {
 	return l, nil
 }
 
-func (l *Line) prev(pos int) mutable.Context {
-	if pos == 0 {
-		return l.Source.Context
+func (r Routing) line(mutations chan mutable.Mutations, bufferSize int) (*Line, error) {
+	var fitFn fitting.New
+	if r.Context.IsMutable() {
+		fitFn = fitting.Sync
+	} else {
+		fitFn = fitting.Async
 	}
-	return l.Processors[pos-1].Context
-}
 
-func (l *Line) next(pos int) mutable.Context {
-	if pos+1 == len(l.Processors) {
-		return l.Sink.Context
-	}
-	return l.Processors[pos+1].Context
-}
-
-func (fn SourceAllocatorFunc) allocate(mctx mutable.Context, bufferSize int) (Source, error) {
-	c, err := fn(mctx, bufferSize)
-	if err == nil {
-		c.Context = mctx
-	}
-	return c, err
-}
-
-func (fn ProcessorAllocatorFunc) allocate(mctx mutable.Context, bufferSize int, input SignalProperties) (Processor, error) {
-	c, err := fn(mctx, bufferSize, input)
-	if err == nil {
-		c.Context = mctx
-	}
-	return c, err
-}
-
-func (fn SinkAllocatorFunc) allocate(mctx mutable.Context, bufferSize int, input SignalProperties) (Sink, error) {
-	c, err := fn(mctx, bufferSize, input)
-	if err == nil {
-		c.Context = mctx
-	}
-	return c, err
-}
-
-func (r Routing) line(bufferSize int) (*Line, error) {
-	source, err := r.Source.allocate(componentContext(r.Context), bufferSize)
+	executors := make([]executor, 0, 2+len(r.Processors))
+	source, err := r.Source.allocate(componentContext(r.Context), bufferSize, fitFn)
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)
 	}
+	source.mutations = mutations
+	executors = append(executors, source)
 
-	input := source.Output
-	processors := make([]Processor, 0, len(r.Processors))
+	var (
+		input      = source.out
+		inputProps = source.SignalProperties
+	)
 	for i := range r.Processors {
-		processor, err := r.Processors[i].allocate(componentContext(r.Context), bufferSize, input)
+		processor, err := r.Processors[i].allocate(componentContext(r.Context), bufferSize, inputProps, fitFn)
 		if err != nil {
 			return nil, fmt.Errorf("processor: %w", err)
 		}
-		processors = append(processors, processor)
-		input = processor.Output
+		processor.in = input
+		input = processor.out
+		inputProps = processor.SignalProperties
+		executors = append(executors, processor)
 	}
 
-	sink, err := r.Sink.allocate(componentContext(r.Context), bufferSize, input)
+	sink, err := r.Sink.allocate(componentContext(r.Context), bufferSize, inputProps)
 	if err != nil {
 		return nil, fmt.Errorf("sink: %w", err)
 	}
+	sink.in = input
+	executors = append(executors, sink)
 
 	return &Line{
 		Context:    r.Context,
 		bufferSize: bufferSize,
-		Source:     source,
-		Processors: processors,
-		Sink:       sink,
+		Executors:  executors,
 	}, nil
+}
+
+func (fn SourceAllocatorFunc) allocate(ctx mutable.Context, bufferSize int, fitFn fitting.New) (Source, error) {
+	c, err := fn(ctx, bufferSize)
+	if err != nil {
+		return Source{}, err
+	}
+	c.Context = ctx
+	c.out = connector{
+		Fitting:       fitFn(),
+		PoolAllocator: c.SignalProperties.poolAllocator(bufferSize),
+	}
+	return c, nil
+}
+
+func (fn ProcessorAllocatorFunc) allocate(ctx mutable.Context, bufferSize int, input SignalProperties, fitFn fitting.New) (Processor, error) {
+	c, err := fn(ctx, bufferSize, input)
+	if err != nil {
+		return Processor{}, err
+	}
+	c.Context = ctx
+	c.out = connector{
+		Fitting:       fitFn(),
+		PoolAllocator: c.SignalProperties.poolAllocator(bufferSize),
+	}
+	return c, nil
+}
+
+func (fn SinkAllocatorFunc) allocate(ctx mutable.Context, bufferSize int, input SignalProperties) (Sink, error) {
+	c, err := fn(ctx, bufferSize, input)
+	if err != nil {
+		return Sink{}, err
+	}
+	c.Context = ctx
+	return c, nil
 }
 
 func componentContext(routeContext mutable.Context) mutable.Context {
@@ -341,18 +355,18 @@ func callHook(ctx context.Context, hook func(context.Context) error) error {
 	return hook(ctx)
 }
 
-func (l *Line) SourceOutputPool() *signal.PoolAllocator {
-	return l.Source.Output.PoolAllocator(l.bufferSize)
-}
+// func (l *Line) SourceOutputPool() *signal.PoolAllocator {
+// 	return l.Source.Output.PoolAllocator(l.bufferSize)
+// }
 
-func (l *Line) SinkOutputPool() *signal.PoolAllocator {
-	return l.Sink.Output.PoolAllocator(l.bufferSize)
-}
+// func (l *Line) SinkOutputPool() *signal.PoolAllocator {
+// 	return l.Sink.Output.PoolAllocator(l.bufferSize)
+// }
 
-func (l *Line) ProcessorOutputPool(i int) *signal.PoolAllocator {
-	return l.Processors[i].Output.PoolAllocator(l.bufferSize)
-}
+// func (l *Line) ProcessorOutputPool(i int) *signal.PoolAllocator {
+// 	return l.Processors[i].Output.PoolAllocator(l.bufferSize)
+// }
 
-func (sp SignalProperties) PoolAllocator(bufferSize int) *signal.PoolAllocator {
+func (sp SignalProperties) poolAllocator(bufferSize int) *signal.PoolAllocator {
 	return signal.GetPoolAllocator(sp.Channels, bufferSize, bufferSize)
 }

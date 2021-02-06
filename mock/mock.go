@@ -77,7 +77,7 @@ func (m *Source) Source() pipe.SourceAllocatorFunc {
 	return func(mut mutable.Context, bufferSize int) (pipe.Source, error) {
 		m.Mutator.Mutability = mut
 		return pipe.Source{
-				Output: pipe.SignalProperties{
+				SignalProperties: pipe.SignalProperties{
 					SampleRate: m.SampleRate,
 					Channels:   m.Channels,
 				},
@@ -141,9 +141,9 @@ func (m *Processor) Processor() pipe.ProcessorAllocatorFunc {
 	return func(mut mutable.Context, bufferSize int, props pipe.SignalProperties) (pipe.Processor, error) {
 		m.Mutator.Mutability = mut
 		return pipe.Processor{
-			Output:    props,
-			StartFunc: m.Starter.Start,
-			FlushFunc: m.Flusher.Flush,
+			SignalProperties: props,
+			StartFunc:        m.Starter.Start,
+			FlushFunc:        m.Flusher.Flush,
 			ProcessFunc: func(in, out signal.Floating) (int, error) {
 				if m.ErrorOnCall != nil {
 					return 0, m.ErrorOnCall

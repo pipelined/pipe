@@ -25,6 +25,9 @@ type (
 		Receive(context.Context) (Message, bool)
 	}
 
+	// New is a func that returns new fitting.
+	New func() Fitting
+
 	// Fitting implements both Sender and Receiver. It's used to conenct
 	// two pipe components.
 	Fitting interface {

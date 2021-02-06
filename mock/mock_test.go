@@ -27,7 +27,7 @@ func TestSource(t *testing.T) {
 			m := mutable.Mutable()
 			src, _ := source.Source()(m, test.bufferSize)
 			buf := signal.Allocator{
-				Channels: src.Output.Channels,
+				Channels: src.SignalProperties.Channels,
 				Length:   test.bufferSize,
 				Capacity: test.bufferSize,
 			}.Float64()
@@ -53,7 +53,7 @@ func TestSource(t *testing.T) {
 		m := mutable.Mutable()
 		source, _ := mockSource.Source()(m, 10)
 		source.SourceFunc(signal.Allocator{
-			Channels: source.Output.Channels,
+			Channels: source.SignalProperties.Channels,
 			Length:   test.bufferSize,
 			Capacity: test.bufferSize,
 		}.Float64())
