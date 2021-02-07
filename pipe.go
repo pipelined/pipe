@@ -48,14 +48,13 @@ type (
 	// Pipe is a graph formed with multiple lines of bound DSP components.
 	Pipe struct {
 		bufferSize int
-		Lines      []*Line
+		lines      map[chan mutable.Mutations]Line //TODO: rename because can hold multiple sync lines
 		contexts   map[mutable.Context]chan mutable.Mutations
 	}
 
 	// Line bounds the routing to the context and buffer size.
+	//TODO: rename because can hold multiple sync lines
 	Line struct {
-		bufferSize int
-		mutable.Context
 		Executors []executor
 	}
 
@@ -130,53 +129,69 @@ type executor interface {
 	Flush(context.Context) error
 }
 
-type fittingFunc func() fitting.Fitting
-
 // New returns a new Pipe that binds multiple lines using the provided
 // buffer size.
 func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 	if len(routes) == 0 {
 		panic("pipe without lines")
 	}
-	// context for pipe binding.
-	// will be cancelled if any binding failes.
-	lines := make([]*Line, 0, len(routes))
-	for i := range routes {
-		l, err := routes[i].line(nil, bufferSize)
-		if err != nil {
-			return nil, err
+	lines := make(map[chan mutable.Mutations]Line)
+	contexts := make(map[mutable.Context]chan mutable.Mutations)
+	for _, r := range routes {
+		if !r.Context.IsMutable() { // async execution
+			mutations := make(chan mutable.Mutations, 1)
+			line, ctx, err := r.line(mutations, bufferSize, fitting.Async)
+			if err != nil {
+				return nil, err
+			}
+			lines[mutations] = line
+			contexts[ctx] = mutations
+			continue
 		}
-		lines = append(lines, l)
+
+		// sync exec
+		if mutations, ok := contexts[r.Context]; !ok {
+			mutations = make(chan mutable.Mutations, 1)
+			line, ctx, err := r.line(mutations, bufferSize, fitting.Async)
+			if err != nil {
+				return nil, err
+			}
+			lines[mutations] = line
+			contexts[ctx] = mutations
+		} else {
+			line, _, err := r.line(mutations, bufferSize, fitting.Async)
+			if err != nil {
+				return nil, err
+			}
+			e := lines[mutations]
+			e.Executors = append(e.Executors, line.Executors...)
+			lines[mutations] = e
+		}
 	}
 
 	return &Pipe{
 		bufferSize: bufferSize,
-		Lines:      lines,
+		lines:      lines,
 	}, nil
 }
 
 // AddLine creates the line for provied route and adds it to the pipe.
-func (p *Pipe) AddLine(r Routing) (*Line, error) {
-	l, err := r.line(nil, p.bufferSize)
-	if err != nil {
-		return nil, err
-	}
-	p.Lines = append(p.Lines, l)
-	return l, nil
-}
+// func (p *Pipe) AddLine(r Routing) (Line, error) {
+// 	l, err := r.line(nil, p.bufferSize)
+// 	if err != nil {
+// 		return Line{}, err
+// 	}
+// 	p.lines = append(p.Lines, l)
+// 	return l, nil
+// }
 
-func (r Routing) line(mutations chan mutable.Mutations, bufferSize int) (*Line, error) {
-	var fitFn fitting.New
-	if r.Context.IsMutable() {
-		fitFn = fitting.Sync
-	} else {
-		fitFn = fitting.Async
-	}
-
+// line binds routing components together. Line is a set of components
+// ready for execution. If line is async then source context is returned.
+func (r Routing) line(mutations chan mutable.Mutations, bufferSize int, fitFn fitting.New) (Line, mutable.Context, error) {
 	executors := make([]executor, 0, 2+len(r.Processors))
 	source, err := r.Source.allocate(componentContext(r.Context), bufferSize, fitFn)
 	if err != nil {
-		return nil, fmt.Errorf("source: %w", err)
+		return Line{}, mutable.Immutable(), fmt.Errorf("source: %w", err)
 	}
 	source.mutations = mutations
 	executors = append(executors, source)
@@ -188,26 +203,21 @@ func (r Routing) line(mutations chan mutable.Mutations, bufferSize int) (*Line, 
 	for i := range r.Processors {
 		processor, err := r.Processors[i].allocate(componentContext(r.Context), bufferSize, inputProps, fitFn)
 		if err != nil {
-			return nil, fmt.Errorf("processor: %w", err)
+			return Line{}, mutable.Immutable(), fmt.Errorf("processor: %w", err)
 		}
-		processor.in = input
-		input = processor.out
+		processor.in, input = input, processor.out
 		inputProps = processor.SignalProperties
 		executors = append(executors, processor)
 	}
 
 	sink, err := r.Sink.allocate(componentContext(r.Context), bufferSize, inputProps)
 	if err != nil {
-		return nil, fmt.Errorf("sink: %w", err)
+		return Line{}, mutable.Immutable(), fmt.Errorf("sink: %w", err)
 	}
 	sink.in = input
 	executors = append(executors, sink)
 
-	return &Line{
-		Context:    r.Context,
-		bufferSize: bufferSize,
-		Executors:  executors,
-	}, nil
+	return Line{Executors: executors}, source.Context, nil
 }
 
 func (fn SourceAllocatorFunc) allocate(ctx mutable.Context, bufferSize int, fitFn fitting.New) (Source, error) {
