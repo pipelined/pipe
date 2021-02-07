@@ -14,8 +14,7 @@ import (
 type (
 	// Lines executes multiple lines in the same goroutine.
 	Lines struct {
-		Mutations chan mutable.Mutations
-		Lines     []Line
+		Lines []Line
 	}
 
 	// Line represents a sequence of components executors.

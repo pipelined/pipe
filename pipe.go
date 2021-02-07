@@ -153,20 +153,22 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 		// sync exec
 		if mutations, ok := contexts[r.Context]; !ok {
 			mutations = make(chan mutable.Mutations, 1)
-			executor, ctx, err := r.executor(mutations, bufferSize, fitting.Async)
+			ex, ctx, err := r.executor(mutations, bufferSize, fitting.Async)
 			if err != nil {
 				return nil, err
 			}
-			executors[mutations] = executor
+			executors[mutations] = executor{
+				Executors: []run.Executor{ex},
+			}
 			contexts[ctx] = mutations
 		} else {
-			newExecutor, _, err := r.executor(mutations, bufferSize, fitting.Async)
+			newEx, _, err := r.executor(mutations, bufferSize, fitting.Async)
 			if err != nil {
 				return nil, err
 			}
-			executor := executors[mutations]
-			executor.Executors = append(executor.Executors, newExecutor.Executors...)
-			executors[mutations] = executor
+			ex := executors[mutations]
+			ex.Executors = append(ex.Executors, newEx)
+			executors[mutations] = ex
 		}
 	}
 
