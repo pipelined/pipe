@@ -1,7 +1,9 @@
 package pipe_test
 
 import (
+	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"pipelined.dev/pipe"
@@ -67,6 +69,34 @@ func TestLineBindingFail(t *testing.T) {
 			Sink: (&mock.Sink{}).Sink(),
 		},
 	))
+}
+
+func TestSimplePipe(t *testing.T) {
+	const bufferSize = 512
+	source := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+
+	proc1 := &mock.Processor{}
+	sink1 := &mock.Sink{Discard: true}
+
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Routing{
+			Source:     source.Source(),
+			Processors: pipe.Processors(proc1.Processor()),
+			Sink:       sink1.Sink(),
+		},
+	)
+	assertNil(t, "error", err)
+
+	// start
+	err = pipe.Wait(p.Run(context.Background()))
+	assertNil(t, "error", err)
+
+	assertEqual(t, "messages", source.Counter.Messages, 862)
+	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 }
 
 // func TestInsertProcessor(t *testing.T) {
@@ -141,3 +171,15 @@ func TestLineBindingFail(t *testing.T) {
 // 	t.Run("before processor", insert(0))
 // 	t.Run("before sink", insert(1))
 // }
+
+func assertNil(t *testing.T, name string, result interface{}) {
+	t.Helper()
+	assertEqual(t, name, result, nil)
+}
+
+func assertEqual(t *testing.T, name string, result, expected interface{}) {
+	t.Helper()
+	if !reflect.DeepEqual(expected, result) {
+		t.Fatalf("%v\nresult: \t%T\t%+v \nexpected: \t%T\t%+v", name, result, result, expected, expected)
+	}
+}

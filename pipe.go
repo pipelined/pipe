@@ -7,7 +7,6 @@ import (
 	"pipelined.dev/signal"
 
 	"pipelined.dev/pipe/internal/fitting"
-	"pipelined.dev/pipe/internal/run"
 	"pipelined.dev/pipe/mutable"
 )
 
@@ -38,9 +37,13 @@ type (
 type (
 	// Pipe is a graph formed with multiple lines of bound DSP components.
 	Pipe struct {
-		bufferSize int
-		executors  map[chan mutable.Mutations]executor
-		contexts   map[mutable.Context]chan mutable.Mutations
+		context       mutable.Context
+		bufferSize    int
+		runners       map[chan mutable.Mutations]runner
+		contexts      map[mutable.Context]chan mutable.Mutations
+		mutationsChan chan []mutable.Mutation
+		mutationsCache
+		errorMerger
 	}
 
 	// Source is a source of signal data. Optinaly, mutability can be
@@ -105,52 +108,123 @@ type (
 	}
 )
 
+type mutationsCache map[chan mutable.Mutations]mutable.Mutations
+
+func newMutationsCache(execCtxs map[mutable.Context]chan mutable.Mutations, initializers []mutable.Mutation) mutationsCache {
+	mutCache := make(map[chan mutable.Mutations]mutable.Mutations)
+	for i := range initializers {
+		if c, ok := execCtxs[initializers[i].Context]; ok {
+			mutCache[c] = mutCache[c].Put(initializers[i])
+		}
+	}
+	return mutCache
+}
+
 // New returns a new Pipe that binds multiple lines using the provided
 // buffer size.
 func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 	if len(routes) == 0 {
 		panic("pipe without lines")
 	}
-	executors := make(map[chan mutable.Mutations]executor)
+	runners := make(map[chan mutable.Mutations]runner)
 	contexts := make(map[mutable.Context]chan mutable.Mutations)
 	for _, r := range routes {
 		if !r.Context.IsMutable() { // async execution
 			mutations := make(chan mutable.Mutations, 1)
-			executor, ctx, err := r.executor(mutations, bufferSize, fitting.Async)
+			r, err := r.runner(mutations, bufferSize, fitting.Async)
 			if err != nil {
 				return nil, err
 			}
-			executors[mutations] = executor
-			contexts[ctx] = mutations
+			runners[mutations] = r
+			contexts[r.Context] = mutations
 			continue
 		}
 
 		// sync exec
 		if mutations, ok := contexts[r.Context]; !ok {
 			mutations = make(chan mutable.Mutations, 1)
-			ex, ctx, err := r.executor(mutations, bufferSize, fitting.Async)
+			r, err := r.runner(mutations, bufferSize, fitting.Async)
 			if err != nil {
 				return nil, err
 			}
-			executors[mutations] = executor{
-				Executors: []run.Executor{ex},
+			runners[mutations] = multilineRunner{
+				lines: []lineRunner{r},
 			}
-			contexts[ctx] = mutations
+			contexts[r.Context] = mutations
 		} else {
-			newEx, _, err := r.executor(mutations, bufferSize, fitting.Async)
+			newR, err := r.runner(mutations, bufferSize, fitting.Async)
 			if err != nil {
 				return nil, err
 			}
-			ex := executors[mutations]
-			ex.Executors = append(ex.Executors, newEx)
-			executors[mutations] = ex
+			r := runners[mutations].(multilineRunner)
+			r.lines = append(r.lines, newR)
+			runners[mutations] = r
 		}
 	}
 
 	return &Pipe{
 		bufferSize: bufferSize,
-		executors:  executors,
+		runners:    runners,
+		errorMerger: errorMerger{
+			errorChan: make(chan error, 1),
+		},
 	}, nil
+}
+
+func (p *Pipe) Run(ctx context.Context, initializers ...mutable.Mutation) <-chan error {
+	// cancel is required to stop the pipe in case of error
+	ctx, cancelFn := context.WithCancel(ctx)
+	// push initializers before start
+	mutCache := newMutationsCache(p.contexts, initializers)
+	mutCache.push(ctx)
+	for _, r := range p.runners {
+		r.run(ctx, &p.errorMerger)
+	}
+	go p.errorMerger.wait()
+	errc := make(chan error, 1)
+	go p.start(ctx, mutCache, errc, cancelFn)
+	return errc
+}
+
+func (p *Pipe) start(ctx context.Context, mc mutationsCache, errc chan error, cancelFn context.CancelFunc) {
+	defer close(errc)
+	for {
+		select {
+		case ms := <-p.mutationsChan:
+			for _, m := range ms {
+				// mutate the runner itself
+				if m.Context == p.context {
+					m.Apply()
+				} else {
+					if c, ok := p.contexts[m.Context]; ok {
+						mc[c] = mc[c].Put(m)
+					} else {
+						panic("no listener found!")
+					}
+				}
+			}
+			mc.push(ctx)
+		case err, ok := <-p.errorMerger.errorChan:
+			// merger has buffer of one error, if more errors happen, they
+			// will be ignored.
+			if ok {
+				cancelFn()
+				p.errorMerger.drain()
+				errc <- err
+			}
+			return
+		}
+	}
+}
+
+// Wait for successful finish or first error to occur.
+func Wait(errc <-chan error) error {
+	for err := range errc {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // AddLine creates the line for provied route and adds it to the pipe.
@@ -268,4 +342,15 @@ func callHook(ctx context.Context, hook func(context.Context) error) error {
 
 func (sp SignalProperties) poolAllocator(bufferSize int) *signal.PoolAllocator {
 	return signal.GetPoolAllocator(sp.Channels, bufferSize, bufferSize)
+}
+
+func (mc mutationsCache) push(ctx context.Context) {
+	for c, m := range mc {
+		select {
+		case c <- m:
+			delete(mc, c)
+		case <-ctx.Done():
+			return
+		}
+	}
 }
