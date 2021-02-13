@@ -10,6 +10,8 @@ import (
 	"pipelined.dev/pipe/mock"
 )
 
+const bufferSize = 512
+
 func TestLineBindingFail(t *testing.T) {
 	var (
 		errorBinding = errors.New("binding error")
@@ -72,7 +74,6 @@ func TestLineBindingFail(t *testing.T) {
 }
 
 func TestSimplePipe(t *testing.T) {
-	const bufferSize = 512
 	source := &mock.Source{
 		Limit:    862 * bufferSize,
 		Channels: 2,
@@ -97,6 +98,33 @@ func TestSimplePipe(t *testing.T) {
 
 	assertEqual(t, "messages", source.Counter.Messages, 862)
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
+}
+
+func TestReset(t *testing.T) {
+	source := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink := &mock.Sink{Discard: true}
+
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Routing{
+			Source: source.Source(),
+			Sink:   sink.Sink(),
+		},
+	)
+	assertNil(t, "error", err)
+
+	err = pipe.Wait(p.Run(context.Background()))
+	assertNil(t, "error", err)
+	assertEqual(t, "messages", source.Counter.Messages, 862)
+	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
+
+	err = pipe.Wait(p.Run(context.Background(), source.Reset()))
+	assertNil(t, "error", err)
+	assertEqual(t, "messages second run", sink.Counter.Messages, 2*862)
+	assertEqual(t, "samples second run", sink.Counter.Samples, 2*862*bufferSize)
 }
 
 // func TestInsertProcessor(t *testing.T) {

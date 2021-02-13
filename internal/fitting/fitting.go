@@ -16,6 +16,7 @@ type (
 
 	// Sender sends the message.
 	Sender interface {
+		Bind()
 		Send(context.Context, Message) bool
 		Close()
 	}
@@ -40,7 +41,9 @@ type (
 		message Message
 	}
 
-	asyncFitting chan Message
+	asyncFitting struct {
+		messageChan chan Message
+	}
 )
 
 // Sync is a fitting that connects two components executed in the same
@@ -52,7 +55,7 @@ func Sync() Fitting {
 // Async is a fitting that connects two components executed in different
 // goroutines.
 func Async() Fitting {
-	return asyncFitting(make(chan Message, 1))
+	return &asyncFitting{}
 }
 
 func (l *syncFitting) Send(_ context.Context, m Message) bool {
@@ -75,28 +78,34 @@ func (l *syncFitting) Close() {
 	return
 }
 
-func (l asyncFitting) Send(ctx context.Context, m Message) bool {
+func (l *syncFitting) Bind() {}
+
+func (l *asyncFitting) Send(ctx context.Context, m Message) bool {
 	select {
 	case <-ctx.Done():
 		return false
-	case l <- m:
+	case l.messageChan <- m:
 		return true
 	}
 }
 
-func (l asyncFitting) Receive(ctx context.Context) (Message, bool) {
+func (l *asyncFitting) Receive(ctx context.Context) (Message, bool) {
 	var (
 		m  Message
 		ok bool
 	)
 	select {
 	case <-ctx.Done():
-	case m, ok = <-l:
+	case m, ok = <-l.messageChan:
 	}
 	return m, ok
 }
 
-func (l asyncFitting) Close() {
-	close(l)
+func (l *asyncFitting) Close() {
+	close(l.messageChan)
 	return
+}
+
+func (l *asyncFitting) Bind() {
+	l.messageChan = make(chan Message, 1)
 }

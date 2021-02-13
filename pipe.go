@@ -50,13 +50,13 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
+		mutations chan mutable.Mutations
 		mutable.Context
 		SourceFunc
 		StartFunc
 		FlushFunc
 		SignalProperties
-		out       connector
-		mutations chan mutable.Mutations
+		out
 	}
 
 	// SourceFunc takes the output buffer and fills it with a signal data.
@@ -72,8 +72,8 @@ type (
 		StartFunc
 		FlushFunc
 		SignalProperties
-		in  connector
-		out connector
+		in
+		out
 	}
 
 	// ProcessFunc takes the input buffer, applies processing logic and
@@ -89,7 +89,7 @@ type (
 		StartFunc
 		FlushFunc
 		SignalProperties
-		in connector
+		in
 	}
 
 	// SinkFunc takes the input buffer and writes that to the underlying
@@ -104,6 +104,16 @@ type (
 
 	connector struct {
 		fitting.Fitting
+		*signal.PoolAllocator
+	}
+
+	out struct {
+		fitting.Sender
+		*signal.PoolAllocator
+	}
+
+	in struct {
+		fitting.Receiver
 		*signal.PoolAllocator
 	}
 )
@@ -165,9 +175,7 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 	return &Pipe{
 		bufferSize: bufferSize,
 		runners:    runners,
-		errorMerger: errorMerger{
-			errorChan: make(chan error, 1),
-		},
+		contexts:   contexts,
 	}, nil
 }
 
@@ -177,6 +185,8 @@ func (p *Pipe) Run(ctx context.Context, initializers ...mutable.Mutation) <-chan
 	// push initializers before start
 	mutCache := newMutationsCache(p.contexts, initializers)
 	mutCache.push(ctx)
+
+	p.errorMerger.errorChan = make(chan error, 1)
 	for _, r := range p.runners {
 		r.run(ctx, &p.errorMerger)
 	}
@@ -286,6 +296,8 @@ func (p Processor) Execute(ctx context.Context) error {
 		p.out.Close()
 		return io.EOF
 	}
+	defer m.Signal.Free(p.in.PoolAllocator)
+
 	if err := m.Mutations.ApplyTo(p.Context); err != nil {
 		return err
 	}
@@ -303,7 +315,6 @@ func (p Processor) Execute(ctx context.Context) error {
 		output.Free(p.out.PoolAllocator)
 		return io.EOF
 	}
-	m.Signal.Free(p.in.PoolAllocator)
 	return nil
 }
 
@@ -314,12 +325,12 @@ func (s Sink) Execute(ctx context.Context) error {
 	if !ok {
 		return io.EOF
 	}
+	defer m.Signal.Free(s.in.PoolAllocator)
 	if err := m.Mutations.ApplyTo(s.Context); err != nil {
 		return err
 	}
 
 	err := s.SinkFunc(m.Signal)
-	m.Signal.Free(s.in.PoolAllocator)
 	return err
 }
 

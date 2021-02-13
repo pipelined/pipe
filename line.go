@@ -9,6 +9,7 @@ import (
 	"pipelined.dev/pipe/internal/fitting"
 	"pipelined.dev/pipe/internal/run"
 	"pipelined.dev/pipe/mutable"
+	"pipelined.dev/signal"
 )
 
 type (
@@ -42,6 +43,13 @@ type (
 )
 
 func (r lineRunner) run(ctx context.Context, merger *errorMerger) {
+	e := r.executors[0].(Source)
+	e.out.Sender.Bind()
+
+	for i := 1; i < len(r.executors)-1; i++ {
+		e := r.executors[i].(Processor)
+		e.out.Sender.Bind()
+	}
 	for _, e := range r.executors {
 		merger.add(run.Run(ctx, e))
 	}
@@ -55,32 +63,46 @@ func (r multilineRunner) run(ctx context.Context, merger *errorMerger) {
 // ready for execution. If runner is async then source context is returned.
 func (r Routing) runner(mutations chan mutable.Mutations, bufferSize int, fitFn fitting.New) (lineRunner, error) {
 	executors := make([]run.Executor, 0, 2+len(r.Processors))
-	source, err := r.Source.allocate(componentContext(r.Context), bufferSize, fitFn)
+	source, err := r.Source.allocate(componentContext(r.Context), bufferSize)
 	if err != nil {
 		return lineRunner{}, fmt.Errorf("source: %w", err)
 	}
 	source.mutations = mutations
+
+	// link holds properties that links two executors
+	link := struct {
+		fitting.Fitting
+		*signal.PoolAllocator
+		SignalProperties
+	}{
+		Fitting:          fitFn(),
+		PoolAllocator:    source.out.PoolAllocator,
+		SignalProperties: source.SignalProperties,
+	}
+	source.out.Sender = link.Fitting
 	executors = append(executors, source)
 
-	var (
-		input      = source.out
-		inputProps = source.SignalProperties
-	)
+	// processors := make([]Processor, 0, len(r.Processors))
 	for i := range r.Processors {
-		processor, err := r.Processors[i].allocate(componentContext(r.Context), bufferSize, inputProps, fitFn)
+		processor, err := r.Processors[i].allocate(componentContext(r.Context), bufferSize, link.SignalProperties)
 		if err != nil {
 			return lineRunner{}, fmt.Errorf("processor: %w", err)
 		}
-		processor.in, input = input, processor.out
-		inputProps = processor.SignalProperties
+		processor.in.PoolAllocator = link.PoolAllocator
+		processor.in.Receiver = link.Fitting
+		link.Fitting = fitFn()
+		processor.out.Sender = link.Fitting
+		link.SignalProperties = processor.SignalProperties
+		link.PoolAllocator = processor.out.PoolAllocator
 		executors = append(executors, processor)
 	}
 
-	sink, err := r.Sink.allocate(componentContext(r.Context), bufferSize, inputProps)
+	sink, err := r.Sink.allocate(componentContext(r.Context), bufferSize, link.SignalProperties)
 	if err != nil {
 		return lineRunner{}, fmt.Errorf("sink: %w", err)
 	}
-	sink.in = input
+	sink.in.PoolAllocator = link.PoolAllocator
+	sink.in.Receiver = link.Fitting
 	executors = append(executors, sink)
 
 	return lineRunner{
@@ -89,27 +111,25 @@ func (r Routing) runner(mutations chan mutable.Mutations, bufferSize int, fitFn 
 	}, nil
 }
 
-func (fn SourceAllocatorFunc) allocate(ctx mutable.Context, bufferSize int, fitFn fitting.New) (Source, error) {
+func (fn SourceAllocatorFunc) allocate(ctx mutable.Context, bufferSize int) (Source, error) {
 	c, err := fn(ctx, bufferSize)
 	if err != nil {
 		return Source{}, err
 	}
 	c.Context = ctx
-	c.out = connector{
-		Fitting:       fitFn(),
+	c.out = out{
 		PoolAllocator: c.SignalProperties.poolAllocator(bufferSize),
 	}
 	return c, nil
 }
 
-func (fn ProcessorAllocatorFunc) allocate(ctx mutable.Context, bufferSize int, input SignalProperties, fitFn fitting.New) (Processor, error) {
+func (fn ProcessorAllocatorFunc) allocate(ctx mutable.Context, bufferSize int, input SignalProperties) (Processor, error) {
 	c, err := fn(ctx, bufferSize, input)
 	if err != nil {
 		return Processor{}, err
 	}
 	c.Context = ctx
-	c.out = connector{
-		Fitting:       fitFn(),
+	c.out = out{
 		PoolAllocator: c.SignalProperties.poolAllocator(bufferSize),
 	}
 	return c, nil
