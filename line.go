@@ -13,9 +13,9 @@ import (
 )
 
 type (
-	// Routing defines sequence of DSP components allocators. It has a
+	// Line defines sequence of DSP components allocators. It has a
 	// single source, zero or many processors and single sink.
-	Routing struct {
+	Line struct {
 		mutable.Context
 		Source     SourceAllocatorFunc
 		Processors []ProcessorAllocatorFunc
@@ -26,15 +26,15 @@ type (
 		run(context.Context, *errorMerger)
 	}
 
-	lineRunner struct {
+	LineRunner struct {
 		mutable.Context
 		started   int
 		executors []run.Executor
 	}
 
-	multilineRunner struct {
+	MultilineRunner struct {
 		mutable.Context
-		lines []lineRunner
+		Lines []LineRunner
 	}
 
 	// execErrors wraps errors that might occure when multiple executors
@@ -42,7 +42,7 @@ type (
 	execErrors []error
 )
 
-func (r lineRunner) run(ctx context.Context, merger *errorMerger) {
+func (r LineRunner) run(ctx context.Context, merger *errorMerger) {
 	e := r.executors[0].(Source)
 	e.out.Sender.Bind()
 
@@ -55,17 +55,21 @@ func (r lineRunner) run(ctx context.Context, merger *errorMerger) {
 	}
 }
 
-func (r multilineRunner) run(ctx context.Context, merger *errorMerger) {
+func (r *MultilineRunner) run(ctx context.Context, merger *errorMerger) {
 	merger.add(run.Run(ctx, r))
 }
 
-// runner binds routing components together. Line is a set of components
-// ready for execution. If runner is async then source context is returned.
-func (r Routing) runner(mutations chan mutable.Mutations, bufferSize int, fitFn fitting.New) (lineRunner, error) {
+// Runner binds routing components together. Line is a set of components
+// ready for execution. If Runner is async then source context is returned.
+func (r Line) Runner(bufferSize int, mutations chan mutable.Mutations) (LineRunner, error) {
+	fitFn := fitting.Async
+	if r.Context.IsMutable() {
+		fitFn = fitting.Sync
+	}
 	executors := make([]run.Executor, 0, 2+len(r.Processors))
 	source, err := r.Source.allocate(componentContext(r.Context), bufferSize)
 	if err != nil {
-		return lineRunner{}, fmt.Errorf("source: %w", err)
+		return LineRunner{}, fmt.Errorf("source: %w", err)
 	}
 	source.mutations = mutations
 
@@ -86,7 +90,7 @@ func (r Routing) runner(mutations chan mutable.Mutations, bufferSize int, fitFn 
 	for i := range r.Processors {
 		processor, err := r.Processors[i].allocate(componentContext(r.Context), bufferSize, link.SignalProperties)
 		if err != nil {
-			return lineRunner{}, fmt.Errorf("processor: %w", err)
+			return LineRunner{}, fmt.Errorf("processor: %w", err)
 		}
 		processor.in.PoolAllocator = link.PoolAllocator
 		processor.in.Receiver = link.Fitting
@@ -99,13 +103,13 @@ func (r Routing) runner(mutations chan mutable.Mutations, bufferSize int, fitFn 
 
 	sink, err := r.Sink.allocate(componentContext(r.Context), bufferSize, link.SignalProperties)
 	if err != nil {
-		return lineRunner{}, fmt.Errorf("sink: %w", err)
+		return LineRunner{}, fmt.Errorf("sink: %w", err)
 	}
 	sink.in.PoolAllocator = link.PoolAllocator
 	sink.in.Receiver = link.Fitting
 	executors = append(executors, sink)
 
-	return lineRunner{
+	return LineRunner{
 		Context:   source.Context,
 		executors: executors,
 	}, nil
@@ -152,7 +156,7 @@ func componentContext(routeContext mutable.Context) mutable.Context {
 }
 
 // Execute all components of the line one-by-one.
-func (l *lineRunner) execute(ctx context.Context) error {
+func (l *LineRunner) execute(ctx context.Context) error {
 	var err error
 	for _, e := range l.executors {
 		if err = e.Execute(ctx); err == nil {
@@ -168,7 +172,7 @@ func (l *lineRunner) execute(ctx context.Context) error {
 	return err
 }
 
-func (l *lineRunner) flush(ctx context.Context) error {
+func (l *LineRunner) flush(ctx context.Context) error {
 	var errs execErrors
 	for i := 0; i < l.started; i++ {
 		if err := l.executors[i].Flush(ctx); err != nil {
@@ -178,7 +182,7 @@ func (l *lineRunner) flush(ctx context.Context) error {
 	return errs.ret()
 }
 
-func (l *lineRunner) start(ctx context.Context) error {
+func (l *LineRunner) start(ctx context.Context) error {
 	var errs execErrors
 	for _, e := range l.executors {
 		if err := e.Start(ctx); err != nil {
@@ -192,10 +196,10 @@ func (l *lineRunner) start(ctx context.Context) error {
 
 // Start calls start for every line. If any line fails to start, it will
 // try to flush successfully started lines.
-func (r multilineRunner) Start(ctx context.Context) error {
+func (r MultilineRunner) Start(ctx context.Context) error {
 	var startErr execErrors
-	for _, l := range r.lines {
-		if err := l.start(ctx); err != nil {
+	for i := range r.Lines {
+		if err := r.Lines[i].start(ctx); err != nil {
 			startErr = append(startErr, err)
 			break
 		}
@@ -216,9 +220,9 @@ func (r multilineRunner) Start(ctx context.Context) error {
 }
 
 // Flush flushes all lines.
-func (r multilineRunner) Flush(ctx context.Context) error {
+func (r MultilineRunner) Flush(ctx context.Context) error {
 	var flushErr execErrors
-	for _, l := range r.lines {
+	for _, l := range r.Lines {
 		if err := l.flush(ctx); err != nil {
 			flushErr = append(flushErr, err)
 		}
@@ -227,19 +231,19 @@ func (r multilineRunner) Flush(ctx context.Context) error {
 }
 
 // Execute executes all lines.
-func (r multilineRunner) Execute(ctx context.Context) error {
+func (r MultilineRunner) Execute(ctx context.Context) error {
 	var err error
-	for i := 0; i < len(r.lines); {
-		if err = r.lines[i].execute(ctx); err == nil {
+	for i := 0; i < len(r.Lines); {
+		if err = r.Lines[i].execute(ctx); err == nil {
 			i++
 			continue
 		}
 		if err == io.EOF {
-			if flushErr := r.lines[i].flush(ctx); flushErr != nil {
+			if flushErr := r.Lines[i].flush(ctx); flushErr != nil {
 				return flushErr
 			}
-			r.lines = append(r.lines[:i], r.lines[i+1:]...)
-			if len(r.lines) > 0 {
+			r.Lines = append(r.Lines[:i], r.Lines[i+1:]...)
+			if len(r.Lines) > 0 {
 				continue
 			}
 		}

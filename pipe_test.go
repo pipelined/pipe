@@ -3,11 +3,13 @@ package pipe_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
 	"pipelined.dev/pipe"
+	"pipelined.dev/pipe/internal/run"
 	"pipelined.dev/pipe/mock"
 	"pipelined.dev/pipe/mutable"
 )
@@ -22,7 +24,7 @@ func TestLineBindingFail(t *testing.T) {
 		errorBinding = errors.New("binding error")
 		bufferSize   = 512
 	)
-	testBinding := func(l pipe.Routing) func(*testing.T) {
+	testBinding := func(l pipe.Line) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
 			_, err := pipe.New(bufferSize, l)
@@ -35,7 +37,7 @@ func TestLineBindingFail(t *testing.T) {
 		}
 	}
 	t.Run("source", testBinding(
-		pipe.Routing{
+		pipe.Line{
 			Source: (&mock.Source{
 				ErrorOnMake: errorBinding,
 			}).Source(),
@@ -46,7 +48,7 @@ func TestLineBindingFail(t *testing.T) {
 		},
 	))
 	t.Run("processor", testBinding(
-		pipe.Routing{
+		pipe.Line{
 			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{
@@ -57,7 +59,7 @@ func TestLineBindingFail(t *testing.T) {
 		},
 	))
 	t.Run("sink", testBinding(
-		pipe.Routing{
+		pipe.Line{
 			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{}).Processor(),
@@ -68,7 +70,7 @@ func TestLineBindingFail(t *testing.T) {
 		},
 	))
 	t.Run("ok", testBinding(
-		pipe.Routing{
+		pipe.Line{
 			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{}).Processor(),
@@ -89,7 +91,7 @@ func TestSimplePipe(t *testing.T) {
 
 	p, err := pipe.New(
 		bufferSize,
-		pipe.Routing{
+		pipe.Line{
 			Source:     source.Source(),
 			Processors: pipe.Processors(proc1.Processor()),
 			Sink:       sink1.Sink(),
@@ -113,7 +115,7 @@ func TestReset(t *testing.T) {
 
 	p, err := pipe.New(
 		bufferSize,
-		pipe.Routing{
+		pipe.Line{
 			Source: source.Source(),
 			Sink:   sink.Sink(),
 		},
@@ -138,7 +140,7 @@ func TestSync(t *testing.T) {
 
 	p, err := pipe.New(
 		bufferSize,
-		pipe.Routing{
+		pipe.Line{
 			Context: mutable.Mutable(),
 			Source:  source.Source(),
 			Sink:    sink.Sink(),
@@ -167,12 +169,12 @@ func TestSyncMultiple(t *testing.T) {
 	mctx := mutable.Mutable()
 	p, err := pipe.New(
 		bufferSize,
-		pipe.Routing{
+		pipe.Line{
 			Context: mctx,
 			Source:  source1.Source(),
 			Sink:    sink1.Sink(),
 		},
-		pipe.Routing{
+		pipe.Line{
 			Context: mctx,
 			Source:  source2.Source(),
 			Sink:    sink2.Sink(),
@@ -180,11 +182,289 @@ func TestSyncMultiple(t *testing.T) {
 	)
 	assertNil(t, "error", err)
 	// start
-	waitPipe(t, p, pipeTimeout)
+	waitPipe(t, p, pipeTimeout*2)
 	assertEqual(t, "messages", source1.Counter.Messages, 862)
 	assertEqual(t, "samples", source1.Counter.Samples, 862*bufferSize)
 	assertEqual(t, "messages", source2.Counter.Messages, 862)
 	assertEqual(t, "samples", source2.Counter.Samples, 862*bufferSize)
+}
+
+func TestLines(t *testing.T) {
+	type (
+		mockLine struct {
+			*mock.Source
+			*mock.Processor
+			*mock.Sink
+		}
+
+		assertFunc func(t *testing.T, err error, mocks ...mockLine)
+	)
+	mockError := fmt.Errorf("mock error")
+
+	assertLine := func(t *testing.T, m mockLine, messages, samples int) {
+		assertEqual(t, "src messages", m.Source.Counter.Messages, messages)
+		assertEqual(t, "proc messages", m.Processor.Counter.Messages, messages)
+		assertEqual(t, "sink messages", m.Sink.Counter.Messages, messages)
+		assertEqual(t, "src samples", m.Source.Counter.Samples, samples)
+		assertEqual(t, "proc samples", m.Processor.Counter.Samples, samples)
+		assertEqual(t, "sink samples", m.Sink.Counter.Samples, samples)
+	}
+
+	testLines := func(assertFn assertFunc, mocks ...mockLine) func(*testing.T) {
+		return func(t *testing.T) {
+			// mc := make(chan mutable.Mutations)
+			routes := make([]pipe.LineRunner, 0, len(mocks))
+			for i := range mocks {
+				runner, err := pipe.Line{
+					Context:    mutable.Mutable(),
+					Source:     mocks[i].Source.Source(),
+					Processors: pipe.Processors(mocks[i].Processor.Processor()),
+					Sink:       mocks[i].Sink.Sink(),
+				}.Runner(bufferSize, nil)
+				assertNil(t, "runner error", err)
+				routes = append(routes, runner)
+			}
+			lines := pipe.MultilineRunner{
+				Lines: routes,
+			}
+			errChan := run.Run(context.Background(), &lines)
+			err := <-errChan
+			<-errChan
+			assertFn(t, err, mocks...)
+		}
+	}
+
+	t.Run("two lines processor start error source flush error", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			m := mocks[0]
+			assertEqual(t, "line 1 src started", m.Source.Started, true)
+			assertEqual(t, "line 1 proc started", m.Processor.Started, true)
+			assertEqual(t, "line 1 sink started", m.Sink.Started, true)
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, true)
+			m = mocks[1]
+			assertEqual(t, "line 2 src started", m.Source.Started, true)
+			assertEqual(t, "line 2 proc started", m.Processor.Started, true)
+			assertEqual(t, "line 2 sink started", m.Sink.Started, false)
+			assertEqual(t, "line 2 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 2 proc flushed", m.Processor.Flushed, false)
+			assertEqual(t, "line 2 sink flushed", m.Sink.Flushed, false)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+				Flusher: mock.Flusher{
+					ErrorOnFlush: mockError,
+				},
+			},
+			Processor: &mock.Processor{},
+			Sink:      &mock.Sink{},
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Processor: &mock.Processor{
+				Starter: mock.Starter{
+					ErrorOnStart: mockError,
+				},
+			},
+			Sink: &mock.Sink{},
+		},
+	))
+	t.Run("two lines processor start error", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			m := mocks[0]
+			assertEqual(t, "src started", m.Source.Started, true)
+			assertEqual(t, "proc started", m.Processor.Started, true)
+			assertEqual(t, "sink started", m.Sink.Started, true)
+			assertEqual(t, "src flushed", m.Source.Flushed, true)
+			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+			m = mocks[1]
+			assertEqual(t, "line 2 src started", m.Source.Started, true)
+			assertEqual(t, "line 2 proc started", m.Processor.Started, true)
+			assertEqual(t, "line 2 sink started", m.Sink.Started, false)
+			assertEqual(t, "line 2 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 2 proc flushed", m.Processor.Flushed, false)
+			assertEqual(t, "line 2 sink flushed", m.Sink.Flushed, false)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Processor: &mock.Processor{},
+			Sink:      &mock.Sink{},
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Processor: &mock.Processor{
+				Starter: mock.Starter{
+					ErrorOnStart: mockError,
+				},
+			},
+			Sink: &mock.Sink{},
+		},
+	))
+	t.Run("single line processor start error", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			m := mocks[0]
+			assertEqual(t, "line 1 src started", m.Source.Started, true)
+			assertEqual(t, "line 1 proc started", m.Processor.Started, true)
+			assertEqual(t, "line 1 sink started", m.Sink.Started, false)
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, false)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, false)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Processor: &mock.Processor{
+				Starter: mock.Starter{
+					ErrorOnStart: mockError,
+				},
+			},
+			Sink: &mock.Sink{},
+		},
+	))
+	t.Run("single line ok", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			assertEqual(t, "exec error", err, nil)
+			m := mocks[0]
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, true)
+			assertLine(t, m, 3, 1040)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Sink: &mock.Sink{
+				Discard: true,
+			},
+			Processor: &mock.Processor{},
+		},
+	))
+	t.Run("two lines ok", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			assertEqual(t, "exec error", err, nil)
+			var m mockLine
+			m = mocks[0]
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, true)
+			assertLine(t, m, 3, 1040)
+			m = mocks[1]
+			assertEqual(t, "line 2 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 2 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 2 sink flushed", m.Sink.Flushed, true)
+			assertLine(t, m, 4, 1640)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Sink: &mock.Sink{
+				Discard: true,
+			},
+			Processor: &mock.Processor{},
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1640,
+				Channels: 1,
+			},
+			Sink: &mock.Sink{
+				Discard: true,
+			},
+			Processor: &mock.Processor{},
+		},
+	))
+	t.Run("three lines ok", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			assertEqual(t, "exec error", err, nil)
+			var m mockLine
+			m = mocks[0]
+			assertEqual(t, "line 1 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 1 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 1 sink flushed", m.Sink.Flushed, true)
+			assertLine(t, m, 6, 3048)
+			m = mocks[1]
+			assertEqual(t, "line 2 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 2 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 2 sink flushed", m.Sink.Flushed, true)
+			assertLine(t, m, 4, 1640)
+			m = mocks[2]
+			assertEqual(t, "line 3 src flushed", m.Source.Flushed, true)
+			assertEqual(t, "line 3 proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "line 3 sink flushed", m.Sink.Flushed, true)
+			assertLine(t, m, 8, 4096)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    3048,
+				Channels: 1,
+			},
+			Sink: &mock.Sink{
+				Discard: true,
+			},
+			Processor: &mock.Processor{},
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1640,
+				Channels: 1,
+			},
+			Sink: &mock.Sink{
+				Discard: true,
+			},
+			Processor: &mock.Processor{},
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    4096,
+				Channels: 1,
+			},
+			Sink: &mock.Sink{
+				Discard: true,
+			},
+			Processor: &mock.Processor{},
+		},
+	))
+	t.Run("single processor error", testLines(
+		func(t *testing.T, err error, mocks ...mockLine) {
+			assertEqual(t, "error", errors.Is(err, mockError), true)
+			m := mocks[0]
+			assertEqual(t, "src flushed", m.Source.Flushed, true)
+			assertEqual(t, "proc flushed", m.Processor.Flushed, true)
+			assertEqual(t, "sink flushed", m.Sink.Flushed, true)
+		},
+		mockLine{
+			Source: &mock.Source{
+				Limit:    1040,
+				Channels: 1,
+			},
+			Sink: &mock.Sink{
+				Discard: true,
+			},
+			Processor: &mock.Processor{
+				ErrorOnCall: mockError,
+			},
+		},
+	))
+
 }
 
 // func TestInsertProcessor(t *testing.T) {

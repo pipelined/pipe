@@ -132,42 +132,43 @@ func newMutationsCache(execCtxs map[mutable.Context]chan mutable.Mutations, init
 
 // New returns a new Pipe that binds multiple lines using the provided
 // buffer size.
-func New(bufferSize int, routes ...Routing) (*Pipe, error) {
-	if len(routes) == 0 {
+func New(bufferSize int, lines ...Line) (*Pipe, error) {
+	if len(lines) == 0 {
 		panic("pipe without lines")
 	}
 	runners := make(map[chan mutable.Mutations]runner)
 	contexts := make(map[mutable.Context]chan mutable.Mutations)
-	for _, r := range routes {
-		if !r.Context.IsMutable() { // async execution
+	for _, l := range lines {
+		if !l.Context.IsMutable() { // async execution
 			mutations := make(chan mutable.Mutations, 1)
-			r, err := r.runner(mutations, bufferSize, fitting.Async)
+			r, err := l.Runner(bufferSize, mutations)
 			if err != nil {
 				return nil, err
 			}
 			runners[mutations] = r
 			contexts[r.Context] = mutations
+			// TODO: add all runners contexts
 			continue
 		}
 
 		// sync exec
-		if mutations, ok := contexts[r.Context]; !ok {
+		if mutations, ok := contexts[l.Context]; !ok {
 			mutations = make(chan mutable.Mutations, 1)
-			r, err := r.runner(mutations, bufferSize, fitting.Sync)
+			r, err := l.Runner(bufferSize, mutations)
 			if err != nil {
 				return nil, err
 			}
-			runners[mutations] = multilineRunner{
-				lines: []lineRunner{r},
+			runners[mutations] = &MultilineRunner{
+				Lines: []LineRunner{r},
 			}
 			contexts[r.Context] = mutations
 		} else {
-			newR, err := r.runner(mutations, bufferSize, fitting.Sync)
+			newR, err := l.Runner(bufferSize, mutations)
 			if err != nil {
 				return nil, err
 			}
-			r := runners[mutations].(multilineRunner)
-			r.lines = append(r.lines, newR)
+			r := runners[mutations].(*MultilineRunner)
+			r.Lines = append(r.Lines, newR)
 			runners[mutations] = r
 		}
 	}
