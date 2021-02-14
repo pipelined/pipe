@@ -16,7 +16,7 @@ import (
 
 const (
 	bufferSize  = 512
-	pipeTimeout = time.Millisecond * 200
+	pipeTimeout = 1 * time.Second
 )
 
 func TestLineBindingFail(t *testing.T) {
@@ -182,7 +182,7 @@ func TestSyncMultiple(t *testing.T) {
 	)
 	assertNil(t, "error", err)
 	// start
-	waitPipe(t, p, pipeTimeout*2)
+	waitPipe(t, p, pipeTimeout)
 	assertEqual(t, "messages", source1.Counter.Messages, 862)
 	assertEqual(t, "samples", source1.Counter.Samples, 862*bufferSize)
 	assertEqual(t, "messages", source2.Counter.Messages, 862)
