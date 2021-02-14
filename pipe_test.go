@@ -16,7 +16,7 @@ import (
 
 const (
 	bufferSize  = 512
-	pipeTimeout = time.Millisecond * 100
+	pipeTimeout = time.Millisecond * 200
 )
 
 func TestLineBindingFail(t *testing.T) {
