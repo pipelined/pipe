@@ -22,12 +22,18 @@ type (
 		Sink       SinkAllocatorFunc
 	}
 
+	// LineRunner is a sequence of bound and ready-to-run DSP components.
+	// It supports two execution modes: every component is running in its
+	// own goroutine (default) and running all components in a single
+	// goroutine.
 	LineRunner struct {
 		mutable.Context
 		started   int
 		executors []run.Executor
 	}
 
+	// MultilineRunner allows to run multiple sequences of DSP components
+	// in the same goroutine.
 	MultilineRunner struct {
 		mutable.Context
 		Lines []*LineRunner
@@ -182,7 +188,7 @@ func (r *LineRunner) execute(ctx context.Context) error {
 func (r *LineRunner) flush(ctx context.Context) error {
 	var errs execErrors
 	for i := 0; i < r.started; i++ {
-		if err := r.executors[i].Flush(ctx); err != nil {
+		if err := r.executors[i].FlushHook(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -192,7 +198,7 @@ func (r *LineRunner) flush(ctx context.Context) error {
 func (r *LineRunner) start(ctx context.Context) error {
 	var errs execErrors
 	for _, e := range r.executors {
-		if err := e.Start(ctx); err != nil {
+		if err := e.StartHook(ctx); err != nil {
 			errs = append(errs, err)
 			break
 		}
@@ -201,9 +207,9 @@ func (r *LineRunner) start(ctx context.Context) error {
 	return errs.ret()
 }
 
-// Start calls start for every line. If any line fails to start, it will
+// StartHook calls start for every line. If any line fails to start, it will
 // try to flush successfully started lines.
-func (r *MultilineRunner) Start(ctx context.Context) error {
+func (r *MultilineRunner) StartHook(ctx context.Context) error {
 	var startErr execErrors
 	for i := range r.Lines {
 		if err := r.Lines[i].start(ctx); err != nil {
@@ -219,7 +225,7 @@ func (r *MultilineRunner) Start(ctx context.Context) error {
 	// wrap start error
 	err := fmt.Errorf("error starting lines: %w", startErr.ret())
 	// need to flush sucessfully started components
-	flushErr := r.Flush(ctx)
+	flushErr := r.FlushHook(ctx)
 	if flushErr != nil {
 		err = fmt.Errorf("error flushing lines: %w during start error: %v", flushErr, err)
 	}
@@ -227,7 +233,7 @@ func (r *MultilineRunner) Start(ctx context.Context) error {
 }
 
 // Flush flushes all lines.
-func (r *MultilineRunner) Flush(ctx context.Context) error {
+func (r *MultilineRunner) FlushHook(ctx context.Context) error {
 	var flushErr execErrors
 	for _, l := range r.Lines {
 		if err := l.flush(ctx); err != nil {

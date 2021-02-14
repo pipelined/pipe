@@ -196,6 +196,7 @@ func (r *LineRunner) bindContexts(contexts map[mutable.Context]chan mutable.Muta
 	contexts[r.executors[len(r.executors)-1].(Sink).Context] = mc
 }
 
+// Run starts the pipe execution.
 func (p *Pipe) Run(ctx context.Context, initializers ...mutable.Mutation) <-chan error {
 	// cancel is required to stop the pipe in case of error
 	ctx, cancelFn := context.WithCancel(ctx)
@@ -351,13 +352,13 @@ func (s Sink) Execute(ctx context.Context) error {
 	return err
 }
 
-// Start calls the start hook.
-func (fn StartFunc) Start(ctx context.Context) error {
+// StartHook calls the start hook.
+func (fn StartFunc) StartHook(ctx context.Context) error {
 	return callHook(ctx, fn)
 }
 
-// Flush calls the flush hook.
-func (fn FlushFunc) Flush(ctx context.Context) error {
+// FlushHook calls the flush hook.
+func (fn FlushFunc) FlushHook(ctx context.Context) error {
 	return callHook(ctx, fn)
 }
 
