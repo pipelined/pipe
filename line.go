@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"pipelined.dev/pipe/internal/fitting"
-	"pipelined.dev/pipe/internal/run"
 	"pipelined.dev/pipe/mutable"
 	"pipelined.dev/signal"
 )
@@ -29,7 +28,7 @@ type (
 	LineRunner struct {
 		mutable.Context
 		started   int
-		executors []run.Executor
+		executors []Executor
 	}
 
 	// MultilineRunner allows to run multiple sequences of DSP components
@@ -47,13 +46,13 @@ type (
 func (r *LineRunner) run(ctx context.Context, merger *errorMerger) {
 	r.Bind()
 	for _, e := range r.executors {
-		merger.add(run.Run(ctx, e))
+		merger.add(Run(ctx, e))
 	}
 }
 
 func (r *MultilineRunner) run(ctx context.Context, merger *errorMerger) {
 	r.Bind()
-	merger.add(run.Run(ctx, r))
+	merger.add(Run(ctx, r))
 }
 
 func (r *LineRunner) Bind() {
@@ -79,7 +78,7 @@ func (r Line) Runner(bufferSize int, mutations chan mutable.Mutations) (*LineRun
 	if r.Context.IsMutable() {
 		fitFn = fitting.Sync
 	}
-	executors := make([]run.Executor, 0, 2+len(r.Processors))
+	executors := make([]Executor, 0, 2+len(r.Processors))
 	source, err := r.Source.allocate(componentContext(r.Context), bufferSize)
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)

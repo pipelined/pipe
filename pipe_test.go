@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"pipelined.dev/pipe"
-	"pipelined.dev/pipe/internal/run"
 	"pipelined.dev/pipe/mock"
 	"pipelined.dev/pipe/mutable"
 )
@@ -226,7 +225,7 @@ func TestLines(t *testing.T) {
 				Lines: lines,
 			}
 			runner.Bind()
-			errChan := run.Run(context.Background(), &runner)
+			errChan := pipe.Run(context.Background(), &runner)
 			err := <-errChan
 			<-errChan
 			assertFn(t, err, mocks...)

@@ -1,4 +1,4 @@
-package run
+package pipe
 
 import (
 	"context"
@@ -18,11 +18,11 @@ type (
 // Run the component runner.
 func Run(ctx context.Context, e Executor) <-chan error {
 	errc := make(chan error, 1)
-	go run(ctx, e, errc)
+	go runExecutor(ctx, e, errc)
 	return errc
 }
 
-func run(ctx context.Context, e Executor, errc chan<- error) {
+func runExecutor(ctx context.Context, e Executor, errc chan<- error) {
 	defer close(errc)
 	if err := e.StartHook(ctx); err != nil {
 		errc <- fmt.Errorf("error starting component: %w", err)
