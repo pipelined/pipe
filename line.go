@@ -22,10 +22,6 @@ type (
 		Sink       SinkAllocatorFunc
 	}
 
-	runner interface {
-		run(context.Context, *errorMerger)
-	}
-
 	LineRunner struct {
 		mutable.Context
 		started   int

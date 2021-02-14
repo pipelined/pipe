@@ -46,6 +46,10 @@ type (
 		errorMerger
 	}
 
+	runner interface {
+		run(context.Context, *errorMerger)
+	}
+
 	// Source is a source of signal data. Optinaly, mutability can be
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
@@ -139,12 +143,20 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 	runners := make(map[chan mutable.Mutations]runner)
 	contexts := make(map[mutable.Context]chan mutable.Mutations)
 	for _, l := range lines {
-		if !l.Context.IsMutable() { // async execution
-			mutations := make(chan mutable.Mutations, 1)
-			r, err := l.Runner(bufferSize, mutations)
-			if err != nil {
-				return nil, err
-			}
+		var (
+			ok        bool
+			mutations chan mutable.Mutations
+		)
+		if mutations, ok = contexts[l.Context]; !ok {
+			mutations = make(chan mutable.Mutations, 1)
+		}
+		r, err := l.Runner(bufferSize, mutations)
+		if err != nil {
+			return nil, err
+		}
+
+		// async execution
+		if !l.Context.IsMutable() {
 			runners[mutations] = r
 			contexts[r.Context] = mutations
 			// TODO: add all runners contexts
@@ -152,24 +164,17 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 		}
 
 		// sync exec
-		if mutations, ok := contexts[l.Context]; !ok {
-			mutations = make(chan mutable.Mutations, 1)
-			r, err := l.Runner(bufferSize, mutations)
-			if err != nil {
-				return nil, err
-			}
+		if ok {
+			// add line to existing multiline runner
+			mlr := runners[mutations].(*MultilineRunner)
+			mlr.Lines = append(mlr.Lines, r)
+			runners[mutations] = mlr
+		} else {
+			// add new  multiline runner
 			runners[mutations] = &MultilineRunner{
 				Lines: []*LineRunner{r},
 			}
 			contexts[r.Context] = mutations
-		} else {
-			newR, err := l.Runner(bufferSize, mutations)
-			if err != nil {
-				return nil, err
-			}
-			r := runners[mutations].(*MultilineRunner)
-			r.Lines = append(r.Lines, newR)
-			runners[mutations] = r
 		}
 	}
 
