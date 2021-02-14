@@ -11,30 +11,6 @@ import (
 )
 
 type (
-	// SignalProperties contains information about input/output signal.
-	SignalProperties struct {
-		SampleRate signal.Frequency
-		Channels   int
-	}
-
-	// SourceAllocatorFunc returns source for provided buffer size. It is
-	// responsible for pre-allocation of all necessary buffers and
-	// structures.
-	SourceAllocatorFunc func(mctx mutable.Context, bufferSize int) (Source, error)
-
-	// ProcessorAllocatorFunc returns processor for provided buffer size.
-	// It is responsible for pre-allocation of all necessary buffers and
-	// structures. Along with the processor, output signal properties are
-	// returned.
-	ProcessorAllocatorFunc func(mctx mutable.Context, bufferSize int, input SignalProperties) (Processor, error)
-
-	// SinkAllocatorFunc returns sink for provided buffer size. It is
-	// responsible for pre-allocation of all necessary buffers and
-	// structures.
-	SinkAllocatorFunc func(mctx mutable.Context, bufferSize int, input SignalProperties) (Sink, error)
-)
-
-type (
 	// Pipe is a graph formed with multiple lines of bound DSP components.
 	Pipe struct {
 		context       mutable.Context
@@ -182,18 +158,6 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 		runners:    runners,
 		contexts:   contexts,
 	}, nil
-}
-
-func (r *LineRunner) bindContexts(contexts map[mutable.Context]chan mutable.Mutations, mc chan mutable.Mutations) {
-	contexts[r.executors[0].(Source).Context] = mc
-	if !r.context.IsMutable() {
-		return
-	}
-
-	for i := 1; i < len(r.executors)-1; i++ {
-		contexts[r.executors[i].(Processor).Context] = mc
-	}
-	contexts[r.executors[len(r.executors)-1].(Sink).Context] = mc
 }
 
 // Run starts the pipe execution.

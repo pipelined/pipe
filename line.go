@@ -1,10 +1,7 @@
 package pipe
 
 import (
-	"context"
 	"fmt"
-	"io"
-	"strings"
 
 	"pipelined.dev/pipe/internal/fitting"
 	"pipelined.dev/pipe/mutable"
@@ -21,55 +18,28 @@ type (
 		Sink       SinkAllocatorFunc
 	}
 
-	// LineRunner is a sequence of bound and ready-to-run DSP components.
-	// It supports two execution modes: every component is running in its
-	// own goroutine (default) and running all components in a single
-	// goroutine.
-	LineRunner struct {
-		context   mutable.Context
-		started   int
-		executors []Executor
-	}
+	// SourceAllocatorFunc returns source for provided buffer size. It is
+	// responsible for pre-allocation of all necessary buffers and
+	// structures.
+	SourceAllocatorFunc func(mctx mutable.Context, bufferSize int) (Source, error)
 
-	// MultilineRunner allows to run multiple sequences of DSP components
-	// in the same goroutine.
-	MultilineRunner struct {
-		mutable.Context
-		Lines []*LineRunner
-	}
+	// ProcessorAllocatorFunc returns processor for provided buffer size.
+	// It is responsible for pre-allocation of all necessary buffers and
+	// structures. Along with the processor, output signal properties are
+	// returned.
+	ProcessorAllocatorFunc func(mctx mutable.Context, bufferSize int, input SignalProperties) (Processor, error)
 
-	// execErrors wraps errors that might occure when multiple executors
-	// are failing.
-	execErrors []error
+	// SinkAllocatorFunc returns sink for provided buffer size. It is
+	// responsible for pre-allocation of all necessary buffers and
+	// structures.
+	SinkAllocatorFunc func(mctx mutable.Context, bufferSize int, input SignalProperties) (Sink, error)
+
+	// SignalProperties contains information about input/output signal.
+	SignalProperties struct {
+		SampleRate signal.Frequency
+		Channels   int
+	}
 )
-
-func (r *LineRunner) run(ctx context.Context, merger *errorMerger) {
-	r.Bind()
-	for _, e := range r.executors {
-		merger.add(Run(ctx, e))
-	}
-}
-
-func (r *MultilineRunner) run(ctx context.Context, merger *errorMerger) {
-	r.Bind()
-	merger.add(Run(ctx, r))
-}
-
-func (r *LineRunner) Bind() {
-	e := r.executors[0].(Source)
-	e.out.Sender.Bind()
-
-	for i := 1; i < len(r.executors)-1; i++ {
-		e := r.executors[i].(Processor)
-		e.out.Sender.Bind()
-	}
-}
-
-func (r *MultilineRunner) Bind() {
-	for i := range r.Lines {
-		r.Lines[i].Bind()
-	}
-}
 
 // Runner binds routing components together. Line is a set of components
 // ready for execution. If Runner is async then source context is returned.
@@ -165,117 +135,4 @@ func componentContext(routeContext mutable.Context) mutable.Context {
 		return routeContext
 	}
 	return mutable.Mutable()
-}
-
-// Execute all components of the line one-by-one.
-func (r *LineRunner) execute(ctx context.Context) error {
-	var err error
-	for _, e := range r.executors {
-		if err = e.execute(ctx); err == nil {
-			continue
-		}
-		if err == io.EOF {
-			// continue execution to propagate EOF
-			continue
-		}
-		return err
-	}
-	// if no other errors were met, EOF will be returned
-	return err
-}
-
-func (r *LineRunner) flush(ctx context.Context) error {
-	var errs execErrors
-	for i := 0; i < r.started; i++ {
-		if err := r.executors[i].flushHook(ctx); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return errs.ret()
-}
-
-func (r *LineRunner) start(ctx context.Context) error {
-	var errs execErrors
-	for _, e := range r.executors {
-		if err := e.startHook(ctx); err != nil {
-			errs = append(errs, err)
-			break
-		}
-		r.started++
-	}
-	return errs.ret()
-}
-
-// startHook calls start for every line. If any line fails to start, it will
-// try to flush successfully started lines.
-func (r *MultilineRunner) startHook(ctx context.Context) error {
-	var startErr execErrors
-	for i := range r.Lines {
-		if err := r.Lines[i].start(ctx); err != nil {
-			startErr = append(startErr, err)
-			break
-		}
-	}
-
-	// all started smooth
-	if len(startErr) == 0 {
-		return nil
-	}
-	// wrap start error
-	err := fmt.Errorf("error starting lines: %w", startErr.ret())
-	// need to flush sucessfully started components
-	flushErr := r.flushHook(ctx)
-	if flushErr != nil {
-		err = fmt.Errorf("error flushing lines: %w during start error: %v", flushErr, err)
-	}
-	return err
-}
-
-// Flush flushes all lines.
-func (r *MultilineRunner) flushHook(ctx context.Context) error {
-	var flushErr execErrors
-	for _, l := range r.Lines {
-		if err := l.flush(ctx); err != nil {
-			flushErr = append(flushErr, err)
-		}
-	}
-	return flushErr.ret()
-}
-
-// Execute executes all lines.
-func (r *MultilineRunner) execute(ctx context.Context) error {
-	var err error
-	for i := 0; i < len(r.Lines); {
-		if err = r.Lines[i].execute(ctx); err == nil {
-			i++
-			continue
-		}
-		if err == io.EOF {
-			if flushErr := r.Lines[i].flush(ctx); flushErr != nil {
-				return flushErr
-			}
-			r.Lines = append(r.Lines[:i], r.Lines[i+1:]...)
-			if len(r.Lines) > 0 {
-				continue
-			}
-		}
-		return err
-	}
-	return nil
-}
-
-func (e execErrors) Error() string {
-	s := []string{}
-	for _, se := range e {
-		s = append(s, se.Error())
-	}
-	return strings.Join(s, ",")
-}
-
-// ret returns untyped nil if error is list is empty.
-func (e execErrors) ret() error {
-	if len(e) > 0 {
-		return e
-	}
-	return nil
 }
