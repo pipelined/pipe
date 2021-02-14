@@ -158,8 +158,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 		// async execution
 		if !l.Context.IsMutable() {
 			runners[mutations] = r
-			contexts[r.Context] = mutations
-			// TODO: add all runners contexts
+			r.bindContexts(contexts, mutations)
 			continue
 		}
 
@@ -174,7 +173,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 			runners[mutations] = &MultilineRunner{
 				Lines: []*LineRunner{r},
 			}
-			contexts[r.Context] = mutations
+			r.bindContexts(contexts, mutations)
 		}
 	}
 
@@ -183,6 +182,18 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 		runners:    runners,
 		contexts:   contexts,
 	}, nil
+}
+
+func (r *LineRunner) bindContexts(contexts map[mutable.Context]chan mutable.Mutations, mc chan mutable.Mutations) {
+	contexts[r.executors[0].(Source).Context] = mc
+	if !r.Context.IsMutable() {
+		return
+	}
+
+	for i := 1; i < len(r.executors)-1; i++ {
+		contexts[r.executors[i].(Processor).Context] = mc
+	}
+	contexts[r.executors[len(r.executors)-1].(Sink).Context] = mc
 }
 
 func (p *Pipe) Run(ctx context.Context, initializers ...mutable.Mutation) <-chan error {

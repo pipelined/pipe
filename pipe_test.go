@@ -100,8 +100,8 @@ func TestSimplePipe(t *testing.T) {
 	assertNil(t, "error", err)
 
 	// start
-	waitPipe(t, p, pipeTimeout)
-
+	err = pipe.Wait(p.Run(context.Background()))
+	assertNil(t, "pipe error", err)
 	assertEqual(t, "messages", source.Counter.Messages, 862)
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 }
