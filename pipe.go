@@ -186,7 +186,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 
 func (r *LineRunner) bindContexts(contexts map[mutable.Context]chan mutable.Mutations, mc chan mutable.Mutations) {
 	contexts[r.executors[0].(Source).Context] = mc
-	if !r.Context.IsMutable() {
+	if !r.context.IsMutable() {
 		return
 	}
 
@@ -272,7 +272,7 @@ func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 
 // Execute does a single iteration of source component. io.EOF is returned
 // if context is done.
-func (s Source) Execute(ctx context.Context) error {
+func (s Source) execute(ctx context.Context) error {
 	var ms mutable.Mutations
 	select {
 	case ms = <-s.mutations:
@@ -308,7 +308,7 @@ func (s Source) Execute(ctx context.Context) error {
 
 // Execute does a single iteration of processor component. io.EOF is
 // returned if context is done.
-func (p Processor) Execute(ctx context.Context) error {
+func (p Processor) execute(ctx context.Context) error {
 	m, ok := p.in.Receive(ctx)
 	if !ok {
 		p.out.Close()
@@ -338,7 +338,7 @@ func (p Processor) Execute(ctx context.Context) error {
 
 // Execute does a single iteration of sink component. io.EOF is returned if
 // context is done.
-func (s Sink) Execute(ctx context.Context) error {
+func (s Sink) execute(ctx context.Context) error {
 	m, ok := s.in.Receive(ctx)
 	if !ok {
 		return io.EOF
@@ -352,13 +352,13 @@ func (s Sink) Execute(ctx context.Context) error {
 	return err
 }
 
-// StartHook calls the start hook.
-func (fn StartFunc) StartHook(ctx context.Context) error {
+// startHook calls the start hook.
+func (fn StartFunc) startHook(ctx context.Context) error {
 	return callHook(ctx, fn)
 }
 
-// FlushHook calls the flush hook.
-func (fn FlushFunc) FlushHook(ctx context.Context) error {
+// flushHook calls the flush hook.
+func (fn FlushFunc) flushHook(ctx context.Context) error {
 	return callHook(ctx, fn)
 }
 

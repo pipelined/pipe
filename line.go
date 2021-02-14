@@ -26,7 +26,7 @@ type (
 	// own goroutine (default) and running all components in a single
 	// goroutine.
 	LineRunner struct {
-		mutable.Context
+		context   mutable.Context
 		started   int
 		executors []Executor
 	}
@@ -122,7 +122,7 @@ func (r Line) Runner(bufferSize int, mutations chan mutable.Mutations) (*LineRun
 	executors = append(executors, sink)
 
 	return &LineRunner{
-		Context:   source.Context,
+		context:   source.Context,
 		executors: executors,
 	}, nil
 }
@@ -171,7 +171,7 @@ func componentContext(routeContext mutable.Context) mutable.Context {
 func (r *LineRunner) execute(ctx context.Context) error {
 	var err error
 	for _, e := range r.executors {
-		if err = e.Execute(ctx); err == nil {
+		if err = e.execute(ctx); err == nil {
 			continue
 		}
 		if err == io.EOF {
@@ -187,7 +187,7 @@ func (r *LineRunner) execute(ctx context.Context) error {
 func (r *LineRunner) flush(ctx context.Context) error {
 	var errs execErrors
 	for i := 0; i < r.started; i++ {
-		if err := r.executors[i].FlushHook(ctx); err != nil {
+		if err := r.executors[i].flushHook(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -197,7 +197,7 @@ func (r *LineRunner) flush(ctx context.Context) error {
 func (r *LineRunner) start(ctx context.Context) error {
 	var errs execErrors
 	for _, e := range r.executors {
-		if err := e.StartHook(ctx); err != nil {
+		if err := e.startHook(ctx); err != nil {
 			errs = append(errs, err)
 			break
 		}
@@ -206,9 +206,9 @@ func (r *LineRunner) start(ctx context.Context) error {
 	return errs.ret()
 }
 
-// StartHook calls start for every line. If any line fails to start, it will
+// startHook calls start for every line. If any line fails to start, it will
 // try to flush successfully started lines.
-func (r *MultilineRunner) StartHook(ctx context.Context) error {
+func (r *MultilineRunner) startHook(ctx context.Context) error {
 	var startErr execErrors
 	for i := range r.Lines {
 		if err := r.Lines[i].start(ctx); err != nil {
@@ -224,7 +224,7 @@ func (r *MultilineRunner) StartHook(ctx context.Context) error {
 	// wrap start error
 	err := fmt.Errorf("error starting lines: %w", startErr.ret())
 	// need to flush sucessfully started components
-	flushErr := r.FlushHook(ctx)
+	flushErr := r.flushHook(ctx)
 	if flushErr != nil {
 		err = fmt.Errorf("error flushing lines: %w during start error: %v", flushErr, err)
 	}
@@ -232,7 +232,7 @@ func (r *MultilineRunner) StartHook(ctx context.Context) error {
 }
 
 // Flush flushes all lines.
-func (r *MultilineRunner) FlushHook(ctx context.Context) error {
+func (r *MultilineRunner) flushHook(ctx context.Context) error {
 	var flushErr execErrors
 	for _, l := range r.Lines {
 		if err := l.flush(ctx); err != nil {
@@ -243,7 +243,7 @@ func (r *MultilineRunner) FlushHook(ctx context.Context) error {
 }
 
 // Execute executes all lines.
-func (r *MultilineRunner) Execute(ctx context.Context) error {
+func (r *MultilineRunner) execute(ctx context.Context) error {
 	var err error
 	for i := 0; i < len(r.Lines); {
 		if err = r.Lines[i].execute(ctx); err == nil {

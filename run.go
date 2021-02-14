@@ -9,9 +9,9 @@ import (
 type (
 	// Executor executes a single DSP operation.
 	Executor interface {
-		Execute(context.Context) error
-		StartHook(context.Context) error
-		FlushHook(context.Context) error
+		execute(context.Context) error
+		startHook(context.Context) error
+		flushHook(context.Context) error
 	}
 )
 
@@ -24,19 +24,19 @@ func Run(ctx context.Context, e Executor) <-chan error {
 
 func runExecutor(ctx context.Context, e Executor, errc chan<- error) {
 	defer close(errc)
-	if err := e.StartHook(ctx); err != nil {
+	if err := e.startHook(ctx); err != nil {
 		errc <- fmt.Errorf("error starting component: %w", err)
 		return
 	}
 	defer func() {
-		if err := e.FlushHook(ctx); err != nil {
+		if err := e.flushHook(ctx); err != nil {
 			errc <- fmt.Errorf("error flushing component: %w", err)
 		}
 	}()
 
 	var err error
 	for err == nil {
-		err = e.Execute(ctx)
+		err = e.execute(ctx)
 	}
 	if err != io.EOF {
 		errc <- fmt.Errorf("error running component: %w", err)
