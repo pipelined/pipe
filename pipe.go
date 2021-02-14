@@ -159,7 +159,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 				return nil, err
 			}
 			runners[mutations] = &MultilineRunner{
-				Lines: []LineRunner{r},
+				Lines: []*LineRunner{r},
 			}
 			contexts[r.Context] = mutations
 		} else {

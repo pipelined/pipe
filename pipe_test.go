@@ -212,22 +212,21 @@ func TestLines(t *testing.T) {
 
 	testLines := func(assertFn assertFunc, mocks ...mockLine) func(*testing.T) {
 		return func(t *testing.T) {
-			// mc := make(chan mutable.Mutations)
-			routes := make([]pipe.LineRunner, 0, len(mocks))
+			lines := make([]*pipe.LineRunner, 0, len(mocks))
 			for i := range mocks {
-				runner, err := pipe.Line{
-					Context:    mutable.Mutable(),
+				r, err := pipe.Line{
 					Source:     mocks[i].Source.Source(),
 					Processors: pipe.Processors(mocks[i].Processor.Processor()),
 					Sink:       mocks[i].Sink.Sink(),
 				}.Runner(bufferSize, nil)
 				assertNil(t, "runner error", err)
-				routes = append(routes, runner)
+				lines = append(lines, r)
 			}
-			lines := pipe.MultilineRunner{
-				Lines: routes,
+			runner := pipe.MultilineRunner{
+				Lines: lines,
 			}
-			errChan := run.Run(context.Background(), &lines)
+			runner.Bind()
+			errChan := run.Run(context.Background(), &runner)
 			err := <-errChan
 			<-errChan
 			assertFn(t, err, mocks...)
