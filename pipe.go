@@ -153,7 +153,7 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 		// sync exec
 		if mutations, ok := contexts[r.Context]; !ok {
 			mutations = make(chan mutable.Mutations, 1)
-			r, err := r.runner(mutations, bufferSize, fitting.Async)
+			r, err := r.runner(mutations, bufferSize, fitting.Sync)
 			if err != nil {
 				return nil, err
 			}
@@ -162,7 +162,7 @@ func New(bufferSize int, routes ...Routing) (*Pipe, error) {
 			}
 			contexts[r.Context] = mutations
 		} else {
-			newR, err := r.runner(mutations, bufferSize, fitting.Async)
+			newR, err := r.runner(mutations, bufferSize, fitting.Sync)
 			if err != nil {
 				return nil, err
 			}

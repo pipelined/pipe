@@ -5,12 +5,17 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"pipelined.dev/pipe"
 	"pipelined.dev/pipe/mock"
+	"pipelined.dev/pipe/mutable"
 )
 
-const bufferSize = 512
+const (
+	bufferSize  = 512
+	pipeTimeout = time.Millisecond * 100
+)
 
 func TestLineBindingFail(t *testing.T) {
 	var (
@@ -93,8 +98,7 @@ func TestSimplePipe(t *testing.T) {
 	assertNil(t, "error", err)
 
 	// start
-	err = pipe.Wait(p.Run(context.Background()))
-	assertNil(t, "error", err)
+	waitPipe(t, p, pipeTimeout)
 
 	assertEqual(t, "messages", source.Counter.Messages, 862)
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
@@ -116,15 +120,71 @@ func TestReset(t *testing.T) {
 	)
 	assertNil(t, "error", err)
 
-	err = pipe.Wait(p.Run(context.Background()))
-	assertNil(t, "error", err)
+	waitPipe(t, p, pipeTimeout)
 	assertEqual(t, "messages", source.Counter.Messages, 862)
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 
-	err = pipe.Wait(p.Run(context.Background(), source.Reset()))
-	assertNil(t, "error", err)
+	waitPipe(t, p, pipeTimeout, source.Reset())
 	assertEqual(t, "messages second run", sink.Counter.Messages, 2*862)
 	assertEqual(t, "samples second run", sink.Counter.Samples, 2*862*bufferSize)
+}
+
+func TestSync(t *testing.T) {
+	source := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink := &mock.Sink{Discard: true}
+
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Routing{
+			Context: mutable.Mutable(),
+			Source:  source.Source(),
+			Sink:    sink.Sink(),
+		},
+	)
+	assertNil(t, "error", err)
+
+	// start
+	waitPipe(t, p, pipeTimeout)
+	assertEqual(t, "messages", source.Counter.Messages, 862)
+	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
+}
+
+func TestSyncMultiple(t *testing.T) {
+	source1 := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink1 := &mock.Sink{Discard: true}
+	source2 := &mock.Source{
+		Limit:    862 * bufferSize,
+		Channels: 2,
+	}
+	sink2 := &mock.Sink{Discard: true}
+
+	mctx := mutable.Mutable()
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Routing{
+			Context: mctx,
+			Source:  source1.Source(),
+			Sink:    sink1.Sink(),
+		},
+		pipe.Routing{
+			Context: mctx,
+			Source:  source2.Source(),
+			Sink:    sink2.Sink(),
+		},
+	)
+	assertNil(t, "error", err)
+	// start
+	waitPipe(t, p, pipeTimeout)
+	assertEqual(t, "messages", source1.Counter.Messages, 862)
+	assertEqual(t, "samples", source1.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", source2.Counter.Messages, 862)
+	assertEqual(t, "samples", source2.Counter.Samples, 862*bufferSize)
 }
 
 // func TestInsertProcessor(t *testing.T) {
@@ -199,6 +259,20 @@ func TestReset(t *testing.T) {
 // 	t.Run("before processor", insert(0))
 // 	t.Run("before sink", insert(1))
 // }
+
+func waitPipe(t *testing.T, p *pipe.Pipe, timeout time.Duration, inits ...mutable.Mutation) {
+	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
+	defer cancelFn()
+
+	errc := p.Run(context.Background(), inits...)
+
+	select {
+	case err := <-errc:
+		assertNil(t, "pipe error", err)
+	case <-ctx.Done():
+		t.Fatalf("pipe timeout reached")
+	}
+}
 
 func assertNil(t *testing.T, name string, result interface{}) {
 	t.Helper()
