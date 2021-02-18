@@ -260,11 +260,12 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 			// starters[mutations] = mlr
 		} else {
 			// add new  multiline runner
-			p.starters[mutations] = &MultiLineRunner{
+			mlr := &MultiLineRunner{
 				Lines: []*LineRunner{r},
 			}
+			p.starters[mutations] = mlr
 			r.bindContexts(p.mutables, mutations)
-			r.start(p.ctx, &p.errorMerger)
+			mlr.start(p.ctx, &p.errorMerger)
 		}
 		return nil
 	})

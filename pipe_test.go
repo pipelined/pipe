@@ -463,41 +463,52 @@ func TestLines(t *testing.T) {
 }
 
 func TestAddLine(t *testing.T) {
-	sink1 := &mock.Sink{Discard: true}
-	line1 := pipe.Line{
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-		}).Source(),
-		Sink: sink1.Sink(),
+	addLine := func(async bool) func(*testing.T) {
+		return func(t *testing.T) {
+			sink1 := &mock.Sink{Discard: true}
+			line1 := pipe.Line{
+				Source: (&mock.Source{
+					Limit:    862 * bufferSize,
+					Channels: 2,
+				}).Source(),
+				Sink: sink1.Sink(),
+			}
+
+			var mut mutable.Context
+			if !async {
+				mut = mutable.Mutable()
+			}
+			sink2 := &mock.Sink{Discard: true}
+			line2 := pipe.Line{
+				Context: mut,
+				Source: (&mock.Source{
+					Limit:    862 * bufferSize,
+					Channels: 2,
+					Value:    2,
+				}).Source(),
+				Sink: sink2.Sink(),
+			}
+
+			p, err := pipe.New(
+				bufferSize,
+				line1,
+			)
+			assertNil(t, "error", err)
+
+			// start
+			errc := p.Start(context.Background())
+			p.Push(p.AddLine(line2))
+			assertNil(t, "error", err)
+
+			err = pipe.Wait(errc)
+			assertEqual(t, "messages", sink1.Counter.Messages, 862)
+			assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
+			assertEqual(t, "messages", sink2.Counter.Messages, 862)
+			assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
+		}
 	}
-
-	sink2 := &mock.Sink{Discard: true}
-	line2 := pipe.Line{
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-			Value:    2,
-		}).Source(),
-		Sink: sink2.Sink(),
-	}
-
-	p, err := pipe.New(
-		bufferSize,
-		line1,
-	)
-	assertNil(t, "error", err)
-
-	// start
-	errc := p.Start(context.Background())
-	p.Push(p.AddLine(line2))
-	assertNil(t, "error", err)
-
-	err = pipe.Wait(errc)
-	assertEqual(t, "messages", sink1.Counter.Messages, 862)
-	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
-	assertEqual(t, "messages", sink2.Counter.Messages, 862)
-	assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
+	t.Run("async", addLine(true))
+	t.Run("sync", addLine(false))
 }
 
 // func TestInsertProcessor(t *testing.T) {
