@@ -99,7 +99,7 @@ func TestSimplePipe(t *testing.T) {
 	assertNil(t, "error", err)
 
 	// start
-	err = pipe.Wait(p.Run(context.Background()))
+	err = pipe.Wait(p.Start(context.Background()))
 	assertNil(t, "pipe error", err)
 	assertEqual(t, "messages", source.Counter.Messages, 862)
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
@@ -224,10 +224,7 @@ func TestLines(t *testing.T) {
 			runner := pipe.MultilineRunner{
 				Lines: lines,
 			}
-			runner.Bind()
-			errChan := pipe.Run(context.Background(), &runner)
-			err := <-errChan
-			<-errChan
+			err := runner.Run(context.Background())
 			assertFn(t, err, mocks...)
 		}
 	}
@@ -542,7 +539,7 @@ func waitPipe(t *testing.T, p *pipe.Pipe, timeout time.Duration, inits ...mutabl
 	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
 	defer cancelFn()
 
-	errc := p.Run(context.Background(), inits...)
+	errc := p.Start(context.Background(), inits...)
 
 	select {
 	case err := <-errc:

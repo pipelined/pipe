@@ -15,15 +15,15 @@ type (
 	Pipe struct {
 		context       mutable.Context
 		bufferSize    int
-		runners       map[chan mutable.Mutations]runner
+		starters      map[chan mutable.Mutations]starter
 		contexts      map[mutable.Context]chan mutable.Mutations
 		mutationsChan chan []mutable.Mutation
 		mutationsCache
 		errorMerger
 	}
 
-	runner interface {
-		run(context.Context, *errorMerger)
+	starter interface {
+		start(context.Context, *errorMerger)
 	}
 
 	// Source is a source of signal data. Optinaly, mutability can be
@@ -116,7 +116,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 	if len(lines) == 0 {
 		panic("pipe without lines")
 	}
-	runners := make(map[chan mutable.Mutations]runner)
+	starters := make(map[chan mutable.Mutations]starter)
 	contexts := make(map[mutable.Context]chan mutable.Mutations)
 	for _, l := range lines {
 		var (
@@ -133,7 +133,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 
 		// async execution
 		if !l.Context.IsMutable() {
-			runners[mutations] = r
+			starters[mutations] = r
 			r.bindContexts(contexts, mutations)
 			continue
 		}
@@ -141,12 +141,12 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 		// sync exec
 		if ok {
 			// add line to existing multiline runner
-			mlr := runners[mutations].(*MultilineRunner)
+			mlr := starters[mutations].(*MultilineRunner)
 			mlr.Lines = append(mlr.Lines, r)
-			runners[mutations] = mlr
+			starters[mutations] = mlr
 		} else {
 			// add new  multiline runner
-			runners[mutations] = &MultilineRunner{
+			starters[mutations] = &MultilineRunner{
 				Lines: []*LineRunner{r},
 			}
 			r.bindContexts(contexts, mutations)
@@ -155,13 +155,13 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 
 	return &Pipe{
 		bufferSize: bufferSize,
-		runners:    runners,
+		starters:   starters,
 		contexts:   contexts,
 	}, nil
 }
 
-// Run starts the pipe execution.
-func (p *Pipe) Run(ctx context.Context, initializers ...mutable.Mutation) <-chan error {
+// Start starts the pipe execution.
+func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-chan error {
 	// cancel is required to stop the pipe in case of error
 	ctx, cancelFn := context.WithCancel(ctx)
 	// push initializers before start
@@ -169,8 +169,8 @@ func (p *Pipe) Run(ctx context.Context, initializers ...mutable.Mutation) <-chan
 	mutCache.push(ctx)
 
 	p.errorMerger.errorChan = make(chan error, 1)
-	for _, r := range p.runners {
-		r.run(ctx, &p.errorMerger)
+	for _, r := range p.starters {
+		r.start(ctx, &p.errorMerger)
 	}
 	go p.errorMerger.wait()
 	errc := make(chan error, 1)

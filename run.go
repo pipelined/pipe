@@ -9,8 +9,8 @@ import (
 )
 
 type (
-	// Executor executes a single DSP operation.
-	Executor interface {
+	// executor executes a single DSP operation.
+	executor interface {
 		execute(context.Context) error
 		startHook(context.Context) error
 		flushHook(context.Context) error
@@ -23,27 +23,26 @@ type (
 	LineRunner struct {
 		context   mutable.Context
 		started   int
-		executors []Executor
+		executors []executor
 	}
 
 	// MultilineRunner allows to run multiple sequences of DSP components
 	// in the same goroutine.
 	MultilineRunner struct {
-		mutable.Context
 		Lines []*LineRunner
 	}
 )
 
-func (r *LineRunner) run(ctx context.Context, merger *errorMerger) {
-	r.Bind()
+func (r *LineRunner) start(ctx context.Context, merger *errorMerger) {
+	r.bind()
 	for _, e := range r.executors {
-		merger.add(Run(ctx, e))
+		merger.add(start(ctx, e))
 	}
 }
 
-func (r *MultilineRunner) run(ctx context.Context, merger *errorMerger) {
-	r.Bind()
-	merger.add(Run(ctx, r))
+func (r *MultilineRunner) start(ctx context.Context, merger *errorMerger) {
+	r.bind()
+	merger.add(start(ctx, r))
 }
 
 func (r *LineRunner) bindContexts(contexts map[mutable.Context]chan mutable.Mutations, mc chan mutable.Mutations) {
@@ -58,7 +57,7 @@ func (r *LineRunner) bindContexts(contexts map[mutable.Context]chan mutable.Muta
 	contexts[r.executors[len(r.executors)-1].(Sink).Context] = mc
 }
 
-func (r *LineRunner) Bind() {
+func (r *LineRunner) bind() {
 	e := r.executors[0].(Source)
 	e.out.Sender.Bind()
 
@@ -68,9 +67,9 @@ func (r *LineRunner) Bind() {
 	}
 }
 
-func (r *MultilineRunner) Bind() {
+func (r *MultilineRunner) bind() {
 	for i := range r.Lines {
-		r.Lines[i].Bind()
+		r.Lines[i].bind()
 	}
 }
 
@@ -111,6 +110,19 @@ func (r *LineRunner) startHook(ctx context.Context) error {
 		r.started++
 	}
 	return errs.ret()
+}
+
+// Run executes line synchonously in a single goroutine.
+func (r *LineRunner) Run(ctx context.Context) error {
+	r.bind()
+	return run(ctx, r)
+}
+
+// Run executes multiple lines synchonously in a single
+// goroutine.
+func (r *MultilineRunner) Run(ctx context.Context) error {
+	r.bind()
+	return run(ctx, r)
 }
 
 // startHook calls start for every line. If any line fails to start, it will
@@ -171,31 +183,59 @@ func (r *MultilineRunner) execute(ctx context.Context) error {
 	return nil
 }
 
-// Run the component runner.
-func Run(ctx context.Context, e Executor) <-chan error {
+// start executes dsp component in an async context. For successfully
+// started executor an error is returned immediately after it occured.
+func start(ctx context.Context, e executor) <-chan error {
 	errc := make(chan error, 1)
-	go runExecutor(ctx, e, errc)
+	go func() {
+		defer close(errc)
+		if err := e.startHook(ctx); err != nil {
+			errc <- fmt.Errorf("error starting: %w", err)
+			return
+		}
+		defer func() {
+			if err := e.flushHook(ctx); err != nil {
+				errc <- fmt.Errorf("error flushing: %w", err)
+			}
+		}()
+
+		var err error
+		for err == nil {
+			err = e.execute(ctx)
+		}
+		if err != io.EOF {
+			errc <- fmt.Errorf("error running: %w", err)
+		}
+		return
+	}()
 	return errc
 }
 
-func runExecutor(ctx context.Context, e Executor, errc chan<- error) {
-	defer close(errc)
-	if err := e.startHook(ctx); err != nil {
-		errc <- fmt.Errorf("error starting component: %w", err)
-		return
+// run executes dsp component in a sync context. For successfully started
+// components no errors returned until flush is performed.
+func run(ctx context.Context, e executor) (errExec error) {
+	if errStart := e.startHook(ctx); errStart != nil {
+		return fmt.Errorf("error starting: %w", errStart)
 	}
 	defer func() {
-		if err := e.flushHook(ctx); err != nil {
-			errc <- fmt.Errorf("error flushing component: %w", err)
+		errFlush := e.flushHook(ctx)
+		if errFlush == nil && errExec == nil {
+			return
+		}
+		errExec = &ErrorRun{
+			ErrFlush: fmt.Errorf("error flushing: %w", errFlush),
+			ErrExec:  errExec,
 		}
 	}()
 
-	var err error
-	for err == nil {
-		err = e.execute(ctx)
+	// var err error
+	for errExec == nil {
+		errExec = e.execute(ctx)
 	}
-	if err != io.EOF {
-		errc <- fmt.Errorf("error running component: %w", err)
+	if errExec == io.EOF {
+		errExec = nil
+	} else {
+		errExec = fmt.Errorf("error running: %w", errExec)
 	}
 	return
 }

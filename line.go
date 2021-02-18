@@ -48,7 +48,7 @@ func (r Line) Runner(bufferSize int, mutations chan mutable.Mutations) (*LineRun
 	if r.Context.IsMutable() {
 		fitFn = fitting.Sync
 	}
-	executors := make([]Executor, 0, 2+len(r.Processors))
+	executors := make([]executor, 0, 2+len(r.Processors))
 	source, err := r.Source.allocate(componentContext(r.Context), bufferSize)
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)
