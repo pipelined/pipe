@@ -511,6 +511,59 @@ func TestAddLine(t *testing.T) {
 	t.Run("sync", addLine(false))
 }
 
+func TestAddLineMultiLine(t *testing.T) {
+	sink1 := &mock.Sink{Discard: true}
+	line1 := pipe.Line{
+		Source: (&mock.Source{
+			Limit:    862 * bufferSize,
+			Channels: 2,
+		}).Source(),
+		Sink: sink1.Sink(),
+	}
+
+	mut := mutable.Mutable()
+	sink2 := &mock.Sink{Discard: true}
+	line2 := pipe.Line{
+		Context: mut,
+		Source: (&mock.Source{
+			Limit:    862 * bufferSize,
+			Channels: 2,
+			Value:    2,
+		}).Source(),
+		Sink: sink2.Sink(),
+	}
+	sink3 := &mock.Sink{Discard: true}
+	line3 := pipe.Line{
+		Context: mut,
+		Source: (&mock.Source{
+			Limit:    862 * bufferSize,
+			Channels: 2,
+			Value:    2,
+		}).Source(),
+		Sink: sink3.Sink(),
+	}
+
+	p, err := pipe.New(
+		bufferSize,
+		line1,
+		line2,
+	)
+	assertNil(t, "error", err)
+
+	// start
+	errc := p.Start(context.Background())
+	p.Push(p.AddLine(line3))
+	assertNil(t, "error", err)
+
+	err = pipe.Wait(errc)
+	assertEqual(t, "messages", sink1.Counter.Messages, 862)
+	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", sink2.Counter.Messages, 862)
+	assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", sink3.Counter.Messages, 862)
+	assertEqual(t, "samples", sink3.Counter.Samples, 862*bufferSize)
+}
+
 // func TestInsertProcessor(t *testing.T) {
 // 	bufferSize := 2
 // 	testInsert := func(pos int) func(*testing.T) {

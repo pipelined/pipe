@@ -144,7 +144,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 			// add line to existing multiline runner
 			mlr := starters[mutations].(*MultiLineRunner)
 			mlr.Lines = append(mlr.Lines, r)
-			starters[mutations] = mlr
+			// starters[mutations] = mlr
 		} else {
 			// add new  multiline runner
 			starters[mutations] = &MultiLineRunner{
@@ -255,9 +255,11 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		if ok {
 			// add line to existing multiline runner
 			// TODO: another mutation
-			// mlr := p.starters[mutations].(*MultiLineRunner)
-			// mlr.Lines = append(mlr.Lines, r)
-			// starters[mutations] = mlr
+			mlr := p.starters[mutations].(*MultiLineRunner)
+			p.Push(l.Context.Mutate(func() error {
+				mlr.Lines = append(mlr.Lines, r)
+				return nil
+			}))
 		} else {
 			// add new  multiline runner
 			mlr := &MultiLineRunner{
