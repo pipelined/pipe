@@ -221,7 +221,7 @@ func TestLines(t *testing.T) {
 				assertNil(t, "runner error", err)
 				lines = append(lines, r)
 			}
-			runner := pipe.MultilineRunner{
+			runner := pipe.MultiLineRunner{
 				Lines: lines,
 			}
 			err := runner.Run(context.Background())

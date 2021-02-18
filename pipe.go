@@ -141,12 +141,12 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 		// sync exec
 		if ok {
 			// add line to existing multiline runner
-			mlr := starters[mutations].(*MultilineRunner)
+			mlr := starters[mutations].(*MultiLineRunner)
 			mlr.Lines = append(mlr.Lines, r)
 			starters[mutations] = mlr
 		} else {
 			// add new  multiline runner
-			starters[mutations] = &MultilineRunner{
+			starters[mutations] = &MultiLineRunner{
 				Lines: []*LineRunner{r},
 			}
 			r.bindContexts(contexts, mutations)
