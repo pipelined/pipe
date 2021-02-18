@@ -1,22 +1,22 @@
-package run
+package pipe
 
 import (
 	"sync"
 )
 
-// errorMerger allows to listen to multiple error channels.
-type errorMerger struct {
-	wg        sync.WaitGroup
-	errorChan chan error
-}
+type (
+	// errorMerger allows to listen to multiple error channels.
+	errorMerger struct {
+		wg        sync.WaitGroup
+		errorChan chan error
+	}
+)
 
 // add error channels from all components into one.
-func (m *errorMerger) add(errcList ...<-chan error) {
+func (m *errorMerger) add(errc <-chan error) {
 	// function to wait for error channel
-	m.wg.Add(len(errcList))
-	for _, ec := range errcList {
-		go m.listen(ec)
-	}
+	m.wg.Add(1)
+	go m.listen(errc)
 }
 
 // listen blocks until error is received or channel is closed.
