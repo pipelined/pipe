@@ -26,9 +26,9 @@ type (
 		executors []executor
 	}
 
-	// MultilineRunner allows to run multiple sequences of DSP components
+	// MultiLineRunner allows to run multiple sequences of DSP components
 	// in the same goroutine.
-	MultilineRunner struct {
+	MultiLineRunner struct {
 		Lines []*LineRunner
 	}
 )
@@ -40,7 +40,7 @@ func (r *LineRunner) start(ctx context.Context, merger *errorMerger) {
 	}
 }
 
-func (r *MultilineRunner) start(ctx context.Context, merger *errorMerger) {
+func (r *MultiLineRunner) start(ctx context.Context, merger *errorMerger) {
 	r.bind()
 	merger.add(start(ctx, r))
 }
@@ -67,7 +67,7 @@ func (r *LineRunner) bind() {
 	}
 }
 
-func (r *MultilineRunner) bind() {
+func (r *MultiLineRunner) bind() {
 	for i := range r.Lines {
 		r.Lines[i].bind()
 	}
@@ -120,14 +120,14 @@ func (r *LineRunner) Run(ctx context.Context) error {
 
 // Run executes multiple lines synchonously in a single
 // goroutine.
-func (r *MultilineRunner) Run(ctx context.Context) error {
+func (r *MultiLineRunner) Run(ctx context.Context) error {
 	r.bind()
 	return run(ctx, r)
 }
 
 // startHook calls start for every line. If any line fails to start, it will
 // try to flush successfully started lines.
-func (r *MultilineRunner) startHook(ctx context.Context) error {
+func (r *MultiLineRunner) startHook(ctx context.Context) error {
 	var startErr execErrors
 	for i := range r.Lines {
 		if err := r.Lines[i].startHook(ctx); err != nil {
@@ -151,7 +151,7 @@ func (r *MultilineRunner) startHook(ctx context.Context) error {
 }
 
 // Flush flushes all lines.
-func (r *MultilineRunner) flushHook(ctx context.Context) error {
+func (r *MultiLineRunner) flushHook(ctx context.Context) error {
 	var flushErr execErrors
 	for _, l := range r.Lines {
 		if err := l.flushHook(ctx); err != nil {
@@ -162,7 +162,7 @@ func (r *MultilineRunner) flushHook(ctx context.Context) error {
 }
 
 // Execute executes all lines.
-func (r *MultilineRunner) execute(ctx context.Context) error {
+func (r *MultiLineRunner) execute(ctx context.Context) error {
 	var err error
 	for i := 0; i < len(r.Lines); {
 		if err = r.Lines[i].execute(ctx); err == nil {
