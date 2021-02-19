@@ -542,6 +542,16 @@ func TestAddLineMultiLine(t *testing.T) {
 		}).Source(),
 		Sink: sink3.Sink(),
 	}
+	sink4 := &mock.Sink{Discard: true}
+	line4 := pipe.Line{
+		Context: mut,
+		Source: (&mock.Source{
+			Limit:    862 * bufferSize,
+			Channels: 2,
+			Value:    2,
+		}).Source(),
+		Sink: sink4.Sink(),
+	}
 
 	p, err := pipe.New(
 		bufferSize,
@@ -552,7 +562,7 @@ func TestAddLineMultiLine(t *testing.T) {
 
 	// start
 	errc := p.Start(context.Background())
-	p.Push(p.AddLine(line3))
+	p.Push(p.AddLine(line3), p.AddLine(line4))
 	assertNil(t, "error", err)
 
 	err = pipe.Wait(errc)
@@ -562,6 +572,8 @@ func TestAddLineMultiLine(t *testing.T) {
 	assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
 	assertEqual(t, "messages", sink3.Counter.Messages, 862)
 	assertEqual(t, "samples", sink3.Counter.Samples, 862*bufferSize)
+	assertEqual(t, "messages", sink4.Counter.Messages, 862)
+	assertEqual(t, "samples", sink4.Counter.Samples, 862*bufferSize)
 }
 
 // func TestInsertProcessor(t *testing.T) {

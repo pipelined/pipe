@@ -169,8 +169,8 @@ func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-ch
 	ctx, cancelFn := context.WithCancel(ctx)
 	p.ctx = ctx
 	// push initializers before start
-	mutCache := newMutationsCache(p.mutables, initializers)
-	mutCache.push(ctx)
+	p.mutationsCache = newMutationsCache(p.mutables, initializers)
+	p.mutationsCache.push(ctx)
 
 	p.errorMerger.errorChan = make(chan error, 1)
 	for _, r := range p.starters {
@@ -178,11 +178,11 @@ func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-ch
 	}
 	go p.errorMerger.wait()
 	errc := make(chan error, 1)
-	go p.start(ctx, mutCache, errc, cancelFn)
+	go p.start(ctx, errc, cancelFn)
 	return errc
 }
 
-func (p *Pipe) start(ctx context.Context, mc mutationsCache, errc chan error, cancelFn context.CancelFunc) {
+func (p *Pipe) start(ctx context.Context, errc chan error, cancelFn context.CancelFunc) {
 	defer close(errc)
 	for {
 		select {
@@ -193,13 +193,13 @@ func (p *Pipe) start(ctx context.Context, mc mutationsCache, errc chan error, ca
 					m.Apply()
 				} else {
 					if c, ok := p.mutables[m.Context]; ok {
-						mc[c] = mc[c].Put(m)
+						p.mutationsCache[c] = p.mutationsCache[c].Put(m)
 					} else {
 						panic("no listener found!")
 					}
 				}
 			}
-			mc.push(ctx)
+			p.mutationsCache.push(ctx)
 		case err, ok := <-p.errorMerger.errorChan:
 			// merger has buffer of one error, if more errors happen, they
 			// will be ignored.
@@ -256,7 +256,7 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 			// add line to existing multiline runner
 			// TODO: another mutation
 			mlr := p.starters[mutations].(*MultiLineRunner)
-			p.Push(l.Context.Mutate(func() error {
+			p.mutationsCache[mutations] = p.mutationsCache[mutations].Put(l.Context.Mutate(func() error {
 				mlr.Lines = append(mlr.Lines, r)
 				return nil
 			}))
