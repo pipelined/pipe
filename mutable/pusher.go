@@ -9,6 +9,7 @@ type (
 		mutations    map[Destination]Mutations
 	}
 
+	// Destination is a channel that used as source of mutations.
 	Destination chan Mutations
 )
 

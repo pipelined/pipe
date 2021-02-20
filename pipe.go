@@ -32,7 +32,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
-		mutations mutable.Destination
+		dest mutable.Destination
 		mutable.Context
 		SourceFunc
 		StartFunc
@@ -248,7 +248,7 @@ func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 func (s Source) execute(ctx context.Context) error {
 	var ms mutable.Mutations
 	select {
-	case ms = <-s.mutations:
+	case ms = <-s.dest:
 		if err := ms.ApplyTo(s.Context); err != nil {
 			return err
 		}
