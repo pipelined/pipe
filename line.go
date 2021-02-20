@@ -43,7 +43,7 @@ type (
 
 // Runner binds routing components together. Line is a set of components
 // ready for execution. If Runner is async then source context is returned.
-func (l Line) Runner(bufferSize int, mutations mutable.Destination) (*LineRunner, error) {
+func (l Line) Runner(bufferSize int, dest mutable.Destination) (*LineRunner, error) {
 	fitFn := fitting.Async
 	if l.Context.IsMutable() {
 		fitFn = fitting.Sync
@@ -53,7 +53,7 @@ func (l Line) Runner(bufferSize int, mutations mutable.Destination) (*LineRunner
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)
 	}
-	source.mutations = mutations
+	source.dest = dest
 
 	// link holds properties that links two executors
 	link := struct {
