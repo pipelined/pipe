@@ -13,17 +13,21 @@ import (
 type (
 	// Pipe is a graph formed with multiple lines of bound DSP components.
 	Pipe struct {
-		ctx           context.Context
-		mctx          mutable.Context
-		bufferSize    int
-		starters      map[chan mutable.Mutations]starter
+		ctx        context.Context
+		mctx       mutable.Context
+		bufferSize int
+		// async lines have runner per component
+		// sync lines always wrapped in MultiLineRunner
+		runners map[chan mutable.Mutations]runner
+		// async lines have context per component
+		// sync lines have single context for all components
 		mutables      map[mutable.Context]chan mutable.Mutations
 		mutationsChan chan []mutable.Mutation
 		mutationsCache
 		errorMerger
 	}
 
-	starter interface {
+	runner interface {
 		start(context.Context, *errorMerger)
 	}
 
@@ -83,11 +87,6 @@ type (
 	// execute any other form of finalization logic.
 	FlushFunc func(ctx context.Context) error
 
-	connector struct {
-		fitting.Fitting
-		*signal.PoolAllocator
-	}
-
 	out struct {
 		fitting.Sender
 		*signal.PoolAllocator
@@ -117,14 +116,11 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 	if len(lines) == 0 {
 		panic("pipe without lines")
 	}
-	starters := make(map[chan mutable.Mutations]starter)
+	starters := make(map[chan mutable.Mutations]runner)
 	mutables := make(map[mutable.Context]chan mutable.Mutations)
 	for _, l := range lines {
-		var (
-			ok        bool
-			mutations chan mutable.Mutations
-		)
-		if mutations, ok = mutables[l.Context]; !ok {
+		mutations, ok := mutables[l.Context]
+		if !ok {
 			mutations = make(chan mutable.Mutations, 1)
 		}
 		r, err := l.Runner(bufferSize, mutations)
@@ -158,7 +154,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 		mctx:          mutable.Mutable(),
 		mutationsChan: make(chan []mutable.Mutation, 1),
 		bufferSize:    bufferSize,
-		starters:      starters,
+		runners:       starters,
 		mutables:      mutables,
 	}, nil
 }
@@ -173,7 +169,7 @@ func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-ch
 	p.mutationsCache.push(ctx)
 
 	p.errorMerger.errorChan = make(chan error, 1)
-	for _, r := range p.starters {
+	for _, r := range p.runners {
 		r.start(ctx, &p.errorMerger)
 	}
 	go p.errorMerger.wait()
@@ -232,11 +228,8 @@ func Wait(errc <-chan error) error {
 // AddLine creates the line for provied route and adds it to the pipe.
 func (p *Pipe) AddLine(l Line) mutable.Mutation {
 	return p.mctx.Mutate(func() error {
-		var (
-			ok        bool
-			mutations chan mutable.Mutations
-		)
-		if mutations, ok = p.mutables[l.Context]; !ok {
+		mutations, ok := p.mutables[l.Context]
+		if !ok {
 			mutations = make(chan mutable.Mutations, 1)
 		}
 		r, err := l.Runner(p.bufferSize, mutations)
@@ -245,7 +238,7 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		}
 
 		if !l.Context.IsMutable() {
-			p.starters[mutations] = r
+			p.runners[mutations] = r
 			r.bindContexts(p.mutables, mutations)
 			r.start(p.ctx, &p.errorMerger)
 			return nil
@@ -254,8 +247,7 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		// sync exec
 		if ok {
 			// add line to existing multiline runner
-			// TODO: another mutation
-			mlr := p.starters[mutations].(*MultiLineRunner)
+			mlr := p.runners[mutations].(*MultiLineRunner)
 			p.mutationsCache[mutations] = p.mutationsCache[mutations].Put(l.Context.Mutate(func() error {
 				mlr.Lines = append(mlr.Lines, r)
 				return nil
@@ -265,23 +257,13 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 			mlr := &MultiLineRunner{
 				Lines: []*LineRunner{r},
 			}
-			p.starters[mutations] = mlr
+			// p.runners[mutations] = mlr
 			r.bindContexts(p.mutables, mutations)
 			mlr.start(p.ctx, &p.errorMerger)
 		}
 		return nil
 	})
-	// l, err := l.Runner(nil, p.bufferSize)
-	// if err != nil {
-	// 	return Line{}, err
-	// }
-	// p.lines = append(p.Lines, l)
-	// return l, nil
 }
-
-// func (p *Pipe) addLineMut() mutable.Mutation {
-
-// }
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
