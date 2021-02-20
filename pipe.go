@@ -258,7 +258,7 @@ func (s Source) execute(ctx context.Context) error {
 	default:
 	}
 
-	output := s.out.GetFloat64()
+	output := s.out.Float64()
 	var (
 		read int
 		err  error
@@ -293,7 +293,7 @@ func (p Processor) execute(ctx context.Context) error {
 		return err
 	}
 
-	output := p.out.GetFloat64()
+	output := p.out.Float64()
 	if processed, err := p.ProcessFunc(m.Signal, output); err != nil {
 		p.out.Close()
 		return err
