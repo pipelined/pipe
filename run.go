@@ -45,16 +45,17 @@ func (r *MultiLineRunner) start(ctx context.Context, merger *errorMerger) {
 	merger.add(start(ctx, r))
 }
 
-func (r *LineRunner) bindContexts(contexts map[mutable.Context]chan mutable.Mutations, mc chan mutable.Mutations) {
-	contexts[r.executors[0].(Source).Context] = mc
+func (r *LineRunner) bindContexts(p mutable.Pusher, d mutable.Destination) {
+	p.AddDestination(r.executors[0].(Source).Context, d)
+	// sync line shares context for all components
 	if !r.context.IsMutable() {
 		return
 	}
 
 	for i := 1; i < len(r.executors)-1; i++ {
-		contexts[r.executors[i].(Processor).Context] = mc
+		p.AddDestination(r.executors[i].(Processor).Context, d)
 	}
-	contexts[r.executors[len(r.executors)-1].(Sink).Context] = mc
+	p.AddDestination(r.executors[len(r.executors)-1].(Sink).Context, d)
 }
 
 func (r *LineRunner) bind() {

@@ -13,17 +13,18 @@ import (
 type (
 	// Pipe is a graph formed with multiple lines of bound DSP components.
 	Pipe struct {
-		ctx           context.Context
-		mctx          mutable.Context
-		bufferSize    int
-		starters      map[chan mutable.Mutations]starter
-		mutables      map[mutable.Context]chan mutable.Mutations
+		ctx        context.Context
+		mctx       mutable.Context
+		bufferSize int
+		// async lines have runner per component
+		// sync lines always wrapped in MultiLineRunner
+		runners       map[mutable.Destination]runner
 		mutationsChan chan []mutable.Mutation
-		mutationsCache
+		pusher        mutable.Pusher
 		errorMerger
 	}
 
-	starter interface {
+	runner interface {
 		start(context.Context, *errorMerger)
 	}
 
@@ -31,7 +32,7 @@ type (
 	// provided to handle mutations and flush hook to handle resource clean
 	// up.
 	Source struct {
-		mutations chan mutable.Mutations
+		dest mutable.Destination
 		mutable.Context
 		SourceFunc
 		StartFunc
@@ -83,11 +84,6 @@ type (
 	// execute any other form of finalization logic.
 	FlushFunc func(ctx context.Context) error
 
-	connector struct {
-		fitting.Fitting
-		*signal.PoolAllocator
-	}
-
 	out struct {
 		fitting.Sender
 		*signal.PoolAllocator
@@ -99,58 +95,39 @@ type (
 	}
 )
 
-type mutationsCache map[chan mutable.Mutations]mutable.Mutations
-
-func newMutationsCache(execCtxs map[mutable.Context]chan mutable.Mutations, initializers []mutable.Mutation) mutationsCache {
-	mutCache := make(map[chan mutable.Mutations]mutable.Mutations)
-	for i := range initializers {
-		if c, ok := execCtxs[initializers[i].Context]; ok {
-			mutCache[c] = mutCache[c].Put(initializers[i])
-		}
-	}
-	return mutCache
-}
-
 // New returns a new Pipe that binds multiple lines using the provided
 // buffer size.
 func New(bufferSize int, lines ...Line) (*Pipe, error) {
 	if len(lines) == 0 {
 		panic("pipe without lines")
 	}
-	starters := make(map[chan mutable.Mutations]starter)
-	mutables := make(map[mutable.Context]chan mutable.Mutations)
+	starters := make(map[mutable.Destination]runner)
+	pusher := mutable.NewPusher()
 	for _, l := range lines {
-		var (
-			ok        bool
-			mutations chan mutable.Mutations
-		)
-		if mutations, ok = mutables[l.Context]; !ok {
-			mutations = make(chan mutable.Mutations, 1)
-		}
-		r, err := l.Runner(bufferSize, mutations)
+		dest, ok := pusher.Destination(l.Context)
+		r, err := l.Runner(bufferSize, dest)
 		if err != nil {
 			return nil, err
 		}
 
 		// async execution
 		if !l.Context.IsMutable() {
-			starters[mutations] = r
-			r.bindContexts(mutables, mutations)
+			starters[dest] = r
+			r.bindContexts(pusher, dest)
 			continue
 		}
 
 		// sync exec
 		if ok {
 			// add line to existing multiline runner
-			mlr := starters[mutations].(*MultiLineRunner)
+			mlr := starters[dest].(*MultiLineRunner)
 			mlr.Lines = append(mlr.Lines, r)
-			// starters[mutations] = mlr
 		} else {
 			// add new  multiline runner
-			starters[mutations] = &MultiLineRunner{
+			starters[dest] = &MultiLineRunner{
 				Lines: []*LineRunner{r},
 			}
-			r.bindContexts(mutables, mutations)
+			r.bindContexts(pusher, dest)
 		}
 	}
 
@@ -158,8 +135,8 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 		mctx:          mutable.Mutable(),
 		mutationsChan: make(chan []mutable.Mutation, 1),
 		bufferSize:    bufferSize,
-		starters:      starters,
-		mutables:      mutables,
+		runners:       starters,
+		pusher:        pusher,
 	}, nil
 }
 
@@ -169,11 +146,11 @@ func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-ch
 	ctx, cancelFn := context.WithCancel(ctx)
 	p.ctx = ctx
 	// push initializers before start
-	p.mutationsCache = newMutationsCache(p.mutables, initializers)
-	p.mutationsCache.push(ctx)
+	p.pusher.Put(initializers...)
+	p.pusher.Push(ctx)
 
 	p.errorMerger.errorChan = make(chan error, 1)
-	for _, r := range p.starters {
+	for _, r := range p.runners {
 		r.start(ctx, &p.errorMerger)
 	}
 	go p.errorMerger.wait()
@@ -192,14 +169,10 @@ func (p *Pipe) start(ctx context.Context, errc chan error, cancelFn context.Canc
 				if m.Context == p.mctx {
 					m.Apply()
 				} else {
-					if c, ok := p.mutables[m.Context]; ok {
-						p.mutationsCache[c] = p.mutationsCache[c].Put(m)
-					} else {
-						panic("no listener found!")
-					}
+					p.pusher.Put(m)
 				}
 			}
-			p.mutationsCache.push(ctx)
+			p.pusher.Push(ctx)
 		case err, ok := <-p.errorMerger.errorChan:
 			// merger has buffer of one error, if more errors happen, they
 			// will be ignored.
@@ -232,21 +205,15 @@ func Wait(errc <-chan error) error {
 // AddLine creates the line for provied route and adds it to the pipe.
 func (p *Pipe) AddLine(l Line) mutable.Mutation {
 	return p.mctx.Mutate(func() error {
-		var (
-			ok        bool
-			mutations chan mutable.Mutations
-		)
-		if mutations, ok = p.mutables[l.Context]; !ok {
-			mutations = make(chan mutable.Mutations, 1)
-		}
-		r, err := l.Runner(p.bufferSize, mutations)
+		dest, ok := p.pusher.Destination(l.Context)
+		r, err := l.Runner(p.bufferSize, dest)
 		if err != nil {
 			return err
 		}
 
 		if !l.Context.IsMutable() {
-			p.starters[mutations] = r
-			r.bindContexts(p.mutables, mutations)
+			p.runners[dest] = r
+			r.bindContexts(p.pusher, dest)
 			r.start(p.ctx, &p.errorMerger)
 			return nil
 		}
@@ -254,9 +221,8 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		// sync exec
 		if ok {
 			// add line to existing multiline runner
-			// TODO: another mutation
-			mlr := p.starters[mutations].(*MultiLineRunner)
-			p.mutationsCache[mutations] = p.mutationsCache[mutations].Put(l.Context.Mutate(func() error {
+			mlr := p.runners[dest].(*MultiLineRunner)
+			p.pusher.Put(l.Context.Mutate(func() error {
 				mlr.Lines = append(mlr.Lines, r)
 				return nil
 			}))
@@ -265,23 +231,12 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 			mlr := &MultiLineRunner{
 				Lines: []*LineRunner{r},
 			}
-			p.starters[mutations] = mlr
-			r.bindContexts(p.mutables, mutations)
+			r.bindContexts(p.pusher, dest)
 			mlr.start(p.ctx, &p.errorMerger)
 		}
 		return nil
 	})
-	// l, err := l.Runner(nil, p.bufferSize)
-	// if err != nil {
-	// 	return Line{}, err
-	// }
-	// p.lines = append(p.Lines, l)
-	// return l, nil
 }
-
-// func (p *Pipe) addLineMut() mutable.Mutation {
-
-// }
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
@@ -293,7 +248,7 @@ func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 func (s Source) execute(ctx context.Context) error {
 	var ms mutable.Mutations
 	select {
-	case ms = <-s.mutations:
+	case ms = <-s.dest:
 		if err := ms.ApplyTo(s.Context); err != nil {
 			return err
 		}
@@ -389,15 +344,4 @@ func callHook(ctx context.Context, hook func(context.Context) error) error {
 
 func (sp SignalProperties) poolAllocator(bufferSize int) *signal.PoolAllocator {
 	return signal.GetPoolAllocator(sp.Channels, bufferSize, bufferSize)
-}
-
-func (mc mutationsCache) push(ctx context.Context) {
-	for c, m := range mc {
-		select {
-		case c <- m:
-			delete(mc, c)
-		case <-ctx.Done():
-			return
-		}
-	}
 }

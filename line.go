@@ -43,17 +43,17 @@ type (
 
 // Runner binds routing components together. Line is a set of components
 // ready for execution. If Runner is async then source context is returned.
-func (r Line) Runner(bufferSize int, mutations chan mutable.Mutations) (*LineRunner, error) {
+func (l Line) Runner(bufferSize int, dest mutable.Destination) (*LineRunner, error) {
 	fitFn := fitting.Async
-	if r.Context.IsMutable() {
+	if l.Context.IsMutable() {
 		fitFn = fitting.Sync
 	}
-	executors := make([]executor, 0, 2+len(r.Processors))
-	source, err := r.Source.allocate(componentContext(r.Context), bufferSize)
+	executors := make([]executor, 0, 2+len(l.Processors))
+	source, err := l.Source.allocate(componentContext(l.Context), bufferSize)
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)
 	}
-	source.mutations = mutations
+	source.dest = dest
 
 	// link holds properties that links two executors
 	link := struct {
@@ -69,8 +69,8 @@ func (r Line) Runner(bufferSize int, mutations chan mutable.Mutations) (*LineRun
 	executors = append(executors, source)
 
 	// processors := make([]Processor, 0, len(r.Processors))
-	for i := range r.Processors {
-		processor, err := r.Processors[i].allocate(componentContext(r.Context), bufferSize, link.SignalProperties)
+	for i := range l.Processors {
+		processor, err := l.Processors[i].allocate(componentContext(l.Context), bufferSize, link.SignalProperties)
 		if err != nil {
 			return nil, fmt.Errorf("processor: %w", err)
 		}
@@ -83,7 +83,7 @@ func (r Line) Runner(bufferSize int, mutations chan mutable.Mutations) (*LineRun
 		executors = append(executors, processor)
 	}
 
-	sink, err := r.Sink.allocate(componentContext(r.Context), bufferSize, link.SignalProperties)
+	sink, err := l.Sink.allocate(componentContext(l.Context), bufferSize, link.SignalProperties)
 	if err != nil {
 		return nil, fmt.Errorf("sink: %w", err)
 	}
