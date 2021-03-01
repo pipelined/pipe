@@ -16,9 +16,12 @@ It implies the following constraints:
     There might be 0 to n Processors;
     All stages are executed sequentially.
 
-Current implementation supports only asynchronous execution, when every
-stage is running in its own goroutine. It is inspired with the pipeline
-pattern explained in the go blog https://blog.golang.org/pipelines.
+Current implementation supports two execution modes: sync and async. In
+async mode every stage of every line is executed in by its own goroutine
+and channels are used to communicate between them. Sync mode allows to run
+one or more lines in the same goroutine. In this case lines and stages
+within lines are executed sequentially, as-provided. Pipe allows to use
+different modes in the same run.
 
 Components
 
@@ -40,37 +43,36 @@ hook is triggered when pipe is done or interruped by error or timeout. It
 enables to execute proper clean up logic. For mutability, refer to
 mutability package documentation.
 
-Routing and binding
+Line definition and pipe
 
-To run the pipeline, one first need to build it. It starts with a routing:
+To run the pipeline, one first need to build it. It starts with a line
+definition:
 
-    r1 := pipe.Routing{
+    l1 := pipe.Line{
         Source: wav.Source(reader),
         Processors: pipe.Processors(
-            vst2.Open(vstPath1),
-            vst2.Open(vstPath2),
+            vst.Processor(vst2.Host{}).Allocator(nil),
         ),
         Sink: wav.Sink(writer),
     }
 
-Routing defines the order in which DSP components form the pipeline. Once
-routing is defined, components can be bound together. It's done by creating
-a pipe:
+Line defines the order in which DSP components form the pipeline. Once line
+is defined, components can be bound together. It's done by creating a pipe:
 
-    p, err := pipe.New(bufferSize, r1)
+    p, err := pipe.New(bufferSize, l1)
 
-New executes all allocators provided by routings and binds components
-together into the pipe.
+New executes all allocators provided by lines and binds components together
+into the pipe.
 
 Execution
 
-Once pipe is built, it can be executed. To do that Async method should be
+Once pipe is built, it can be executed. To do that Start method should be
 called:
 
-    r := p.Async()
-    err := r.Await()
+    errc := p.Start()
+    err := pipe.Wait(errc)
 
-Async will start and asynchronously run all DSP components until either any
+Start will start and asynchronously run all DSP components until either any
 of the following things happen: the source is done; the context is done; an
 error in any of the components occured.
 */
