@@ -18,13 +18,13 @@ type (
 		bufferSize int
 		// async lines have runner per component
 		// sync lines always wrapped in MultiLineRunner
-		runners       map[mutable.Destination]runner
+		starters      map[mutable.Destination]starter
 		mutationsChan chan []mutable.Mutation
 		pusher        mutable.Pusher
 		errorMerger
 	}
 
-	runner interface {
+	starter interface {
 		start(context.Context, *errorMerger)
 	}
 
@@ -101,7 +101,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 	if len(lines) == 0 {
 		panic("pipe without lines")
 	}
-	starters := make(map[mutable.Destination]runner)
+	starters := make(map[mutable.Destination]starter)
 	pusher := mutable.NewPusher()
 	for _, l := range lines {
 		dest, ok := pusher.Destination(l.Context)
@@ -135,7 +135,7 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 		mctx:          mutable.Mutable(),
 		mutationsChan: make(chan []mutable.Mutation, 1),
 		bufferSize:    bufferSize,
-		runners:       starters,
+		starters:      starters,
 		pusher:        pusher,
 	}, nil
 }
@@ -150,7 +150,7 @@ func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-ch
 	p.pusher.Push(ctx)
 
 	p.errorMerger.errorChan = make(chan error, 1)
-	for _, r := range p.runners {
+	for _, r := range p.starters {
 		r.start(ctx, &p.errorMerger)
 	}
 	go p.errorMerger.wait()
@@ -212,7 +212,7 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		}
 
 		if !l.Context.IsMutable() {
-			p.runners[dest] = r
+			p.starters[dest] = r
 			r.bindContexts(p.pusher, dest)
 			r.start(p.ctx, &p.errorMerger)
 			return nil
@@ -221,7 +221,7 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		// sync exec
 		if ok {
 			// add line to existing multiline runner
-			mlr := p.runners[dest].(*MultiLineRunner)
+			mlr := p.starters[dest].(*MultiLineRunner)
 			p.pusher.Put(l.Context.Mutate(func() error {
 				mlr.Lines = append(mlr.Lines, r)
 				return nil
