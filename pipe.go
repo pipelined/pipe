@@ -97,38 +97,18 @@ type (
 
 // New returns a new Pipe that binds multiple lines using the provided
 // buffer size.
-func New(bufferSize int, lines ...Line) (*Pipe, error) {
-	if len(lines) == 0 {
+func New(bufferSize int, runners ...Starter) (*Pipe, error) {
+	if len(runners) == 0 {
 		panic("pipe without lines")
 	}
 	starters := make(map[mutable.Destination]starter)
 	pusher := mutable.NewPusher()
-	for _, l := range lines {
-		dest, ok := pusher.Destination(l.Context)
-		r, err := l.Runner(bufferSize, dest)
+	for _, r := range runners {
+		s, dest, err := r.Starter(bufferSize, pusher)
 		if err != nil {
 			return nil, err
 		}
-
-		// async execution
-		if !l.Context.IsMutable() {
-			starters[dest] = r
-			r.bindContexts(pusher, dest)
-			continue
-		}
-
-		// sync exec
-		if ok {
-			// add line to existing multiline runner
-			mlr := starters[dest].(*MultiLineRunner)
-			mlr.Lines = append(mlr.Lines, r)
-		} else {
-			// add new  multiline runner
-			starters[dest] = &MultiLineRunner{
-				Lines: []*LineRunner{r},
-			}
-			r.bindContexts(pusher, dest)
-		}
+		starters[dest] = s
 	}
 
 	return &Pipe{
@@ -203,37 +183,18 @@ func Wait(errc <-chan error) error {
 }
 
 // AddLine creates the line for provied route and adds it to the pipe.
-func (p *Pipe) AddLine(l Line) mutable.Mutation {
+func (p *Pipe) AddLine(s Starter) mutable.Mutation {
+	// TODO: handle sync line
+	if _, ok := s.(SyncLines); ok {
+		panic("sync lines cannot be added")
+	}
 	return p.mctx.Mutate(func() error {
-		dest, ok := p.pusher.Destination(l.Context)
-		r, err := l.Runner(p.bufferSize, dest)
+		s, dest, err := s.Starter(p.bufferSize, p.pusher)
 		if err != nil {
 			return err
 		}
-
-		if !l.Context.IsMutable() {
-			p.starters[dest] = r
-			r.bindContexts(p.pusher, dest)
-			r.start(p.ctx, &p.errorMerger)
-			return nil
-		}
-
-		// sync exec
-		if ok {
-			// add line to existing multiline runner
-			mlr := p.starters[dest].(*MultiLineRunner)
-			p.pusher.Put(l.Context.Mutate(func() error {
-				mlr.Lines = append(mlr.Lines, r)
-				return nil
-			}))
-		} else {
-			// add new  multiline runner
-			mlr := &MultiLineRunner{
-				Lines: []*LineRunner{r},
-			}
-			r.bindContexts(p.pusher, dest)
-			mlr.start(p.ctx, &p.errorMerger)
-		}
+		p.starters[dest] = s
+		s.start(p.ctx, &p.errorMerger)
 		return nil
 	})
 }

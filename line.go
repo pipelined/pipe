@@ -39,7 +39,43 @@ type (
 		SampleRate signal.Frequency
 		Channels   int
 	}
+
+	AsyncLine Line
+	// SyncLine  Line
+	SyncLines []Line
+
+	Starter interface {
+		Starter(bufferSize int, p mutable.Pusher) (starter, mutable.Destination, error)
+		// bindContexts(p mutable.Pusher, d mutable.Destination)
+	}
 )
+
+func (l AsyncLine) Starter(bufferSize int, p mutable.Pusher) (starter, mutable.Destination, error) {
+	dest := mutable.NewDestination()
+	l.Context = mutable.Immutable()
+	r, err := Line(l).Runner(bufferSize, dest)
+	if err != nil {
+		return nil, nil, err
+	}
+	r.bindContexts(p, dest)
+	return r, dest, err
+}
+
+func (ls SyncLines) Starter(bufferSize int, p mutable.Pusher) (starter, mutable.Destination, error) {
+	mctx := mutable.Mutable()
+	dest := mutable.NewDestination()
+	var mlr MultiLineRunner
+	for i := range ls {
+		ls[i].Context = mctx
+		r, err := ls[i].Runner(bufferSize, dest)
+		if err != nil {
+			return nil, nil, err
+		}
+		mlr.Lines = append(mlr.Lines, r)
+		r.bindContexts(p, dest)
+	}
+	return &mlr, dest, nil
+}
 
 // Runner binds routing components together. Line is a set of components
 // ready for execution. If Runner is async then source context is returned.

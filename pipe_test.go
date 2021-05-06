@@ -23,7 +23,7 @@ func TestLineBindingFail(t *testing.T) {
 		errorBinding = errors.New("binding error")
 		bufferSize   = 512
 	)
-	testBinding := func(l pipe.Line) func(*testing.T) {
+	testBinding := func(l pipe.Starter) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
 			_, err := pipe.New(bufferSize, l)
@@ -36,7 +36,7 @@ func TestLineBindingFail(t *testing.T) {
 		}
 	}
 	t.Run("source", testBinding(
-		pipe.Line{
+		pipe.AsyncLine{
 			Source: (&mock.Source{
 				ErrorOnMake: errorBinding,
 			}).Source(),
@@ -47,7 +47,7 @@ func TestLineBindingFail(t *testing.T) {
 		},
 	))
 	t.Run("processor", testBinding(
-		pipe.Line{
+		pipe.AsyncLine{
 			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{
@@ -58,7 +58,7 @@ func TestLineBindingFail(t *testing.T) {
 		},
 	))
 	t.Run("sink", testBinding(
-		pipe.Line{
+		pipe.AsyncLine{
 			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{}).Processor(),
@@ -69,7 +69,7 @@ func TestLineBindingFail(t *testing.T) {
 		},
 	))
 	t.Run("ok", testBinding(
-		pipe.Line{
+		pipe.AsyncLine{
 			Source: (&mock.Source{}).Source(),
 			Processors: pipe.Processors(
 				(&mock.Processor{}).Processor(),
@@ -90,7 +90,7 @@ func TestSimplePipe(t *testing.T) {
 
 	p, err := pipe.New(
 		bufferSize,
-		pipe.Line{
+		pipe.AsyncLine{
 			Source:     source.Source(),
 			Processors: pipe.Processors(proc1.Processor()),
 			Sink:       sink1.Sink(),
@@ -114,7 +114,7 @@ func TestReset(t *testing.T) {
 
 	p, err := pipe.New(
 		bufferSize,
-		pipe.Line{
+		pipe.AsyncLine{
 			Source: source.Source(),
 			Sink:   sink.Sink(),
 		},
@@ -139,10 +139,11 @@ func TestSync(t *testing.T) {
 
 	p, err := pipe.New(
 		bufferSize,
-		pipe.Line{
-			Context: mutable.Mutable(),
-			Source:  source.Source(),
-			Sink:    sink.Sink(),
+		pipe.SyncLines{
+			pipe.Line{
+				Source: source.Source(),
+				Sink:   sink.Sink(),
+			},
 		},
 	)
 	assertNil(t, "error", err)
@@ -153,7 +154,7 @@ func TestSync(t *testing.T) {
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 }
 
-func TestSyncMultiple(t *testing.T) {
+func TestMultiple(t *testing.T) {
 	source1 := &mock.Source{
 		Limit:    862 * bufferSize,
 		Channels: 2,
@@ -168,15 +169,17 @@ func TestSyncMultiple(t *testing.T) {
 	mctx := mutable.Mutable()
 	p, err := pipe.New(
 		bufferSize,
-		pipe.Line{
-			Context: mctx,
-			Source:  source1.Source(),
-			Sink:    sink1.Sink(),
-		},
-		pipe.Line{
-			Context: mctx,
-			Source:  source2.Source(),
-			Sink:    sink2.Sink(),
+		pipe.SyncLines{
+			pipe.Line{
+				Context: mctx,
+				Source:  source1.Source(),
+				Sink:    sink1.Sink(),
+			},
+			pipe.Line{
+				Context: mctx,
+				Source:  source2.Source(),
+				Sink:    sink2.Sink(),
+			},
 		},
 	)
 	assertNil(t, "error", err)
@@ -462,119 +465,119 @@ func TestLines(t *testing.T) {
 
 }
 
-func TestAddLine(t *testing.T) {
-	addLine := func(async bool) func(*testing.T) {
-		return func(t *testing.T) {
-			sink1 := &mock.Sink{Discard: true}
-			line1 := pipe.Line{
-				Source: (&mock.Source{
-					Limit:    862 * bufferSize,
-					Channels: 2,
-				}).Source(),
-				Sink: sink1.Sink(),
-			}
+// func TestAddLine(t *testing.T) {
+// 	addLine := func(async bool) func(*testing.T) {
+// 		return func(t *testing.T) {
+// 			sink1 := &mock.Sink{Discard: true}
+// 			line1 := pipe.Line{
+// 				Source: (&mock.Source{
+// 					Limit:    862 * bufferSize,
+// 					Channels: 2,
+// 				}).Source(),
+// 				Sink: sink1.Sink(),
+// 			}
 
-			var mut mutable.Context
-			if !async {
-				mut = mutable.Mutable()
-			}
-			sink2 := &mock.Sink{Discard: true}
-			line2 := pipe.Line{
-				Context: mut,
-				Source: (&mock.Source{
-					Limit:    862 * bufferSize,
-					Channels: 2,
-					Value:    2,
-				}).Source(),
-				Sink: sink2.Sink(),
-			}
+// 			var mut mutable.Context
+// 			if !async {
+// 				mut = mutable.Mutable()
+// 			}
+// 			sink2 := &mock.Sink{Discard: true}
+// 			line2 := pipe.Line{
+// 				Context: mut,
+// 				Source: (&mock.Source{
+// 					Limit:    862 * bufferSize,
+// 					Channels: 2,
+// 					Value:    2,
+// 				}).Source(),
+// 				Sink: sink2.Sink(),
+// 			}
 
-			p, err := pipe.New(
-				bufferSize,
-				line1,
-			)
-			assertNil(t, "error", err)
+// 			p, err := pipe.New(
+// 				bufferSize,
+// 				line1,
+// 			)
+// 			assertNil(t, "error", err)
 
-			// start
-			errc := p.Start(context.Background())
-			p.Push(p.AddLine(line2))
-			assertNil(t, "error", err)
+// 			// start
+// 			errc := p.Start(context.Background())
+// 			p.Push(p.AddLine(line2))
+// 			assertNil(t, "error", err)
 
-			err = pipe.Wait(errc)
-			assertEqual(t, "messages", sink1.Counter.Messages, 862)
-			assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
-			assertEqual(t, "messages", sink2.Counter.Messages, 862)
-			assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
-		}
-	}
-	t.Run("async", addLine(true))
-	t.Run("sync", addLine(false))
-}
+// 			err = pipe.Wait(errc)
+// 			assertEqual(t, "messages", sink1.Counter.Messages, 862)
+// 			assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
+// 			assertEqual(t, "messages", sink2.Counter.Messages, 862)
+// 			assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
+// 		}
+// 	}
+// 	t.Run("async", addLine(true))
+// 	t.Run("sync", addLine(false))
+// }
 
-func TestAddLineMultiLine(t *testing.T) {
-	sink1 := &mock.Sink{Discard: true}
-	line1 := pipe.Line{
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-		}).Source(),
-		Sink: sink1.Sink(),
-	}
+// func TestAddLineMultiLine(t *testing.T) {
+// 	sink1 := &mock.Sink{Discard: true}
+// 	line1 := pipe.Line{
+// 		Source: (&mock.Source{
+// 			Limit:    862 * bufferSize,
+// 			Channels: 2,
+// 		}).Source(),
+// 		Sink: sink1.Sink(),
+// 	}
 
-	mut := mutable.Mutable()
-	sink2 := &mock.Sink{Discard: true}
-	line2 := pipe.Line{
-		Context: mut,
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-			Value:    2,
-		}).Source(),
-		Sink: sink2.Sink(),
-	}
-	sink3 := &mock.Sink{Discard: true}
-	line3 := pipe.Line{
-		Context: mut,
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-			Value:    2,
-		}).Source(),
-		Sink: sink3.Sink(),
-	}
-	sink4 := &mock.Sink{Discard: true}
-	line4 := pipe.Line{
-		Context: mut,
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-			Value:    2,
-		}).Source(),
-		Sink: sink4.Sink(),
-	}
+// 	mut := mutable.Mutable()
+// 	sink2 := &mock.Sink{Discard: true}
+// 	line2 := pipe.Line{
+// 		Context: mut,
+// 		Source: (&mock.Source{
+// 			Limit:    862 * bufferSize,
+// 			Channels: 2,
+// 			Value:    2,
+// 		}).Source(),
+// 		Sink: sink2.Sink(),
+// 	}
+// 	sink3 := &mock.Sink{Discard: true}
+// 	line3 := pipe.Line{
+// 		Context: mut,
+// 		Source: (&mock.Source{
+// 			Limit:    862 * bufferSize,
+// 			Channels: 2,
+// 			Value:    2,
+// 		}).Source(),
+// 		Sink: sink3.Sink(),
+// 	}
+// 	sink4 := &mock.Sink{Discard: true}
+// 	line4 := pipe.Line{
+// 		Context: mut,
+// 		Source: (&mock.Source{
+// 			Limit:    862 * bufferSize,
+// 			Channels: 2,
+// 			Value:    2,
+// 		}).Source(),
+// 		Sink: sink4.Sink(),
+// 	}
 
-	p, err := pipe.New(
-		bufferSize,
-		line1,
-		line2,
-	)
-	assertNil(t, "error", err)
+// 	p, err := pipe.New(
+// 		bufferSize,
+// 		line1,
+// 		line2,
+// 	)
+// 	assertNil(t, "error", err)
 
-	// start
-	errc := p.Start(context.Background())
-	p.Push(p.AddLine(line3), p.AddLine(line4))
-	assertNil(t, "error", err)
+// 	// start
+// 	errc := p.Start(context.Background())
+// 	p.Push(p.AddLine(line3), p.AddLine(line4))
+// 	assertNil(t, "error", err)
 
-	err = pipe.Wait(errc)
-	assertEqual(t, "messages", sink1.Counter.Messages, 862)
-	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
-	assertEqual(t, "messages", sink2.Counter.Messages, 862)
-	assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
-	assertEqual(t, "messages", sink3.Counter.Messages, 862)
-	assertEqual(t, "samples", sink3.Counter.Samples, 862*bufferSize)
-	assertEqual(t, "messages", sink4.Counter.Messages, 862)
-	assertEqual(t, "samples", sink4.Counter.Samples, 862*bufferSize)
-}
+// 	err = pipe.Wait(errc)
+// 	assertEqual(t, "messages", sink1.Counter.Messages, 862)
+// 	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
+// 	assertEqual(t, "messages", sink2.Counter.Messages, 862)
+// 	assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
+// 	assertEqual(t, "messages", sink3.Counter.Messages, 862)
+// 	assertEqual(t, "samples", sink3.Counter.Samples, 862*bufferSize)
+// 	assertEqual(t, "messages", sink4.Counter.Messages, 862)
+// 	assertEqual(t, "samples", sink4.Counter.Samples, 862*bufferSize)
+// }
 
 // func TestInsertProcessor(t *testing.T) {
 // 	bufferSize := 2

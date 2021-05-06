@@ -9,7 +9,7 @@ import (
 )
 
 type (
-	// executor executes a single DSP operation.
+	// executor executes a single pipe operation.
 	executor interface {
 		execute(context.Context) error
 		startHook(context.Context) error
@@ -207,7 +207,6 @@ func start(ctx context.Context, e executor) <-chan error {
 		if err != io.EOF {
 			errc <- fmt.Errorf("error running: %w", err)
 		}
-		return
 	}()
 	return errc
 }
@@ -229,7 +228,6 @@ func run(ctx context.Context, e executor) (errExec error) {
 		}
 	}()
 
-	// var err error
 	for errExec == nil {
 		errExec = e.execute(ctx)
 	}
