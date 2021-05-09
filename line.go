@@ -40,15 +40,6 @@ type (
 		Channels   int
 	}
 
-	AsyncLine Line
-	// SyncLine  Line
-	SyncLines []Line
-
-	// Starter interface {
-	// 	Starter(bufferSize int, p mutable.Pusher) (starter, mutable.Destination, error)
-	// 	// bindContexts(p mutable.Pusher, d mutable.Destination)
-	// }
-
 	// line represents a bound components
 	line struct {
 		context    mutable.Context
