@@ -22,7 +22,7 @@ type (
 		pusher        mutable.Pusher
 		executors     map[mutable.Context]executor
 		errorMerger
-		lines []*line
+		routes []*route
 	}
 
 	// Source is a source of signal data. Optinaly, mutability can be
@@ -94,24 +94,24 @@ type (
 
 // New returns a new Pipe that binds multiple lines using the provided
 // buffer size.
-func New(bufferSize int, lineAllocators ...Line) (*Pipe, error) {
-	if len(lineAllocators) == 0 {
+func New(bufferSize int, lines ...Line) (*Pipe, error) {
+	if len(lines) == 0 {
 		panic("pipe without lines")
 	}
-	lines := make([]*line, 0, len(lineAllocators))
-	for i := range lineAllocators {
-		if l, err := lineAllocators[i].line(bufferSize); err != nil {
+	routes := make([]*route, 0, len(lines))
+	for _, l := range lines {
+		r, err := l.route(bufferSize)
+		if err != nil {
 			return nil, err
-		} else {
-			lines = append(lines, l)
 		}
+		routes = append(routes, r)
 	}
 
 	return &Pipe{
 		mctx:          mutable.Mutable(),
 		mutationsChan: make(chan []mutable.Mutation, 1),
 		bufferSize:    bufferSize,
-		lines:         lines,
+		routes:        routes,
 		pusher:        mutable.NewPusher(),
 	}, nil
 }
@@ -120,13 +120,13 @@ func New(bufferSize int, lineAllocators ...Line) (*Pipe, error) {
 func Run(ctx context.Context, bufferSize int, lines ...Line) error {
 	e := multiLineExecutor{}
 	mctx := mutable.Mutable()
-	for i := range lines {
-		lines[i].Context = mctx
-		if l, err := lines[i].line(bufferSize); err != nil {
+	for _, l := range lines {
+		l.Context = mctx
+		r, err := l.route(bufferSize)
+		if err != nil {
 			return err
-		} else {
-			e.Lines = append(e.Lines, l.executor(nil))
 		}
+		e.Lines = append(e.Lines, r.executor(nil))
 	}
 	return run(ctx, &e)
 }
@@ -138,8 +138,8 @@ func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-ch
 	p.ctx = ctx
 	p.errorMerger.errorChan = make(chan error, 1)
 	p.executors = make(map[mutable.Context]executor)
-	for _, l := range p.lines {
-		l.bindExecutors(p.executors, p.pusher)
+	for _, r := range p.routes {
+		r.bindExecutors(p.executors, p.pusher)
 	}
 	for _, e := range p.executors {
 		e.connectOutputs()
@@ -221,13 +221,13 @@ func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 	return processors
 }
 
-func (s Source) connectOutputs() {
+func (s *Source) connectOutputs() {
 	s.out.Sender.Bind()
 }
 
 // Execute does a single iteration of source component. io.EOF is returned
 // if context is done.
-func (s Source) execute(ctx context.Context) error {
+func (s *Source) execute(ctx context.Context) error {
 	var ms mutable.Mutations
 	select {
 	case ms = <-s.dest:
@@ -261,13 +261,13 @@ func (s Source) execute(ctx context.Context) error {
 	return nil
 }
 
-func (p Processor) connectOutputs() {
+func (p *Processor) connectOutputs() {
 	p.out.Sender.Bind()
 }
 
 // Execute does a single iteration of processor component. io.EOF is
 // returned if context is done.
-func (p Processor) execute(ctx context.Context) error {
+func (p *Processor) execute(ctx context.Context) error {
 	m, ok := p.in.Receive(ctx)
 	if !ok {
 		p.out.Close()
@@ -295,11 +295,11 @@ func (p Processor) execute(ctx context.Context) error {
 	return nil
 }
 
-func (s Sink) connectOutputs() {}
+func (s *Sink) connectOutputs() {}
 
 // Execute does a single iteration of sink component. io.EOF is returned if
 // context is done.
-func (s Sink) execute(ctx context.Context) error {
+func (s *Sink) execute(ctx context.Context) error {
 	m, ok := s.in.Receive(ctx)
 	if !ok {
 		return io.EOF
