@@ -17,7 +17,7 @@ type (
 		mctx       mutable.Context
 		bufferSize int
 		// async lines have runner per component
-		// sync lines always wrapped in MultiLineRunner
+		// sync lines always wrapped in multiLineExecutor
 		mutationsChan chan []mutable.Mutation
 		pusher        mutable.Pusher
 		executors     map[mutable.Context]executor
@@ -114,6 +114,21 @@ func New(bufferSize int, lineAllocators ...Line) (*Pipe, error) {
 		lines:         lines,
 		pusher:        mutable.NewPusher(),
 	}, nil
+}
+
+// Run executes the pipe in a single goroutine, sequentially.
+func Run(ctx context.Context, bufferSize int, lines ...Line) error {
+	e := multiLineExecutor{}
+	mctx := mutable.Mutable()
+	for i := range lines {
+		lines[i].Context = mctx
+		if l, err := lines[i].line(bufferSize); err != nil {
+			return err
+		} else {
+			e.Lines = append(e.Lines, l.executor(nil))
+		}
+	}
+	return run(ctx, &e)
 }
 
 // Start starts the pipe execution.

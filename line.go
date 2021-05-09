@@ -40,7 +40,7 @@ type (
 		Channels   int
 	}
 
-	// line represents a bound components
+	// line represents bound components
 	line struct {
 		context    mutable.Context
 		source     Source
@@ -104,14 +104,15 @@ func (l Line) line(bufferSize int) (*line, error) {
 func (l *line) bindExecutors(executors map[mutable.Context]executor, p mutable.Pusher) {
 	if l.context.IsMutable() {
 		if e, ok := executors[l.context]; ok {
-			mle := e.(*MultiLineRunner)
-			mle.Lines = append(mle.Lines, l.executor(mle.dest))
+			mle := e.(*multiLineExecutor)
+			mle.Lines = append(mle.Lines, l.executor(mle.Destination))
 		} else {
 			d := mutable.NewDestination()
 			p.AddDestination(l.context, d)
-			executors[l.context] = &MultiLineRunner{
-				dest:  d,
-				Lines: []*LineRunner{l.executor(d)},
+			executors[l.context] = &multiLineExecutor{
+				Context:     l.context,
+				Destination: d,
+				Lines:       []*lineExecutor{l.executor(d)},
 			}
 		}
 		return
@@ -129,7 +130,7 @@ func (l *line) bindExecutors(executors map[mutable.Context]executor, p mutable.P
 	executors[l.sink.Context] = l.sink
 }
 
-func (l line) executor(d mutable.Destination) *LineRunner {
+func (l line) executor(d mutable.Destination) *lineExecutor {
 	executors := make([]executor, 0, 2+len(l.processors))
 	l.source.dest = d
 	executors = append(executors, l.source)
@@ -137,65 +138,9 @@ func (l line) executor(d mutable.Destination) *LineRunner {
 		executors = append(executors, p)
 	}
 	executors = append(executors, l.sink)
-	return &LineRunner{
+	return &lineExecutor{
 		executors: executors,
 	}
-}
-
-// Runner binds routing components together. Line is a set of components
-// ready for execution. If Runner is async then source context is returned.
-func (l Line) Runner(bufferSize int, dest mutable.Destination) (*LineRunner, error) {
-	fitFn := fitting.Async
-	if l.Context.IsMutable() {
-		fitFn = fitting.Sync
-	}
-	executors := make([]executor, 0, 2+len(l.Processors))
-	source, err := l.Source.allocate(componentContext(l.Context), bufferSize)
-	if err != nil {
-		return nil, fmt.Errorf("source: %w", err)
-	}
-	source.dest = dest
-
-	// link holds properties that links two executors
-	link := struct {
-		fitting.Fitting
-		*signal.PoolAllocator
-		SignalProperties
-	}{
-		Fitting:          fitFn(),
-		PoolAllocator:    source.out.PoolAllocator,
-		SignalProperties: source.SignalProperties,
-	}
-	source.out.Sender = link.Fitting
-	executors = append(executors, source)
-
-	// processors := make([]Processor, 0, len(r.Processors))
-	for i := range l.Processors {
-		processor, err := l.Processors[i].allocate(componentContext(l.Context), bufferSize, link.SignalProperties)
-		if err != nil {
-			return nil, fmt.Errorf("processor: %w", err)
-		}
-		processor.in.PoolAllocator = link.PoolAllocator
-		processor.in.Receiver = link.Fitting
-		link.Fitting = fitFn()
-		processor.out.Sender = link.Fitting
-		link.SignalProperties = processor.SignalProperties
-		link.PoolAllocator = processor.out.PoolAllocator
-		executors = append(executors, processor)
-	}
-
-	sink, err := l.Sink.allocate(componentContext(l.Context), bufferSize, link.SignalProperties)
-	if err != nil {
-		return nil, fmt.Errorf("sink: %w", err)
-	}
-	sink.in.PoolAllocator = link.PoolAllocator
-	sink.in.Receiver = link.Fitting
-	executors = append(executors, sink)
-
-	return &LineRunner{
-		// context:   source.Context,
-		executors: executors,
-	}, nil
 }
 
 func (fn SourceAllocatorFunc) allocate(ctx mutable.Context, bufferSize int) (Source, error) {

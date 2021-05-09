@@ -211,20 +211,16 @@ func TestLines(t *testing.T) {
 
 	testLines := func(assertFn assertFunc, mocks ...mockLine) func(*testing.T) {
 		return func(t *testing.T) {
-			lines := make([]*pipe.LineRunner, 0, len(mocks))
+			lines := make([]pipe.Line, 0, len(mocks))
 			for i := range mocks {
-				r, err := pipe.Line{
+				l := pipe.Line{
 					Source:     mocks[i].Source.Source(),
 					Processors: pipe.Processors(mocks[i].Processor.Processor()),
 					Sink:       mocks[i].Sink.Sink(),
-				}.Runner(bufferSize, nil)
-				assertNil(t, "runner error", err)
-				lines = append(lines, r)
+				}
+				lines = append(lines, l)
 			}
-			runner := pipe.MultiLineRunner{
-				Lines: lines,
-			}
-			err := runner.Run(context.Background())
+			err := pipe.Run(context.Background(), bufferSize, lines...)
 			assertFn(t, err, mocks...)
 		}
 	}

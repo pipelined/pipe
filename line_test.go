@@ -1,6 +1,7 @@
 package pipe_test
 
 import (
+	"context"
 	"testing"
 
 	"pipelined.dev/pipe"
@@ -13,9 +14,6 @@ func TestLine(t *testing.T) {
 		Sink:   (&mock.Sink{}).Sink(),
 	}
 
-	_, err := l.Runner(bufferSize, nil)
-	assertNil(t, "runner error", err)
-
-	// err = r.Run(context.Background())
+	err := pipe.Run(context.Background(), bufferSize, l)
 	assertNil(t, "run error", err)
 }

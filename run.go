@@ -17,25 +17,23 @@ type (
 		flushHook(context.Context) error
 	}
 
-	// LineRunner is a sequence of bound and ready-to-run DSP components.
-	// It supports two execution modes: every component is running in its
-	// own goroutine (default) and running all components in a single
-	// goroutine.
-	LineRunner struct {
+	// lineExecutor is a sequence of bound and ready-to-run DSP components.
+	// All components are running in a single goroutine.
+	lineExecutor struct {
 		started   int
 		executors []executor
 	}
 
-	// MultiLineRunner allows to run multiple sequences of DSP components
+	// multiLineExecutor allows to run multiple sequences of DSP components
 	// in the same goroutine.
-	MultiLineRunner struct {
-		context mutable.Context
-		dest    mutable.Destination
-		Lines   []*LineRunner
+	multiLineExecutor struct {
+		mutable.Context
+		mutable.Destination
+		Lines []*lineExecutor
 	}
 )
 
-func (r *MultiLineRunner) connectOutputs() {
+func (r *multiLineExecutor) connectOutputs() {
 	for i := range r.Lines {
 		for _, e := range r.Lines[i].executors {
 			e.connectOutputs()
@@ -44,7 +42,7 @@ func (r *MultiLineRunner) connectOutputs() {
 }
 
 // Execute all components of the line one-by-one.
-func (r *LineRunner) execute(ctx context.Context) error {
+func (r *lineExecutor) execute(ctx context.Context) error {
 	var err error
 	for _, e := range r.executors {
 		if err = e.execute(ctx); err == nil {
@@ -60,7 +58,7 @@ func (r *LineRunner) execute(ctx context.Context) error {
 	return err
 }
 
-func (r *LineRunner) flushHook(ctx context.Context) error {
+func (r *lineExecutor) flushHook(ctx context.Context) error {
 	var errs execErrors
 	for i := 0; i < r.started; i++ {
 		if err := r.executors[i].flushHook(ctx); err != nil {
@@ -70,7 +68,7 @@ func (r *LineRunner) flushHook(ctx context.Context) error {
 	return errs.ret()
 }
 
-func (r *LineRunner) startHook(ctx context.Context) error {
+func (r *lineExecutor) startHook(ctx context.Context) error {
 	var errs execErrors
 	for _, e := range r.executors {
 		if err := e.startHook(ctx); err != nil {
@@ -82,16 +80,9 @@ func (r *LineRunner) startHook(ctx context.Context) error {
 	return errs.ret()
 }
 
-// Run executes multiple lines synchonously in a single
-// goroutine.
-func (r *MultiLineRunner) Run(ctx context.Context) error {
-	r.connectOutputs()
-	return run(ctx, r)
-}
-
 // startHook calls start for every line. If any line fails to start, it will
 // try to flush successfully started lines.
-func (r *MultiLineRunner) startHook(ctx context.Context) error {
+func (r *multiLineExecutor) startHook(ctx context.Context) error {
 	var startErr execErrors
 	for i := range r.Lines {
 		if err := r.Lines[i].startHook(ctx); err != nil {
@@ -115,7 +106,7 @@ func (r *MultiLineRunner) startHook(ctx context.Context) error {
 }
 
 // Flush flushes all lines.
-func (r *MultiLineRunner) flushHook(ctx context.Context) error {
+func (r *multiLineExecutor) flushHook(ctx context.Context) error {
 	var flushErr execErrors
 	for _, l := range r.Lines {
 		if err := l.flushHook(ctx); err != nil {
@@ -126,7 +117,7 @@ func (r *MultiLineRunner) flushHook(ctx context.Context) error {
 }
 
 // Execute executes all lines.
-func (r *MultiLineRunner) execute(ctx context.Context) error {
+func (r *multiLineExecutor) execute(ctx context.Context) error {
 	var err error
 	for i := 0; i < len(r.Lines); {
 		if err = r.Lines[i].execute(ctx); err == nil {
