@@ -44,37 +44,111 @@ type (
 	// SyncLine  Line
 	SyncLines []Line
 
-	Starter interface {
-		Starter(bufferSize int, p mutable.Pusher) (starter, mutable.Destination, error)
-		// bindContexts(p mutable.Pusher, d mutable.Destination)
+	// Starter interface {
+	// 	Starter(bufferSize int, p mutable.Pusher) (starter, mutable.Destination, error)
+	// 	// bindContexts(p mutable.Pusher, d mutable.Destination)
+	// }
+
+	// line represents a bound components
+	line struct {
+		context    mutable.Context
+		source     Source
+		processors []Processor
+		sink       Sink
 	}
 )
 
-func (l AsyncLine) Starter(bufferSize int, p mutable.Pusher) (starter, mutable.Destination, error) {
-	dest := mutable.NewDestination()
-	l.Context = mutable.Immutable()
-	r, err := Line(l).Runner(bufferSize, dest)
-	if err != nil {
-		return nil, nil, err
+func (l Line) line(bufferSize int) (*line, error) {
+	fitFn := fitting.Async
+	if l.Context.IsMutable() {
+		fitFn = fitting.Sync
 	}
-	r.bindContexts(p, dest)
-	return r, dest, err
+	source, err := l.Source.allocate(componentContext(l.Context), bufferSize)
+	if err != nil {
+		return nil, fmt.Errorf("source: %w", err)
+	}
+
+	// link holds properties that links two executors
+	link := struct {
+		fitting.Fitting
+		*signal.PoolAllocator
+		SignalProperties
+	}{
+		Fitting:          fitFn(),
+		PoolAllocator:    source.out.PoolAllocator,
+		SignalProperties: source.SignalProperties,
+	}
+	source.out.Sender = link.Fitting
+
+	processors := make([]Processor, 0, len(l.Processors))
+	for i := range l.Processors {
+		processor, err := l.Processors[i].allocate(componentContext(l.Context), bufferSize, link.SignalProperties)
+		if err != nil {
+			return nil, fmt.Errorf("processor: %w", err)
+		}
+		processor.in.PoolAllocator = link.PoolAllocator
+		processor.in.Receiver = link.Fitting
+		link.Fitting = fitFn()
+		processor.out.Sender = link.Fitting
+		link.SignalProperties = processor.SignalProperties
+		link.PoolAllocator = processor.out.PoolAllocator
+		processors = append(processors, processor)
+	}
+
+	sink, err := l.Sink.allocate(componentContext(l.Context), bufferSize, link.SignalProperties)
+	if err != nil {
+		return nil, fmt.Errorf("sink: %w", err)
+	}
+	sink.in.PoolAllocator = link.PoolAllocator
+	sink.in.Receiver = link.Fitting
+
+	return &line{
+		context:    l.Context,
+		source:     source,
+		processors: processors,
+		sink:       sink,
+	}, nil
 }
 
-func (ls SyncLines) Starter(bufferSize int, p mutable.Pusher) (starter, mutable.Destination, error) {
-	mctx := mutable.Mutable()
-	dest := mutable.NewDestination()
-	var mlr MultiLineRunner
-	for i := range ls {
-		ls[i].Context = mctx
-		r, err := ls[i].Runner(bufferSize, dest)
-		if err != nil {
-			return nil, nil, err
+func (l *line) bindExecutors(executors map[mutable.Context]executor, p mutable.Pusher) {
+	if l.context.IsMutable() {
+		if e, ok := executors[l.context]; ok {
+			mle := e.(*MultiLineRunner)
+			mle.Lines = append(mle.Lines, l.executor(mle.dest))
+		} else {
+			d := mutable.NewDestination()
+			p.AddDestination(l.context, d)
+			executors[l.context] = &MultiLineRunner{
+				dest:  d,
+				Lines: []*LineRunner{l.executor(d)},
+			}
 		}
-		mlr.Lines = append(mlr.Lines, r)
-		r.bindContexts(p, dest)
+		return
 	}
-	return &mlr, dest, nil
+
+	d := mutable.NewDestination()
+	l.source.dest = d
+	p.AddDestination(l.source.Context, d)
+	executors[l.source.Context] = l.source
+	for _, proc := range l.processors {
+		p.AddDestination(proc.Context, d)
+		executors[proc.Context] = proc
+	}
+	p.AddDestination(l.sink.Context, d)
+	executors[l.sink.Context] = l.sink
+}
+
+func (l line) executor(d mutable.Destination) *LineRunner {
+	executors := make([]executor, 0, 2+len(l.processors))
+	l.source.dest = d
+	executors = append(executors, l.source)
+	for _, p := range l.processors {
+		executors = append(executors, p)
+	}
+	executors = append(executors, l.sink)
+	return &LineRunner{
+		executors: executors,
+	}
 }
 
 // Runner binds routing components together. Line is a set of components
@@ -128,7 +202,7 @@ func (l Line) Runner(bufferSize int, dest mutable.Destination) (*LineRunner, err
 	executors = append(executors, sink)
 
 	return &LineRunner{
-		context:   source.Context,
+		// context:   source.Context,
 		executors: executors,
 	}, nil
 }

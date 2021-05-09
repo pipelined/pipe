@@ -18,14 +18,11 @@ type (
 		bufferSize int
 		// async lines have runner per component
 		// sync lines always wrapped in MultiLineRunner
-		starters      map[mutable.Destination]starter
 		mutationsChan chan []mutable.Mutation
 		pusher        mutable.Pusher
+		executors     map[mutable.Context]executor
 		errorMerger
-	}
-
-	starter interface {
-		start(context.Context, *errorMerger)
+		lines []*line
 	}
 
 	// Source is a source of signal data. Optinaly, mutability can be
@@ -97,26 +94,25 @@ type (
 
 // New returns a new Pipe that binds multiple lines using the provided
 // buffer size.
-func New(bufferSize int, runners ...Starter) (*Pipe, error) {
-	if len(runners) == 0 {
+func New(bufferSize int, lineAllocators ...Line) (*Pipe, error) {
+	if len(lineAllocators) == 0 {
 		panic("pipe without lines")
 	}
-	starters := make(map[mutable.Destination]starter)
-	pusher := mutable.NewPusher()
-	for _, r := range runners {
-		s, dest, err := r.Starter(bufferSize, pusher)
-		if err != nil {
+	lines := make([]*line, 0, len(lineAllocators))
+	for i := range lineAllocators {
+		if l, err := lineAllocators[i].line(bufferSize); err != nil {
 			return nil, err
+		} else {
+			lines = append(lines, l)
 		}
-		starters[dest] = s
 	}
 
 	return &Pipe{
 		mctx:          mutable.Mutable(),
 		mutationsChan: make(chan []mutable.Mutation, 1),
 		bufferSize:    bufferSize,
-		starters:      starters,
-		pusher:        pusher,
+		lines:         lines,
+		pusher:        mutable.NewPusher(),
 	}, nil
 }
 
@@ -125,13 +121,19 @@ func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-ch
 	// cancel is required to stop the pipe in case of error
 	ctx, cancelFn := context.WithCancel(ctx)
 	p.ctx = ctx
+	p.errorMerger.errorChan = make(chan error, 1)
+	p.executors = make(map[mutable.Context]executor)
+	for _, l := range p.lines {
+		l.bindExecutors(p.executors, p.pusher)
+	}
+	for _, e := range p.executors {
+		e.connectOutputs()
+	}
 	// push initializers before start
 	p.pusher.Put(initializers...)
 	p.pusher.Push(ctx)
-
-	p.errorMerger.errorChan = make(chan error, 1)
-	for _, r := range p.starters {
-		r.start(ctx, &p.errorMerger)
+	for _, e := range p.executors {
+		p.errorMerger.add(start(ctx, e))
 	}
 	go p.errorMerger.wait()
 	errc := make(chan error, 1)
@@ -183,18 +185,18 @@ func Wait(errc <-chan error) error {
 }
 
 // AddLine creates the line for provied route and adds it to the pipe.
-func (p *Pipe) AddLine(s Starter) mutable.Mutation {
+func (p *Pipe) AddLine(l Line) mutable.Mutation {
 	// TODO: handle sync line
-	if _, ok := s.(SyncLines); ok {
-		panic("sync lines cannot be added")
-	}
+	// if _, ok := s.(SyncLines); ok {
+	// 	panic("sync lines cannot be added")
+	// }
 	return p.mctx.Mutate(func() error {
-		s, dest, err := s.Starter(p.bufferSize, p.pusher)
-		if err != nil {
-			return err
-		}
-		p.starters[dest] = s
-		s.start(p.ctx, &p.errorMerger)
+		// s, dest, err := s.Starter(p.bufferSize, p.pusher)
+		// if err != nil {
+		// 	return err
+		// }
+		// p.starters[dest] = s
+		// s.start(p.ctx, &p.errorMerger)
 		return nil
 	})
 }
@@ -202,6 +204,10 @@ func (p *Pipe) AddLine(s Starter) mutable.Mutation {
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 	return processors
+}
+
+func (s Source) connectOutputs() {
+	s.out.Sender.Bind()
 }
 
 // Execute does a single iteration of source component. io.EOF is returned
@@ -240,6 +246,10 @@ func (s Source) execute(ctx context.Context) error {
 	return nil
 }
 
+func (p Processor) connectOutputs() {
+	p.out.Sender.Bind()
+}
+
 // Execute does a single iteration of processor component. io.EOF is
 // returned if context is done.
 func (p Processor) execute(ctx context.Context) error {
@@ -269,6 +279,8 @@ func (p Processor) execute(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (s Sink) connectOutputs() {}
 
 // Execute does a single iteration of sink component. io.EOF is returned if
 // context is done.

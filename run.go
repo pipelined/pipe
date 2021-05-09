@@ -11,6 +11,7 @@ import (
 type (
 	// executor executes a single pipe operation.
 	executor interface {
+		connectOutputs() // resets output fitting states
 		execute(context.Context) error
 		startHook(context.Context) error
 		flushHook(context.Context) error
@@ -21,7 +22,6 @@ type (
 	// own goroutine (default) and running all components in a single
 	// goroutine.
 	LineRunner struct {
-		context   mutable.Context
 		started   int
 		executors []executor
 	}
@@ -29,48 +29,17 @@ type (
 	// MultiLineRunner allows to run multiple sequences of DSP components
 	// in the same goroutine.
 	MultiLineRunner struct {
-		Lines []*LineRunner
+		context mutable.Context
+		dest    mutable.Destination
+		Lines   []*LineRunner
 	}
 )
 
-func (r *LineRunner) start(ctx context.Context, merger *errorMerger) {
-	r.bind()
-	for _, e := range r.executors {
-		merger.add(start(ctx, e))
-	}
-}
-
-func (r *MultiLineRunner) start(ctx context.Context, merger *errorMerger) {
-	r.bind()
-	merger.add(start(ctx, r))
-}
-
-func (r *LineRunner) bindContexts(p mutable.Pusher, d mutable.Destination) {
-	p.AddDestination(r.executors[0].(Source).Context, d)
-	// sync line shares context for all components
-	if !r.context.IsMutable() {
-		return
-	}
-
-	for i := 1; i < len(r.executors)-1; i++ {
-		p.AddDestination(r.executors[i].(Processor).Context, d)
-	}
-	p.AddDestination(r.executors[len(r.executors)-1].(Sink).Context, d)
-}
-
-func (r *LineRunner) bind() {
-	e := r.executors[0].(Source)
-	e.out.Sender.Bind()
-
-	for i := 1; i < len(r.executors)-1; i++ {
-		e := r.executors[i].(Processor)
-		e.out.Sender.Bind()
-	}
-}
-
-func (r *MultiLineRunner) bind() {
+func (r *MultiLineRunner) connectOutputs() {
 	for i := range r.Lines {
-		r.Lines[i].bind()
+		for _, e := range r.Lines[i].executors {
+			e.connectOutputs()
+		}
 	}
 }
 
@@ -113,16 +82,10 @@ func (r *LineRunner) startHook(ctx context.Context) error {
 	return errs.ret()
 }
 
-// Run executes line synchonously in a single goroutine.
-func (r *LineRunner) Run(ctx context.Context) error {
-	r.bind()
-	return run(ctx, r)
-}
-
 // Run executes multiple lines synchonously in a single
 // goroutine.
 func (r *MultiLineRunner) Run(ctx context.Context) error {
-	r.bind()
+	r.connectOutputs()
 	return run(ctx, r)
 }
 
