@@ -201,17 +201,52 @@ func Wait(errc <-chan error) error {
 
 // AddLine creates the line for provied route and adds it to the pipe.
 func (p *Pipe) AddLine(l Line) mutable.Mutation {
-	// TODO: handle sync line
-	// if _, ok := s.(SyncLines); ok {
-	// 	panic("sync lines cannot be added")
-	// }
 	return p.mctx.Mutate(func() error {
-		// s, dest, err := s.Starter(p.bufferSize, p.pusher)
-		// if err != nil {
-		// 	return err
-		// }
-		// p.starters[dest] = s
-		// s.start(p.ctx, &p.errorMerger)
+		r, err := l.route(p.bufferSize)
+		if err != nil {
+			return err
+		}
+
+		if !l.Context.IsMutable() {
+			r.bindExecutors(p.executors, p.pusher)
+			// connect all fittings
+			r.source.connectOutputs()
+			for _, proc := range r.processors {
+				proc.connectOutputs()
+			}
+			r.sink.connectOutputs()
+
+			// start all executors
+			p.errorMerger.add(start(p.ctx, &r.source))
+			for _, proc := range r.processors {
+				p.errorMerger.add(start(p.ctx, &proc))
+			}
+			p.errorMerger.add(start(p.ctx, &r.sink))
+			return nil
+		}
+		// add to existing goroutine
+		if e, ok := p.executors[l.Context]; ok {
+			mle := e.(*multiLineExecutor)
+			p.pusher.Put(
+				mle.Context.Mutate(
+					func() error {
+						mle.Lines = append(mle.Lines, r.executor(mle.Destination))
+						return nil
+					},
+				),
+			)
+			return nil
+		}
+		// new goroutine
+		d := mutable.NewDestination()
+		p.pusher.AddDestination(r.context, d)
+		e := &multiLineExecutor{
+			Context:     r.context,
+			Destination: d,
+			Lines:       []*lineExecutor{r.executor(d)},
+		}
+		p.executors[r.context] = e
+		p.errorMerger.add(start(p.ctx, e))
 		return nil
 	})
 }

@@ -101,43 +101,43 @@ func (l Line) route(bufferSize int) (*route, error) {
 	}, nil
 }
 
-func (l *route) bindExecutors(executors map[mutable.Context]executor, p mutable.Pusher) {
-	if l.context.IsMutable() {
-		if e, ok := executors[l.context]; ok {
+func (r *route) bindExecutors(executors map[mutable.Context]executor, p mutable.Pusher) {
+	if r.context.IsMutable() {
+		if e, ok := executors[r.context]; ok {
 			mle := e.(*multiLineExecutor)
-			mle.Lines = append(mle.Lines, l.executor(mle.Destination))
+			mle.Lines = append(mle.Lines, r.executor(mle.Destination))
 		} else {
 			d := mutable.NewDestination()
-			p.AddDestination(l.context, d)
-			executors[l.context] = &multiLineExecutor{
-				Context:     l.context,
+			p.AddDestination(r.context, d)
+			executors[r.context] = &multiLineExecutor{
+				Context:     r.context,
 				Destination: d,
-				Lines:       []*lineExecutor{l.executor(d)},
+				Lines:       []*lineExecutor{r.executor(d)},
 			}
 		}
 		return
 	}
 
 	d := mutable.NewDestination()
-	l.source.dest = d
-	p.AddDestination(l.source.Context, d)
-	executors[l.source.Context] = &l.source
-	for i := range l.processors {
-		p.AddDestination(l.processors[i].Context, d)
-		executors[l.processors[i].Context] = &l.processors[i]
+	r.source.dest = d
+	p.AddDestination(r.source.Context, d)
+	executors[r.source.Context] = &r.source
+	for i := range r.processors {
+		p.AddDestination(r.processors[i].Context, d)
+		executors[r.processors[i].Context] = &r.processors[i]
 	}
-	p.AddDestination(l.sink.Context, d)
-	executors[l.sink.Context] = &l.sink
+	p.AddDestination(r.sink.Context, d)
+	executors[r.sink.Context] = &r.sink
 }
 
-func (l *route) executor(d mutable.Destination) *lineExecutor {
-	executors := make([]executor, 0, 2+len(l.processors))
-	l.source.dest = d
-	executors = append(executors, &l.source)
-	for i := range l.processors {
-		executors = append(executors, &l.processors[i])
+func (r *route) executor(d mutable.Destination) *lineExecutor {
+	executors := make([]executor, 0, 2+len(r.processors))
+	r.source.dest = d
+	executors = append(executors, &r.source)
+	for i := range r.processors {
+		executors = append(executors, &r.processors[i])
 	}
-	executors = append(executors, &l.sink)
+	executors = append(executors, &r.sink)
 	return &lineExecutor{
 		executors: executors,
 	}
