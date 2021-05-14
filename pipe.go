@@ -80,16 +80,6 @@ type (
 	// FlushFunc provides a hook to flush all buffers for the component or
 	// execute any other form of finalization logic.
 	FlushFunc func(ctx context.Context) error
-
-	out struct {
-		fitting.Sender
-		*signal.PoolAllocator
-	}
-
-	in struct {
-		fitting.Receiver
-		*signal.PoolAllocator
-	}
 )
 
 // New returns a new Pipe that binds multiple lines using the provided
@@ -126,6 +116,7 @@ func Run(ctx context.Context, bufferSize int, lines ...Line) error {
 		if err != nil {
 			return err
 		}
+		r.connect(bufferSize)
 		e.Lines = append(e.Lines, r.executor(nil))
 	}
 	return run(ctx, &e)
@@ -140,9 +131,7 @@ func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-ch
 	p.executors = make(map[mutable.Context]executor)
 	for _, r := range p.routes {
 		r.bindExecutors(p.executors, p.pusher)
-	}
-	for _, e := range p.executors {
-		e.connectOutputs()
+		r.connect(p.bufferSize)
 	}
 	// push initializers before start
 	p.pusher.Put(initializers...)
@@ -201,27 +190,25 @@ func Wait(errc <-chan error) error {
 
 // AddLine creates the line for provied route and adds it to the pipe.
 func (p *Pipe) AddLine(l Line) mutable.Mutation {
+	if p.ctx == nil {
+		panic("pipe isn't running")
+	}
 	return p.mctx.Mutate(func() error {
 		r, err := l.route(p.bufferSize)
 		if err != nil {
 			return err
 		}
-
+		// connect all fittings
+		r.connect(p.bufferSize)
 		if !l.Context.IsMutable() {
 			r.bindExecutors(p.executors, p.pusher)
-			// connect all fittings
-			r.source.connectOutputs()
-			for _, proc := range r.processors {
-				proc.connectOutputs()
-			}
-			r.sink.connectOutputs()
 
 			// start all executors
-			p.errorMerger.add(start(p.ctx, &r.source))
+			p.errorMerger.add(start(p.ctx, r.source))
 			for _, proc := range r.processors {
-				p.errorMerger.add(start(p.ctx, &proc))
+				p.errorMerger.add(start(p.ctx, proc))
 			}
-			p.errorMerger.add(start(p.ctx, &r.sink))
+			p.errorMerger.add(start(p.ctx, r.sink))
 			return nil
 		}
 		// add to existing goroutine
@@ -251,13 +238,79 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 	})
 }
 
+// func (p *Pipe) InsertProcessor(line, pos int, procAlloc ProcessorAllocatorFunc) <-chan struct{} {
+// 	if p.ctx == nil {
+// 		panic("pipe isn't running")
+// 	}
+// 	ctx, cancelFn := context.WithCancel(p.ctx)
+// 	p.Push(p.mctx.Mutate(func() error {
+// 		r := p.routes[line]
+// 		if r.context.IsMutable() {
+// 			// e := p.executors[r.context].(*multiLineExecutor)
+// 			// e.Context.Mutate(func() error {
+// 			// 	e.
+// 			// })
+// 			cancelFn()
+// 			return nil
+// 		}
+
+// 		// todo: move to a separate method
+// 		var (
+// 			prevProps SignalProperties
+// 			prevOut   out
+// 		)
+// 		if pos == 0 {
+// 			prevProps = r.source.SignalProperties
+// 			prevOut = r.source.out
+// 		} else {
+// 			prevProps = r.processors[pos-1].SignalProperties
+// 			prevOut = r.processors[pos-1].out
+// 		}
+// 		// todo: move to a separate method
+// 		var nextCtx mutable.Context
+// 		if pos < len(r.processors) {
+// 			nextCtx = r.processors[pos].Context
+// 		} else {
+// 			nextCtx = r.sink.Context
+// 		}
+// 		mctx := mutable.Mutable()
+// 		proc, err := procAlloc.allocate(mctx, p.bufferSize, prevProps)
+// 		if err != nil {
+// 			cancelFn()
+// 			return err
+// 		}
+// 		f := fitting.Async()
+// 		proc.out.Sender = f
+
+// 		r.processors = append(r.processors, Processor{})
+// 		copy(r.processors[pos+1:], r.processors[pos:])
+// 		r.processors[pos] = proc
+
+// 		p.executors[mctx] = &proc
+// 		p.pusher.AddDestination(mctx, r.source.dest)
+// 		p.pusher.Put(nextCtx.Mutate(func() error {
+// 			proc.in.PoolAllocator = prevOut.PoolAllocator
+// 			proc.in.Receiver = prevOut.Sender.(*fitting.AsyncFitting)
+// 			nextIn.Receiver = f // TODO: it's not visible to executor
+// 			p.errorMerger.add(start(p.ctx, &proc))
+// 			cancelFn()
+// 			return nil
+// 		}))
+// 		return nil
+// 	}))
+// 	return ctx.Done()
+// }
+
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 	return processors
 }
 
-func (s *Source) connectOutputs() {
-	s.out.Sender.Bind()
+func (s *Source) connect(bufferSize int, fn fitting.New) {
+	s.out = out{
+		allocator: s.SignalProperties.poolAllocator(bufferSize),
+		sender:    fn(),
+	}
 }
 
 // Execute does a single iteration of source component. io.EOF is returned
@@ -270,76 +323,82 @@ func (s *Source) execute(ctx context.Context) error {
 			return err
 		}
 	case <-ctx.Done():
-		s.out.Close()
+		s.out.sender.Close()
 		return io.EOF
 	default:
 	}
 
-	output := s.out.Float64()
+	output := s.out.allocator.Float64()
 	var (
 		read int
 		err  error
 	)
 	if read, err = s.SourceFunc(output); err != nil {
-		s.out.Close()
-		output.Free(s.out.PoolAllocator)
+		s.out.sender.Close()
+		output.Free(s.out.allocator)
 		return err
 	}
 	if read != output.Length() {
 		output = output.Slice(0, read)
 	}
 
-	if !s.out.Send(ctx, fitting.Message{Signal: output, Mutations: ms}) {
-		s.out.Close()
+	if !s.out.sender.Send(ctx, fitting.Message{Signal: output, Mutations: ms}) {
+		s.out.sender.Close()
 		return io.EOF
 	}
 	return nil
 }
 
-func (p *Processor) connectOutputs() {
-	p.out.Sender.Bind()
+func (p *Processor) connect(bufferSize int, fn fitting.New, prevOut out) {
+	p.in.insert(prevOut)
+	p.out = out{
+		allocator: p.SignalProperties.poolAllocator(bufferSize),
+		sender:    fn(),
+	}
 }
 
 // Execute does a single iteration of processor component. io.EOF is
 // returned if context is done.
 func (p *Processor) execute(ctx context.Context) error {
-	m, ok := p.in.Receive(ctx)
+	m, ok := p.in.receiver.Receive(ctx)
 	if !ok {
-		p.out.Close()
+		p.out.sender.Close()
 		return io.EOF
 	}
-	defer m.Signal.Free(p.in.PoolAllocator)
+	defer m.Signal.Free(p.in.allocator)
 
 	if err := m.Mutations.ApplyTo(p.Context); err != nil {
 		return err
 	}
 
-	output := p.out.Float64()
+	output := p.out.allocator.Float64()
 	if processed, err := p.ProcessFunc(m.Signal, output); err != nil {
-		p.out.Close()
+		p.out.sender.Close()
 		return err
-	} else if processed != p.out.Length {
+	} else if processed != p.out.allocator.Length {
 		output = output.Slice(0, processed)
 	}
 
-	if !p.out.Send(ctx, fitting.Message{Signal: output, Mutations: m.Mutations}) {
-		p.out.Close()
-		output.Free(p.out.PoolAllocator)
+	if !p.out.sender.Send(ctx, fitting.Message{Signal: output, Mutations: m.Mutations}) {
+		p.out.sender.Close()
+		output.Free(p.out.allocator)
 		return io.EOF
 	}
 	return nil
 }
 
-func (s *Sink) connectOutputs() {}
+func (s *Sink) connect(bufferSize int, prevOut out) {
+	s.in.insert(prevOut)
+}
 
 // Execute does a single iteration of sink component. io.EOF is returned if
 // context is done.
 func (s *Sink) execute(ctx context.Context) error {
-	m, ok := s.in.Receive(ctx)
+	m, ok := s.in.receiver.Receive(ctx)
 	if !ok {
 		return io.EOF
 	}
-	defer m.Signal.Free(s.in.PoolAllocator)
+	defer m.Signal.Free(s.in.allocator)
 	if err := m.Mutations.ApplyTo(s.Context); err != nil {
 		return err
 	}

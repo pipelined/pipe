@@ -11,7 +11,7 @@ import (
 type (
 	// executor executes a single pipe operation.
 	executor interface {
-		connectOutputs() // resets output fitting states
+		// connectOutputs() // resets output fitting states
 		execute(context.Context) error
 		startHook(context.Context) error
 		flushHook(context.Context) error
@@ -32,14 +32,6 @@ type (
 		Lines []*lineExecutor
 	}
 )
-
-func (r *multiLineExecutor) connectOutputs() {
-	for i := range r.Lines {
-		for _, e := range r.Lines[i].executors {
-			e.connectOutputs()
-		}
-	}
-}
 
 // Execute all components of the line one-by-one.
 func (r *lineExecutor) execute(ctx context.Context) error {

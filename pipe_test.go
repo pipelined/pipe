@@ -503,7 +503,7 @@ func TestAddLine(t *testing.T) {
 			assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
 		}
 	}
-	t.Run("async", addLine(true))
+	// t.Run("async", addLine(true))
 	t.Run("sync", addLine(false))
 }
 
@@ -577,7 +577,7 @@ func TestAddLineMultiLine(t *testing.T) {
 // 	testInsert := func(pos int) func(*testing.T) {
 // 		return func(t *testing.T) {
 // 			t.Helper()
-// 			p, err := pipe.New(bufferSize, pipe.Routing{
+// 			p, err := pipe.New(bufferSize, pipe.Line{
 // 				Source: (&mock.Source{
 // 					Limit:    500,
 // 					Channels: 2,
@@ -587,15 +587,15 @@ func TestAddLineMultiLine(t *testing.T) {
 // 			})
 // 			assertNil(t, "pipe error", err)
 
-// 			l := p.Lines[0]
-// 			a := p.Async(context.Background())
+// 			// l := p.Lines[0]
+// 			// a := p.Async(context.Background())
+// 			errc := p.Start(context.Background())
 
 // 			proc := &mock.Processor{}
-// 			err = l.InsertProcessor(pos, proc.Processor())
+// 			<-p.InsertProcessor(0, pos, proc.Processor())
 // 			assertNil(t, "add error", err)
 
-// 			<-a.StartProcessor(l, pos)
-// 			err = a.Await()
+// 			err = pipe.Wait(errc)
 // 			assertNil(t, "await error", err)
 // 			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
 // 		}
