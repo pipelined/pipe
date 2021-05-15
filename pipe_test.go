@@ -572,37 +572,34 @@ func TestAddLineMultiLine(t *testing.T) {
 	assertEqual(t, "samples", sink4.Counter.Samples, 862*bufferSize)
 }
 
-// func TestInsertProcessor(t *testing.T) {
-// 	bufferSize := 2
-// 	testInsert := func(pos int) func(*testing.T) {
-// 		return func(t *testing.T) {
-// 			t.Helper()
-// 			p, err := pipe.New(bufferSize, pipe.Line{
-// 				Source: (&mock.Source{
-// 					Limit:    500,
-// 					Channels: 2,
-// 				}).Source(),
-// 				Processors: pipe.Processors((&mock.Processor{}).Processor()),
-// 				Sink:       (&mock.Sink{Discard: true}).Sink(),
-// 			})
-// 			assertNil(t, "pipe error", err)
+func TestInsertProcessor(t *testing.T) {
+	bufferSize := 2
+	testInsert := func(pos int) func(*testing.T) {
+		return func(t *testing.T) {
+			t.Helper()
+			p, err := pipe.New(bufferSize, pipe.Line{
+				Source: (&mock.Source{
+					Limit:    500,
+					Channels: 2,
+				}).Source(),
+				Processors: pipe.Processors((&mock.Processor{}).Processor()),
+				Sink:       (&mock.Sink{Discard: true}).Sink(),
+			})
+			assertNil(t, "pipe error", err)
+			errc := p.Start(context.Background())
 
-// 			// l := p.Lines[0]
-// 			// a := p.Async(context.Background())
-// 			errc := p.Start(context.Background())
+			proc := &mock.Processor{}
+			<-p.InsertProcessor(0, pos, proc.Processor())
+			assertNil(t, "add error", err)
 
-// 			proc := &mock.Processor{}
-// 			<-p.InsertProcessor(0, pos, proc.Processor())
-// 			assertNil(t, "add error", err)
-
-// 			err = pipe.Wait(errc)
-// 			assertNil(t, "await error", err)
-// 			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
-// 		}
-// 	}
-// 	t.Run("before processor", testInsert(0))
-// 	t.Run("before sink", testInsert(1))
-// }
+			err = pipe.Wait(errc)
+			assertNil(t, "await error", err)
+			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
+		}
+	}
+	t.Run("before processor", testInsert(0))
+	t.Run("before sink", testInsert(1))
+}
 
 // func TestInsertMultiple(t *testing.T) {
 // 	bufferSize := 2

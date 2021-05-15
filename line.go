@@ -145,6 +145,14 @@ func (r *route) executor(d mutable.Destination) *lineExecutor {
 	}
 }
 
+func (r *route) prev(pos int) (SignalProperties, out) {
+	if pos == 0 {
+		return r.source.SignalProperties, r.source.out
+	}
+	p := r.processors[pos-1]
+	return p.SignalProperties, p.out
+}
+
 func (fn SourceAllocatorFunc) allocate(ctx mutable.Context, bufferSize int) (Source, error) {
 	c, err := fn(ctx, bufferSize)
 	if err != nil {

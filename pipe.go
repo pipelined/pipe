@@ -238,68 +238,63 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 	})
 }
 
-// func (p *Pipe) InsertProcessor(line, pos int, procAlloc ProcessorAllocatorFunc) <-chan struct{} {
-// 	if p.ctx == nil {
-// 		panic("pipe isn't running")
-// 	}
-// 	ctx, cancelFn := context.WithCancel(p.ctx)
-// 	p.Push(p.mctx.Mutate(func() error {
-// 		r := p.routes[line]
-// 		if r.context.IsMutable() {
-// 			// e := p.executors[r.context].(*multiLineExecutor)
-// 			// e.Context.Mutate(func() error {
-// 			// 	e.
-// 			// })
-// 			cancelFn()
-// 			return nil
-// 		}
+func (p *Pipe) InsertProcessor(line, pos int, procAlloc ProcessorAllocatorFunc) <-chan struct{} {
+	if p.ctx == nil {
+		panic("pipe isn't running")
+	}
+	ctx, cancelFn := context.WithCancel(p.ctx)
+	p.Push(p.mctx.Mutate(func() error {
+		r := p.routes[line]
+		if r.context.IsMutable() {
+			// e := p.executors[r.context].(*multiLineExecutor)
+			// e.Context.Mutate(func() error {
+			// 	e.
+			// })
+			cancelFn()
+			return nil
+		}
 
-// 		// todo: move to a separate method
-// 		var (
-// 			prevProps SignalProperties
-// 			prevOut   out
-// 		)
-// 		if pos == 0 {
-// 			prevProps = r.source.SignalProperties
-// 			prevOut = r.source.out
-// 		} else {
-// 			prevProps = r.processors[pos-1].SignalProperties
-// 			prevOut = r.processors[pos-1].out
-// 		}
-// 		// todo: move to a separate method
-// 		var nextCtx mutable.Context
-// 		if pos < len(r.processors) {
-// 			nextCtx = r.processors[pos].Context
-// 		} else {
-// 			nextCtx = r.sink.Context
-// 		}
-// 		mctx := mutable.Mutable()
-// 		proc, err := procAlloc.allocate(mctx, p.bufferSize, prevProps)
-// 		if err != nil {
-// 			cancelFn()
-// 			return err
-// 		}
-// 		f := fitting.Async()
-// 		proc.out.Sender = f
+		// allocate and connect
+		prevProps, prevOut := r.prev(pos)
+		mctx := mutable.Mutable()
+		proc, err := procAlloc.allocate(mctx, p.bufferSize, prevProps)
+		if err != nil {
+			cancelFn()
+			return err
+		}
+		proc.connect(p.bufferSize, fitting.Async, prevOut)
 
-// 		r.processors = append(r.processors, Processor{})
-// 		copy(r.processors[pos+1:], r.processors[pos:])
-// 		r.processors[pos] = proc
+		// get ready for start
+		p.executors[mctx] = &proc
+		p.pusher.AddDestination(mctx, r.source.dest)
 
-// 		p.executors[mctx] = &proc
-// 		p.pusher.AddDestination(mctx, r.source.dest)
-// 		p.pusher.Put(nextCtx.Mutate(func() error {
-// 			proc.in.PoolAllocator = prevOut.PoolAllocator
-// 			proc.in.Receiver = prevOut.Sender.(*fitting.AsyncFitting)
-// 			nextIn.Receiver = f // TODO: it's not visible to executor
-// 			p.errorMerger.add(start(p.ctx, &proc))
-// 			cancelFn()
-// 			return nil
-// 		}))
-// 		return nil
-// 	}))
-// 	return ctx.Done()
-// }
+		// add to route after this function returns
+		defer func() {
+			r.processors = append(r.processors, nil)
+			copy(r.processors[pos+1:], r.processors[pos:])
+			r.processors[pos] = &proc
+		}()
+		if pos == len(r.processors) {
+			p.pusher.Put(r.sink.Mutate((func() error {
+				r.sink.in.insert(proc.out)
+				p.errorMerger.add(start(p.ctx, &proc))
+				cancelFn()
+				return nil
+			})))
+			return nil
+		}
+		nextProc := r.processors[pos]
+		p.pusher.Put(nextProc.Mutate((func() error {
+			nextProc.in.insert(proc.out)
+			p.errorMerger.add(start(p.ctx, &proc))
+			cancelFn()
+			return nil
+		})))
+
+		return nil
+	}))
+	return ctx.Done()
+}
 
 // Processors is a helper function to use in line constructors.
 func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
