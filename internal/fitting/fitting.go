@@ -76,7 +76,6 @@ func (l *syncFitting) Receive(context.Context) (Message, bool) {
 
 func (l *syncFitting) Close() {
 	l.closed = true
-	return
 }
 
 func (l *asyncFitting) Send(ctx context.Context, m Message) bool {
@@ -102,5 +101,4 @@ func (l *asyncFitting) Receive(ctx context.Context) (Message, bool) {
 
 func (l *asyncFitting) Close() {
 	close(l.messageChan)
-	return
 }
