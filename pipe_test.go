@@ -601,46 +601,41 @@ func TestInsertProcessor(t *testing.T) {
 	t.Run("before sink", testInsert(1))
 }
 
-// func TestInsertMultiple(t *testing.T) {
-// 	bufferSize := 2
-// 	insert := func(pos int) func(*testing.T) {
-// 		return func(t *testing.T) {
-// 			t.Helper()
-// 			samples := 500
-// 			sink := &mock.Sink{Discard: true}
-// 			p, err := pipe.New(bufferSize, pipe.Routing{
-// 				Source: (&mock.Source{
-// 					Limit:    samples,
-// 					Channels: 2,
-// 				}).Source(),
-// 				Processors: pipe.Processors((&mock.Processor{}).Processor()),
-// 				Sink:       sink.Sink(),
-// 			})
-// 			assertNil(t, "pipe error", err)
+func TestInsertMultiple(t *testing.T) {
+	bufferSize := 2
+	insert := func(pos int) func(*testing.T) {
+		return func(t *testing.T) {
+			t.Helper()
+			samples := 500
+			sink := &mock.Sink{Discard: true}
+			p, err := pipe.New(bufferSize, pipe.Line{
+				Source: (&mock.Source{
+					Limit:    samples,
+					Channels: 2,
+				}).Source(),
+				Processors: pipe.Processors((&mock.Processor{}).Processor()),
+				Sink:       sink.Sink(),
+			})
+			assertNil(t, "pipe error", err)
 
-// 			l := p.Lines[0]
-// 			a := p.Async(context.Background())
+			errc := p.Start(context.Background())
 
-// 			proc1 := &mock.Processor{}
-// 			err = l.InsertProcessor(pos, proc1.Processor())
-// 			assertNil(t, "add 1 error", err)
-// 			<-a.StartProcessor(l, pos)
+			proc1 := &mock.Processor{}
+			<-p.InsertProcessor(0, pos, proc1.Processor())
 
-// 			proc2 := &mock.Processor{}
-// 			err = l.InsertProcessor(pos, proc2.Processor())
-// 			assertNil(t, "add 2 error", err)
-// 			<-a.StartProcessor(l, pos)
+			proc2 := &mock.Processor{}
+			<-p.InsertProcessor(0, pos, proc2.Processor())
 
-// 			err = a.Await()
-// 			assertNil(t, "await error", err)
-// 			assertEqual(t, "sink processed", sink.Counter.Samples, samples)
-// 			assertEqual(t, "processed 1", proc1.Counter.Messages > 0, true)
-// 			assertEqual(t, "processed 2", proc2.Counter.Messages > 0, true)
-// 		}
-// 	}
-// 	t.Run("before processor", insert(0))
-// 	t.Run("before sink", insert(1))
-// }
+			err = pipe.Wait(errc)
+			assertNil(t, "await error", err)
+			assertEqual(t, "sink processed", sink.Counter.Samples, samples)
+			assertEqual(t, "processed 1", proc1.Counter.Messages > 0, true)
+			assertEqual(t, "processed 2", proc2.Counter.Messages > 0, true)
+		}
+	}
+	t.Run("before processor", insert(0))
+	t.Run("before sink", insert(1))
+}
 
 func waitPipe(t *testing.T, p *pipe.Pipe, timeout time.Duration, inits ...mutable.Mutation) {
 	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
