@@ -89,33 +89,33 @@ func (l Line) route(bufferSize int) (*route, error) {
 	}, nil
 }
 
-func (r *route) bindExecutors(executors map[mutable.Context]executor, p mutable.Pusher) {
+func (p *Pipe) addExecutors(r *route, routeIdx int) {
 	if r.context.IsMutable() {
-		if e, ok := executors[r.context]; ok {
+		if e, ok := p.executors[r.context]; ok {
 			mle := e.(*multiLineExecutor)
-			mle.Lines = append(mle.Lines, r.executor(mle.Destination))
-		} else {
-			d := mutable.NewDestination()
-			p.AddDestination(r.context, d)
-			executors[r.context] = &multiLineExecutor{
-				Context:     r.context,
-				Destination: d,
-				Lines:       []*lineExecutor{r.executor(d)},
-			}
+			mle.Lines = append(mle.Lines, r.executor(mle.Destination, routeIdx))
+			return
+		}
+		d := mutable.NewDestination()
+		p.pusher.AddDestination(r.context, d)
+		p.executors[r.context] = &multiLineExecutor{
+			Context:     r.context,
+			Destination: d,
+			Lines:       []*lineExecutor{r.executor(d, routeIdx)},
 		}
 		return
 	}
 
 	d := mutable.NewDestination()
 	r.source.dest = d
-	p.AddDestination(r.source.Context, d)
-	executors[r.source.Context] = r.source
+	p.pusher.AddDestination(r.source.Context, d)
+	p.executors[r.source.Context] = r.source
 	for i := range r.processors {
-		p.AddDestination(r.processors[i].Context, d)
-		executors[r.processors[i].Context] = r.processors[i]
+		p.pusher.AddDestination(r.processors[i].Context, d)
+		p.executors[r.processors[i].Context] = r.processors[i]
 	}
-	p.AddDestination(r.sink.Context, d)
-	executors[r.sink.Context] = r.sink
+	p.pusher.AddDestination(r.sink.Context, d)
+	p.executors[r.sink.Context] = r.sink
 }
 
 func (r *route) connect(bufferSize int) {
@@ -132,7 +132,7 @@ func (r *route) connect(bufferSize int) {
 	r.sink.connect(bufferSize, prevOut)
 }
 
-func (r *route) executor(d mutable.Destination) *lineExecutor {
+func (r *route) executor(d mutable.Destination, idx int) *lineExecutor {
 	executors := make([]executor, 0, 2+len(r.processors))
 	r.source.dest = d
 	executors = append(executors, r.source)
@@ -141,6 +141,7 @@ func (r *route) executor(d mutable.Destination) *lineExecutor {
 	}
 	executors = append(executors, r.sink)
 	return &lineExecutor{
+		route:     idx,
 		executors: executors,
 	}
 }

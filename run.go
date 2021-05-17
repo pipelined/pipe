@@ -20,6 +20,7 @@ type (
 	// lineExecutor is a sequence of bound and ready-to-run DSP components.
 	// All components are running in a single goroutine.
 	lineExecutor struct {
+		route     int
 		started   int
 		executors []executor
 	}

@@ -110,14 +110,14 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 func Run(ctx context.Context, bufferSize int, lines ...Line) error {
 	e := multiLineExecutor{}
 	mctx := mutable.Mutable()
-	for _, l := range lines {
+	for i, l := range lines {
 		l.Context = mctx
 		r, err := l.route(bufferSize)
 		if err != nil {
 			return err
 		}
 		r.connect(bufferSize)
-		e.Lines = append(e.Lines, r.executor(nil))
+		e.Lines = append(e.Lines, r.executor(nil, i))
 	}
 	return run(ctx, &e)
 }
@@ -129,8 +129,8 @@ func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-ch
 	p.ctx = ctx
 	p.errorMerger.errorChan = make(chan error, 1)
 	p.executors = make(map[mutable.Context]executor)
-	for _, r := range p.routes {
-		r.bindExecutors(p.executors, p.pusher)
+	for i, r := range p.routes {
+		p.addExecutors(r, i)
 		r.connect(p.bufferSize)
 	}
 	// push initializers before start
@@ -198,10 +198,12 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		if err != nil {
 			return err
 		}
+		routeIdx := len(p.routes)
+		p.routes = append(p.routes, r)
 		// connect all fittings
 		r.connect(p.bufferSize)
 		if !l.Context.IsMutable() {
-			r.bindExecutors(p.executors, p.pusher)
+			p.addExecutors(r, routeIdx)
 
 			// start all executors
 			p.errorMerger.add(start(p.ctx, r.source))
@@ -217,7 +219,7 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 			p.pusher.Put(
 				mle.Context.Mutate(
 					func() error {
-						mle.Lines = append(mle.Lines, r.executor(mle.Destination))
+						mle.Lines = append(mle.Lines, r.executor(mle.Destination, routeIdx))
 						return nil
 					},
 				),
@@ -230,7 +232,7 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		e := &multiLineExecutor{
 			Context:     r.context,
 			Destination: d,
-			Lines:       []*lineExecutor{r.executor(d)},
+			Lines:       []*lineExecutor{r.executor(d, routeIdx)},
 		}
 		p.executors[r.context] = e
 		p.errorMerger.add(start(p.ctx, e))
