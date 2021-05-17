@@ -30,15 +30,15 @@ type (
 	multiLineExecutor struct {
 		mutable.Context
 		mutable.Destination
-		Lines []*lineExecutor
+		executors []*lineExecutor
 	}
 )
 
 // Execute all components of the line one-by-one.
-func (r *lineExecutor) execute(ctx context.Context) error {
+func (le *lineExecutor) execute(ctx context.Context) error {
 	var err error
-	for _, e := range r.executors {
-		if err = e.execute(ctx); err == nil {
+	for i := 0; i < le.started; i++ {
+		if err = le.executors[i].execute(ctx); err == nil {
 			continue
 		}
 		if err == io.EOF {
@@ -51,34 +51,34 @@ func (r *lineExecutor) execute(ctx context.Context) error {
 	return err
 }
 
-func (r *lineExecutor) flushHook(ctx context.Context) error {
+func (le *lineExecutor) flushHook(ctx context.Context) error {
 	var errs execErrors
-	for i := 0; i < r.started; i++ {
-		if err := r.executors[i].flushHook(ctx); err != nil {
+	for i := 0; i < le.started; i++ {
+		if err := le.executors[i].flushHook(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errs.ret()
 }
 
-func (r *lineExecutor) startHook(ctx context.Context) error {
+func (le *lineExecutor) startHook(ctx context.Context) error {
 	var errs execErrors
-	for _, e := range r.executors {
+	for _, e := range le.executors {
 		if err := e.startHook(ctx); err != nil {
 			errs = append(errs, err)
 			break
 		}
-		r.started++
+		le.started++
 	}
 	return errs.ret()
 }
 
 // startHook calls start for every line. If any line fails to start, it will
 // try to flush successfully started lines.
-func (r *multiLineExecutor) startHook(ctx context.Context) error {
+func (mle *multiLineExecutor) startHook(ctx context.Context) error {
 	var startErr execErrors
-	for i := range r.Lines {
-		if err := r.Lines[i].startHook(ctx); err != nil {
+	for i := range mle.executors {
+		if err := mle.executors[i].startHook(ctx); err != nil {
 			startErr = append(startErr, err)
 			break
 		}
@@ -91,7 +91,7 @@ func (r *multiLineExecutor) startHook(ctx context.Context) error {
 	// wrap start error
 	err := fmt.Errorf("error starting lines: %w", startErr.ret())
 	// need to flush sucessfully started components
-	flushErr := r.flushHook(ctx)
+	flushErr := mle.flushHook(ctx)
 	if flushErr != nil {
 		err = fmt.Errorf("error flushing lines: %w during start error: %v", flushErr, err)
 	}
@@ -99,9 +99,9 @@ func (r *multiLineExecutor) startHook(ctx context.Context) error {
 }
 
 // Flush flushes all lines.
-func (r *multiLineExecutor) flushHook(ctx context.Context) error {
+func (mle *multiLineExecutor) flushHook(ctx context.Context) error {
 	var flushErr execErrors
-	for _, l := range r.Lines {
+	for _, l := range mle.executors {
 		if err := l.flushHook(ctx); err != nil {
 			flushErr = append(flushErr, err)
 		}
@@ -110,19 +110,19 @@ func (r *multiLineExecutor) flushHook(ctx context.Context) error {
 }
 
 // Execute executes all lines.
-func (r *multiLineExecutor) execute(ctx context.Context) error {
+func (mle *multiLineExecutor) execute(ctx context.Context) error {
 	var err error
-	for i := 0; i < len(r.Lines); {
-		if err = r.Lines[i].execute(ctx); err == nil {
+	for i := 0; i < len(mle.executors); {
+		if err = mle.executors[i].execute(ctx); err == nil {
 			i++
 			continue
 		}
 		if err == io.EOF {
-			if flushErr := r.Lines[i].flushHook(ctx); flushErr != nil {
+			if flushErr := mle.executors[i].flushHook(ctx); flushErr != nil {
 				return flushErr
 			}
-			r.Lines = append(r.Lines[:i], r.Lines[i+1:]...)
-			if len(r.Lines) > 0 {
+			mle.executors = append(mle.executors[:i], mle.executors[i+1:]...)
+			if len(mle.executors) > 0 {
 				continue
 			}
 		}
