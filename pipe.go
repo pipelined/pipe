@@ -2,6 +2,7 @@ package pipe
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"pipelined.dev/signal"
@@ -117,7 +118,7 @@ func Run(ctx context.Context, bufferSize int, lines ...Line) error {
 			return err
 		}
 		r.connect(bufferSize)
-		e.Lines = append(e.Lines, r.executor(nil, i))
+		e.executors = append(e.executors, r.executor(nil, i))
 	}
 	return run(ctx, &e)
 }
@@ -202,9 +203,10 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		p.routes = append(p.routes, r)
 		// connect all fittings
 		r.connect(p.bufferSize)
+
+		// async line
 		if !l.Context.IsMutable() {
 			p.addExecutors(r, routeIdx)
-
 			// start all executors
 			p.errorMerger.add(start(p.ctx, r.source))
 			for _, proc := range r.processors {
@@ -213,26 +215,26 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 			p.errorMerger.add(start(p.ctx, r.sink))
 			return nil
 		}
-		// add to existing goroutine
+		// sync add to existing goroutine
 		if e, ok := p.executors[l.Context]; ok {
 			mle := e.(*multiLineExecutor)
 			p.pusher.Put(
 				mle.Context.Mutate(
 					func() error {
-						mle.Lines = append(mle.Lines, r.executor(mle.Destination, routeIdx))
+						mle.executors = append(mle.executors, r.executor(mle.Destination, routeIdx))
 						return nil
 					},
 				),
 			)
 			return nil
 		}
-		// new goroutine
+		// sync new goroutine
 		d := mutable.NewDestination()
 		p.pusher.AddDestination(r.context, d)
 		e := &multiLineExecutor{
 			Context:     r.context,
 			Destination: d,
-			Lines:       []*lineExecutor{r.executor(d, routeIdx)},
+			executors:   []*lineExecutor{r.executor(d, routeIdx)},
 		}
 		p.executors[r.context] = e
 		p.errorMerger.add(start(p.ctx, e))
@@ -247,23 +249,45 @@ func (p *Pipe) InsertProcessor(line, pos int, procAlloc ProcessorAllocatorFunc) 
 	ctx, cancelFn := context.WithCancel(p.ctx)
 	p.Push(p.mctx.Mutate(func() error {
 		r := p.routes[line]
-		if r.context.IsMutable() {
-			// e := p.executors[r.context].(*multiLineExecutor)
-			// e.Context.Mutate(func() error {
-			// 	e.
-			// })
-			cancelFn()
-			return nil
-		}
-
 		// allocate and connect
 		prevProps, prevOut := r.prev(pos)
-		mctx := mutable.Mutable()
+		mctx := componentContext(r.context)
 		proc, err := procAlloc.allocate(mctx, p.bufferSize, prevProps)
 		if err != nil {
 			cancelFn()
 			return err
 		}
+
+		if r.context.IsMutable() {
+			proc.connect(p.bufferSize, fitting.Sync, prevOut)
+			// TODO: handle mle not found
+			mle := p.executors[r.context].(*multiLineExecutor)
+			p.pusher.Put(mle.Context.Mutate(func() error {
+				defer cancelFn()
+				pos++ // handle slice of executors
+				for _, e := range mle.executors {
+					if e.route != line {
+						continue
+					}
+
+					inserter := e.executors[pos].(interface{ insert(out) })
+					inserter.insert(proc.out)
+
+					err := proc.startHook(p.ctx)
+					if err != nil {
+						return fmt.Errorf("error starting processor: %w", err)
+					}
+					e.executors = append(e.executors, nil)
+					copy(e.executors[pos+1:], e.executors[pos:])
+					e.executors[pos] = &proc
+					e.started++
+					break
+				}
+				return nil
+			}))
+			return nil
+		}
+
 		proc.connect(p.bufferSize, fitting.Async, prevOut)
 
 		// get ready for start

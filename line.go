@@ -93,7 +93,7 @@ func (p *Pipe) addExecutors(r *route, routeIdx int) {
 	if r.context.IsMutable() {
 		if e, ok := p.executors[r.context]; ok {
 			mle := e.(*multiLineExecutor)
-			mle.Lines = append(mle.Lines, r.executor(mle.Destination, routeIdx))
+			mle.executors = append(mle.executors, r.executor(mle.Destination, routeIdx))
 			return
 		}
 		d := mutable.NewDestination()
@@ -101,7 +101,7 @@ func (p *Pipe) addExecutors(r *route, routeIdx int) {
 		p.executors[r.context] = &multiLineExecutor{
 			Context:     r.context,
 			Destination: d,
-			Lines:       []*lineExecutor{r.executor(d, routeIdx)},
+			executors:   []*lineExecutor{r.executor(d, routeIdx)},
 		}
 		return
 	}

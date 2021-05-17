@@ -603,12 +603,13 @@ func TestInsertProcessor(t *testing.T) {
 
 func TestInsertMultiple(t *testing.T) {
 	bufferSize := 2
-	insert := func(pos int) func(*testing.T) {
+	insert := func(pos int, ctx mutable.Context) func(*testing.T) {
 		return func(t *testing.T) {
 			t.Helper()
 			samples := 500
 			sink := &mock.Sink{Discard: true}
 			p, err := pipe.New(bufferSize, pipe.Line{
+				Context: ctx,
 				Source: (&mock.Source{
 					Limit:    samples,
 					Channels: 2,
@@ -631,10 +632,14 @@ func TestInsertMultiple(t *testing.T) {
 			assertEqual(t, "sink processed", sink.Counter.Samples, samples)
 			assertEqual(t, "processed 1", proc1.Counter.Messages > 0, true)
 			assertEqual(t, "processed 2", proc2.Counter.Messages > 0, true)
+
+			// TODO: check hooks invocation
 		}
 	}
-	t.Run("before processor", insert(0))
-	t.Run("before sink", insert(1))
+	t.Run("async before processor", insert(0, mutable.Immutable()))
+	t.Run("async before sink", insert(1, mutable.Immutable()))
+	t.Run("sync before processor", insert(0, mutable.Mutable()))
+	t.Run("sync before sink", insert(1, mutable.Mutable()))
 }
 
 func waitPipe(t *testing.T, p *pipe.Pipe, timeout time.Duration, inits ...mutable.Mutation) {
