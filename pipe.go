@@ -223,7 +223,11 @@ func (p *Pipe) AddLine(l Line) <-chan struct{} {
 			p.pusher.Put(
 				mle.Context.Mutate(
 					func() error {
-						mle.executors = append(mle.executors, r.executor(mle.Destination, routeIdx))
+						le := r.executor(mle.Destination, routeIdx)
+						if err := le.startHook(p.ctx); err != nil {
+							return fmt.Errorf("line failed to start: %w", err)
+						}
+						mle.executors = append(mle.executors, le)
 						cancelFn()
 						return nil
 					},

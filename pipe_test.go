@@ -503,12 +503,11 @@ func TestAddLine(t *testing.T) {
 			assertEqual(t, "samples", sink2.Counter.Samples, 862*bufferSize)
 		}
 	}
-	// t.Run("async", addLine(true))
+	t.Run("async", addLine(true))
 	t.Run("sync", addLine(false))
 }
 
 func TestAddLineMultiLine(t *testing.T) {
-
 	sink1 := &mock.Sink{Discard: true}
 	mut := mutable.Mutable()
 	sink2 := &mock.Sink{Discard: true}
@@ -547,15 +546,15 @@ func TestAddLineMultiLine(t *testing.T) {
 		}).Source(),
 		Sink: sink3.Sink(),
 	})
-	// <-p.AddLine(pipe.Line{
-	// 	Context: mut,
-	// 	Source: (&mock.Source{
-	// 		Limit:    862 * bufferSize,
-	// 		Channels: 2,
-	// 		Value:    2,
-	// 	}).Source(),
-	// 	Sink: sink4.Sink(),
-	// })
+	<-p.AddLine(pipe.Line{
+		Context: mut,
+		Source: (&mock.Source{
+			Limit:    862 * bufferSize,
+			Channels: 2,
+			Value:    2,
+		}).Source(),
+		Sink: sink4.Sink(),
+	})
 
 	err = pipe.Wait(errc)
 	assertNil(t, "wait error", err)
