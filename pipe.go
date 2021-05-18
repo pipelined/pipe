@@ -190,14 +190,15 @@ func Wait(errc <-chan error) error {
 }
 
 // AddLine creates the line for provied route and adds it to the pipe.
-func (p *Pipe) AddLine(l Line) mutable.Mutation {
+func (p *Pipe) AddLine(l Line) <-chan struct{} {
 	if p.ctx == nil {
 		panic("pipe isn't running")
 	}
-	return p.mctx.Mutate(func() error {
+	ctx, cancelFn := context.WithCancel(p.ctx)
+	p.Push(p.mctx.Mutate(func() error {
 		r, err := l.route(p.bufferSize)
 		if err != nil {
-			return err
+			return fmt.Errorf("error adding line: %w", err)
 		}
 		routeIdx := len(p.routes)
 		p.routes = append(p.routes, r)
@@ -213,6 +214,7 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 				p.errorMerger.add(start(p.ctx, proc))
 			}
 			p.errorMerger.add(start(p.ctx, r.sink))
+			cancelFn()
 			return nil
 		}
 		// sync add to existing goroutine
@@ -222,6 +224,7 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 				mle.Context.Mutate(
 					func() error {
 						mle.executors = append(mle.executors, r.executor(mle.Destination, routeIdx))
+						cancelFn()
 						return nil
 					},
 				),
@@ -238,8 +241,10 @@ func (p *Pipe) AddLine(l Line) mutable.Mutation {
 		}
 		p.executors[r.context] = e
 		p.errorMerger.add(start(p.ctx, e))
+		cancelFn()
 		return nil
-	})
+	}))
+	return ctx.Done()
 }
 
 func (p *Pipe) InsertProcessor(line, pos int, procAlloc ProcessorAllocatorFunc) <-chan struct{} {

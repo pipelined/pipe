@@ -493,7 +493,7 @@ func TestAddLine(t *testing.T) {
 
 			// start
 			errc := p.Start(context.Background())
-			p.Push(p.AddLine(line2))
+			<-p.AddLine(line2)
 			assertNil(t, "error", err)
 
 			_ = pipe.Wait(errc)
@@ -508,28 +508,37 @@ func TestAddLine(t *testing.T) {
 }
 
 func TestAddLineMultiLine(t *testing.T) {
-	sink1 := &mock.Sink{Discard: true}
-	line1 := pipe.Line{
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-		}).Source(),
-		Sink: sink1.Sink(),
-	}
 
+	sink1 := &mock.Sink{Discard: true}
 	mut := mutable.Mutable()
 	sink2 := &mock.Sink{Discard: true}
-	line2 := pipe.Line{
-		Context: mut,
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-			Value:    2,
-		}).Source(),
-		Sink: sink2.Sink(),
-	}
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Line{
+			Source: (&mock.Source{
+				Limit:    862 * bufferSize,
+				Channels: 2,
+			}).Source(),
+			Sink: sink1.Sink(),
+		},
+		pipe.Line{
+			Context: mut,
+			Source: (&mock.Source{
+				Limit:    862 * bufferSize,
+				Channels: 2,
+				Value:    2,
+			}).Source(),
+			Sink: sink2.Sink(),
+		},
+	)
+	assertNil(t, "pipe error", err)
+
+	errc := p.Start(context.Background())
+	assertNil(t, "start error", err)
+
 	sink3 := &mock.Sink{Discard: true}
-	line3 := pipe.Line{
+	sink4 := &mock.Sink{Discard: true}
+	<-p.AddLine(pipe.Line{
 		Context: mut,
 		Source: (&mock.Source{
 			Limit:    862 * bufferSize,
@@ -537,31 +546,19 @@ func TestAddLineMultiLine(t *testing.T) {
 			Value:    2,
 		}).Source(),
 		Sink: sink3.Sink(),
-	}
-	sink4 := &mock.Sink{Discard: true}
-	line4 := pipe.Line{
-		Context: mut,
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-			Value:    2,
-		}).Source(),
-		Sink: sink4.Sink(),
-	}
+	})
+	// <-p.AddLine(pipe.Line{
+	// 	Context: mut,
+	// 	Source: (&mock.Source{
+	// 		Limit:    862 * bufferSize,
+	// 		Channels: 2,
+	// 		Value:    2,
+	// 	}).Source(),
+	// 	Sink: sink4.Sink(),
+	// })
 
-	p, err := pipe.New(
-		bufferSize,
-		line1,
-		line2,
-	)
-	assertNil(t, "error", err)
-
-	// start
-	errc := p.Start(context.Background())
-	p.Push(p.AddLine(line3), p.AddLine(line4))
-	assertNil(t, "error", err)
-
-	_ = pipe.Wait(errc)
+	err = pipe.Wait(errc)
+	assertNil(t, "wait error", err)
 	assertEqual(t, "messages", sink1.Counter.Messages, 862)
 	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
 	assertEqual(t, "messages", sink2.Counter.Messages, 862)
