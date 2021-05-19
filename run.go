@@ -131,6 +131,18 @@ func (mle *multiLineExecutor) execute(ctx context.Context) error {
 	return nil
 }
 
+func (mle *multiLineExecutor) addRoute(ctx context.Context, r *route, routeIdx int, cancelFn context.CancelFunc) mutable.Mutation {
+	return mle.Context.Mutate(func() error {
+		le := r.executor(mle.Destination, routeIdx)
+		if err := le.startHook(ctx); err != nil {
+			return fmt.Errorf("line failed to start: %w", err)
+		}
+		mle.executors = append(mle.executors, le)
+		cancelFn()
+		return nil
+	})
+}
+
 // start executes dsp component in an async context. For successfully
 // started executor an error is returned immediately after it occured.
 func start(ctx context.Context, e executor) <-chan error {

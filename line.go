@@ -89,35 +89,6 @@ func (l Line) route(bufferSize int) (*route, error) {
 	}, nil
 }
 
-func (p *Pipe) addExecutors(r *route, routeIdx int) {
-	if r.context.IsMutable() {
-		if e, ok := p.executors[r.context]; ok {
-			mle := e.(*multiLineExecutor)
-			mle.executors = append(mle.executors, r.executor(mle.Destination, routeIdx))
-			return
-		}
-		d := mutable.NewDestination()
-		p.pusher.AddDestination(r.context, d)
-		p.executors[r.context] = &multiLineExecutor{
-			Context:     r.context,
-			Destination: d,
-			executors:   []*lineExecutor{r.executor(d, routeIdx)},
-		}
-		return
-	}
-
-	d := mutable.NewDestination()
-	r.source.dest = d
-	p.pusher.AddDestination(r.source.Context, d)
-	p.executors[r.source.Context] = r.source
-	for i := range r.processors {
-		p.pusher.AddDestination(r.processors[i].Context, d)
-		p.executors[r.processors[i].Context] = r.processors[i]
-	}
-	p.pusher.AddDestination(r.sink.Context, d)
-	p.executors[r.sink.Context] = r.sink
-}
-
 func (r *route) connect(bufferSize int) {
 	fn := fitting.Async
 	if r.context.IsMutable() {

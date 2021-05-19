@@ -219,36 +219,52 @@ func (p *Pipe) AddLine(l Line) <-chan struct{} {
 		}
 		// sync add to existing goroutine
 		if e, ok := p.executors[l.Context]; ok {
-			mle := e.(*multiLineExecutor)
-			p.pusher.Put(
-				mle.Context.Mutate(
-					func() error {
-						le := r.executor(mle.Destination, routeIdx)
-						if err := le.startHook(p.ctx); err != nil {
-							return fmt.Errorf("line failed to start: %w", err)
-						}
-						mle.executors = append(mle.executors, le)
-						cancelFn()
-						return nil
-					},
-				),
-			)
+			p.pusher.Put(e.(*multiLineExecutor).addRoute(p.ctx, r, routeIdx, cancelFn))
 			return nil
 		}
 		// sync new goroutine
-		d := mutable.NewDestination()
-		p.pusher.AddDestination(r.context, d)
-		e := &multiLineExecutor{
-			Context:     r.context,
-			Destination: d,
-			executors:   []*lineExecutor{r.executor(d, routeIdx)},
-		}
+		e := p.newMultilineExecutor(r, routeIdx)
 		p.executors[r.context] = e
 		p.errorMerger.add(start(p.ctx, e))
 		cancelFn()
 		return nil
 	}))
 	return ctx.Done()
+}
+
+func (p *Pipe) addExecutors(r *route, routeIdx int) {
+	if r.context.IsMutable() {
+		if e, ok := p.executors[r.context]; ok {
+			mle := e.(*multiLineExecutor)
+			mle.executors = append(mle.executors, r.executor(mle.Destination, routeIdx))
+			return
+		}
+		p.newMultilineExecutor(r, routeIdx)
+		return
+	}
+
+	d := mutable.NewDestination()
+	r.source.dest = d
+	p.pusher.AddDestination(r.source.Context, d)
+	p.executors[r.source.Context] = r.source
+	for i := range r.processors {
+		p.pusher.AddDestination(r.processors[i].Context, d)
+		p.executors[r.processors[i].Context] = r.processors[i]
+	}
+	p.pusher.AddDestination(r.sink.Context, d)
+	p.executors[r.sink.Context] = r.sink
+}
+
+func (p *Pipe) newMultilineExecutor(r *route, routeIdx int) *multiLineExecutor {
+	d := mutable.NewDestination()
+	p.pusher.AddDestination(r.context, d)
+	e := multiLineExecutor{
+		Context:     r.context,
+		Destination: d,
+		executors:   []*lineExecutor{r.executor(d, routeIdx)},
+	}
+	p.executors[r.context] = &e
+	return &e
 }
 
 func (p *Pipe) InsertProcessor(line, pos int, procAlloc ProcessorAllocatorFunc) <-chan struct{} {
@@ -269,11 +285,10 @@ func (p *Pipe) InsertProcessor(line, pos int, procAlloc ProcessorAllocatorFunc) 
 
 		if r.context.IsMutable() {
 			proc.connect(p.bufferSize, fitting.Sync, prevOut)
-			// TODO: handle mle not found
 			mle := p.executors[r.context].(*multiLineExecutor)
 			p.pusher.Put(mle.Context.Mutate(func() error {
 				defer cancelFn()
-				pos++ // handle slice of executors
+				pos++ // slice of executors includes source and sink
 				for _, e := range mle.executors {
 					if e.route != line {
 						continue
