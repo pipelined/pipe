@@ -143,6 +143,31 @@ func (mle *multiLineExecutor) addRoute(ctx context.Context, r *route, routeIdx i
 	})
 }
 
+func (mle *multiLineExecutor) insertProcessor(ctx context.Context, line, pos int, proc Processor, cancelFn context.CancelFunc) mutable.Mutation {
+	return mle.Context.Mutate(func() error {
+		defer cancelFn()
+		for _, e := range mle.executors {
+			if e.route != line {
+				continue
+			}
+
+			inserter := e.executors[pos].(interface{ insert(out) })
+			inserter.insert(proc.out)
+
+			err := proc.startHook(ctx)
+			if err != nil {
+				return fmt.Errorf("error starting processor: %w", err)
+			}
+			e.executors = append(e.executors, nil)
+			copy(e.executors[pos+1:], e.executors[pos:])
+			e.executors[pos] = &proc
+			e.started++
+			break
+		}
+		return nil
+	})
+}
+
 // start executes dsp component in an async context. For successfully
 // started executor an error is returned immediately after it occured.
 func start(ctx context.Context, e executor) <-chan error {

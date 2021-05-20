@@ -1,19 +1,29 @@
 package pipe
 
 import (
+	"context"
 	"sync"
 )
 
 type (
 	// errorMerger allows to listen to multiple error channels.
 	errorMerger struct {
+		ctx       context.Context
 		wg        sync.WaitGroup
 		errorChan chan error
 	}
 )
 
+func newErrorMerger(ctx context.Context) *errorMerger {
+	return &errorMerger{
+		ctx:       ctx,
+		errorChan: make(chan error, 1),
+	}
+}
+
 // add error channels from all components into one.
-func (m *errorMerger) add(errc <-chan error) {
+func (m *errorMerger) add(e executor) {
+	errc := start(m.ctx, e)
 	// function to wait for error channel
 	m.wg.Add(1)
 	go m.listen(errc)
