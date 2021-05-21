@@ -16,7 +16,6 @@ type (
 
 	// Sender sends the message.
 	Sender interface {
-		Bind()
 		Send(context.Context, Message) bool
 		Close()
 	}
@@ -55,7 +54,9 @@ func Sync() Fitting {
 // Async is a fitting that connects two components executed in different
 // goroutines.
 func Async() Fitting {
-	return &asyncFitting{}
+	return &asyncFitting{
+		messageChan: make(chan Message, 1),
+	}
 }
 
 func (l *syncFitting) Send(_ context.Context, m Message) bool {
@@ -75,10 +76,7 @@ func (l *syncFitting) Receive(context.Context) (Message, bool) {
 
 func (l *syncFitting) Close() {
 	l.closed = true
-	return
 }
-
-func (l *syncFitting) Bind() {}
 
 func (l *asyncFitting) Send(ctx context.Context, m Message) bool {
 	select {
@@ -103,9 +101,4 @@ func (l *asyncFitting) Receive(ctx context.Context) (Message, bool) {
 
 func (l *asyncFitting) Close() {
 	close(l.messageChan)
-	return
-}
-
-func (l *asyncFitting) Bind() {
-	l.messageChan = make(chan Message, 1)
 }

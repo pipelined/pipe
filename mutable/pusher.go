@@ -26,13 +26,8 @@ func (p Pusher) AddDestination(ctx Context, mc chan Mutations) {
 	p.destinations[ctx] = mc
 }
 
-// Destination returns destination if it's present in the map. Otherwise
-// nil and false are returned.
-func (p Pusher) Destination(ctx Context) (d chan Mutations, ok bool) {
-	if d, ok = p.destinations[ctx]; !ok {
-		d = make(chan Mutations, 1)
-	}
-	return
+func NewDestination() Destination {
+	return make(chan Mutations, 1)
 }
 
 // Put mutations to the pusher. Function will panic if pusher contains

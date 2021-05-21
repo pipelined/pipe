@@ -2,6 +2,7 @@ package pipe
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"pipelined.dev/signal"
@@ -13,19 +14,19 @@ import (
 type (
 	// Pipe is a graph formed with multiple lines of bound DSP components.
 	Pipe struct {
-		ctx        context.Context
 		mctx       mutable.Context
 		bufferSize int
 		// async lines have runner per component
-		// sync lines always wrapped in MultiLineRunner
-		runners       map[mutable.Destination]runner
+		// sync lines always wrapped in multiLineExecutor
 		mutationsChan chan []mutable.Mutation
-		pusher        mutable.Pusher
-		errorMerger
+		runtime
 	}
 
-	runner interface {
-		start(context.Context, *errorMerger)
+	runtime struct {
+		merger    *errorMerger
+		routes    []*route
+		executors map[mutable.Context]executor
+		pusher    mutable.Pusher
 	}
 
 	// Source is a source of signal data. Optinaly, mutability can be
@@ -83,17 +84,23 @@ type (
 	// FlushFunc provides a hook to flush all buffers for the component or
 	// execute any other form of finalization logic.
 	FlushFunc func(ctx context.Context) error
-
-	out struct {
-		fitting.Sender
-		*signal.PoolAllocator
-	}
-
-	in struct {
-		fitting.Receiver
-		*signal.PoolAllocator
-	}
 )
+
+// Run executes the pipe in a single goroutine, sequentially.
+func Run(ctx context.Context, bufferSize int, lines ...Line) error {
+	e := multiLineExecutor{}
+	mctx := mutable.Mutable()
+	for i, l := range lines {
+		l.Context = mctx
+		r, err := l.route(bufferSize)
+		if err != nil {
+			return err
+		}
+		r.connect(bufferSize)
+		e.executors = append(e.executors, r.executor(nil, i))
+	}
+	return run(ctx, &e)
+}
 
 // New returns a new Pipe that binds multiple lines using the provided
 // buffer size.
@@ -101,59 +108,106 @@ func New(bufferSize int, lines ...Line) (*Pipe, error) {
 	if len(lines) == 0 {
 		panic("pipe without lines")
 	}
-	starters := make(map[mutable.Destination]runner)
-	pusher := mutable.NewPusher()
+	routes := make([]*route, 0, len(lines))
 	for _, l := range lines {
-		dest, ok := pusher.Destination(l.Context)
-		r, err := l.Runner(bufferSize, dest)
+		r, err := l.route(bufferSize)
 		if err != nil {
 			return nil, err
 		}
-
-		// async execution
-		if !l.Context.IsMutable() {
-			starters[dest] = r
-			r.bindContexts(pusher, dest)
-			continue
-		}
-
-		// sync exec
-		if ok {
-			// add line to existing multiline runner
-			mlr := starters[dest].(*MultiLineRunner)
-			mlr.Lines = append(mlr.Lines, r)
-		} else {
-			// add new  multiline runner
-			starters[dest] = &MultiLineRunner{
-				Lines: []*LineRunner{r},
-			}
-			r.bindContexts(pusher, dest)
-		}
+		routes = append(routes, r)
 	}
 
 	return &Pipe{
 		mctx:          mutable.Mutable(),
 		mutationsChan: make(chan []mutable.Mutation, 1),
 		bufferSize:    bufferSize,
-		runners:       starters,
-		pusher:        pusher,
+		runtime:       newRuntime(routes),
 	}, nil
+}
+
+func newRuntime(routes []*route) runtime {
+	rt := runtime{
+		routes:    routes,
+		pusher:    mutable.NewPusher(),
+		executors: make(map[mutable.Context]executor),
+	}
+	for idx := range rt.routes {
+		if routes[idx].context.IsMutable() {
+			rt.registerSyncRoute(idx)
+			continue
+		}
+		rt.registerAsyncRoute(idx)
+	}
+	return rt
+}
+
+// adds executors from the route
+func (rt *runtime) addRoute(r *route) int {
+	idx := len(rt.routes)
+	rt.routes = append(rt.routes, r)
+	return idx
+}
+
+// add route to multiline executor
+func (rt *runtime) registerSyncRoute(idx int) {
+	// add to existing multiline executor
+	r := rt.routes[idx]
+	if e, ok := rt.executors[r.context]; ok {
+		mle := e.(*multiLineExecutor)
+		mle.executors = append(mle.executors, r.executor(mle.Destination, idx))
+		return
+	}
+
+	// new multiline executor
+	d := mutable.NewDestination()
+	rt.pusher.AddDestination(r.context, d)
+	e := multiLineExecutor{
+		Context:     r.context,
+		Destination: d,
+		executors:   []*lineExecutor{r.executor(d, idx)},
+	}
+	rt.executors[r.context] = &e
+}
+
+func (rt *runtime) registerAsyncRoute(idx int) {
+	d := mutable.NewDestination()
+	r := rt.routes[idx]
+	r.source.dest = d
+	rt.pusher.AddDestination(r.source.Context, d)
+	rt.executors[r.source.Context] = r.source
+	for i := range r.processors {
+		rt.pusher.AddDestination(r.processors[i].Context, d)
+		rt.executors[r.processors[i].Context] = r.processors[i]
+	}
+	rt.pusher.AddDestination(r.sink.Context, d)
+	rt.executors[r.sink.Context] = r.sink
+}
+
+func (rt *runtime) startAsyncRoute(idx int) {
+	r := rt.routes[idx]
+	// start all executors
+	rt.merger.add(r.source)
+	for _, proc := range r.processors {
+		rt.merger.add(proc)
+	}
+	rt.merger.add(r.sink)
 }
 
 // Start starts the pipe execution.
 func (p *Pipe) Start(ctx context.Context, initializers ...mutable.Mutation) <-chan error {
 	// cancel is required to stop the pipe in case of error
 	ctx, cancelFn := context.WithCancel(ctx)
-	p.ctx = ctx
+	p.runtime.merger = newErrorMerger(ctx)
+	for _, r := range p.routes {
+		r.connect(p.bufferSize)
+	}
 	// push initializers before start
 	p.pusher.Put(initializers...)
 	p.pusher.Push(ctx)
-
-	p.errorMerger.errorChan = make(chan error, 1)
-	for _, r := range p.runners {
-		r.start(ctx, &p.errorMerger)
+	for _, e := range p.executors {
+		p.merger.add(e)
 	}
-	go p.errorMerger.wait()
+	go p.merger.wait()
 	errc := make(chan error, 1)
 	go p.start(ctx, errc, cancelFn)
 	return errc
@@ -173,12 +227,12 @@ func (p *Pipe) start(ctx context.Context, errc chan error, cancelFn context.Canc
 				}
 			}
 			p.pusher.Push(ctx)
-		case err, ok := <-p.errorMerger.errorChan:
+		case err, ok := <-p.merger.errorChan:
 			// merger has buffer of one error, if more errors happen, they
 			// will be ignored.
 			if ok {
 				cancelFn()
-				p.errorMerger.drain()
+				p.merger.drain()
 				errc <- err
 			}
 			return
@@ -203,39 +257,111 @@ func Wait(errc <-chan error) error {
 }
 
 // AddLine creates the line for provied route and adds it to the pipe.
-func (p *Pipe) AddLine(l Line) mutable.Mutation {
-	return p.mctx.Mutate(func() error {
-		dest, ok := p.pusher.Destination(l.Context)
-		r, err := l.Runner(p.bufferSize, dest)
+func (p *Pipe) AddLine(l Line) <-chan struct{} {
+	if p.merger == nil {
+		panic("pipe isn't running")
+	}
+	ctx, cancelFn := context.WithCancel(p.merger.ctx)
+	p.Push(p.mctx.Mutate(func() error {
+		r, err := l.route(p.bufferSize)
 		if err != nil {
-			return err
+			return fmt.Errorf("error adding line: %w", err)
 		}
 
+		idx := p.runtime.addRoute(r)
+		// connect all fittings
+		r.connect(p.bufferSize)
+
+		// async line
 		if !l.Context.IsMutable() {
-			p.runners[dest] = r
-			r.bindContexts(p.pusher, dest)
-			r.start(p.ctx, &p.errorMerger)
+			p.runtime.registerAsyncRoute(idx)
+			p.runtime.startAsyncRoute(idx)
+			cancelFn()
 			return nil
 		}
 
-		// sync exec
-		if ok {
-			// add line to existing multiline runner
-			mlr := p.runners[dest].(*MultiLineRunner)
-			p.pusher.Put(l.Context.Mutate(func() error {
-				mlr.Lines = append(mlr.Lines, r)
-				return nil
-			}))
-		} else {
-			// add new  multiline runner
-			mlr := &MultiLineRunner{
-				Lines: []*LineRunner{r},
-			}
-			r.bindContexts(p.pusher, dest)
-			mlr.start(p.ctx, &p.errorMerger)
+		// sync add to existing goroutine
+		if e, ok := p.executors[l.Context]; ok {
+			p.pusher.Put(e.(*multiLineExecutor).addRoute(p.merger.ctx, r, idx, cancelFn))
+			return nil
 		}
+		// sync new goroutine
+		p.runtime.registerSyncRoute(idx)
+		p.runtime.merger.add(p.runtime.executors[r.context])
+		cancelFn()
 		return nil
-	})
+	}))
+	return ctx.Done()
+}
+
+func (p *Pipe) InsertProcessor(line, pos int, procAlloc ProcessorAllocatorFunc) <-chan struct{} {
+	if p.merger == nil {
+		panic("pipe isn't running")
+	}
+	ctx, cancelFn := context.WithCancel(p.merger.ctx)
+	p.Push(p.mctx.Mutate(func() error {
+		r := p.routes[line]
+		proc, err := p.runtime.insertProcessor(p.bufferSize, r, pos, procAlloc)
+		if err != nil {
+			return fmt.Errorf("failed to insert processor: %w", err)
+		}
+		p.pusher.Put(p.runtime.startProcessor(r, line, pos, proc, cancelFn))
+		return nil
+	}))
+	return ctx.Done()
+}
+
+func (rt *runtime) insertProcessor(bufferSize int, r *route, pos int, procAlloc ProcessorAllocatorFunc) (*Processor, error) {
+	// allocate and connect
+	prevProps, prevOut := r.prev(pos)
+	mctx := componentContext(r.context)
+	proc, err := procAlloc.allocate(mctx, bufferSize, prevProps)
+	if err != nil {
+		return nil, err
+	}
+	if r.context.IsMutable() {
+		proc.connect(bufferSize, fitting.Sync, prevOut)
+	} else {
+		proc.connect(bufferSize, fitting.Async, prevOut)
+		r.processors = append(r.processors, nil)
+		copy(r.processors[pos+1:], r.processors[pos:])
+		r.processors[pos] = &proc
+		rt.executors[mctx] = &proc
+		rt.pusher.AddDestination(mctx, r.source.dest)
+	}
+	return &proc, nil
+}
+
+func (rt *runtime) startProcessor(r *route, idx, pos int, proc *Processor, cancelFn context.CancelFunc) mutable.Mutation {
+	// insert proc to a sync line
+	if r.context.IsMutable() {
+		mle, ok := rt.executors[r.context].(*multiLineExecutor)
+		if !ok {
+			panic("add processor to not running line")
+		}
+		return mle.startSyncProcessor(rt.merger.ctx, idx, pos+1, proc, cancelFn)
+	}
+
+	return rt.startAsyncProcessor(r, pos+1, proc, cancelFn)
+}
+
+func (rt *runtime) startAsyncProcessor(r *route, nextPos int, proc *Processor, cancelFn context.CancelFunc) mutable.Mutation {
+	// get ready for start
+	if nextPos == len(r.processors) {
+		return r.sink.Mutate((func() error {
+			r.sink.in.insert(proc.out)
+			rt.merger.add(proc)
+			cancelFn()
+			return nil
+		}))
+	}
+	nextProc := r.processors[nextPos]
+	return nextProc.Mutate((func() error {
+		nextProc.in.insert(proc.out)
+		rt.merger.add(proc)
+		cancelFn()
+		return nil
+	}))
 }
 
 // Processors is a helper function to use in line constructors.
@@ -243,9 +369,16 @@ func Processors(processors ...ProcessorAllocatorFunc) []ProcessorAllocatorFunc {
 	return processors
 }
 
+func (s *Source) connect(bufferSize int, fn fitting.New) {
+	s.out = out{
+		allocator: s.SignalProperties.poolAllocator(bufferSize),
+		sender:    fn(),
+	}
+}
+
 // Execute does a single iteration of source component. io.EOF is returned
 // if context is done.
-func (s Source) execute(ctx context.Context) error {
+func (s *Source) execute(ctx context.Context) error {
 	var ms mutable.Mutations
 	select {
 	case ms = <-s.dest:
@@ -253,70 +386,82 @@ func (s Source) execute(ctx context.Context) error {
 			return err
 		}
 	case <-ctx.Done():
-		s.out.Close()
+		s.out.sender.Close()
 		return io.EOF
 	default:
 	}
 
-	output := s.out.Float64()
+	output := s.out.allocator.Float64()
 	var (
 		read int
 		err  error
 	)
 	if read, err = s.SourceFunc(output); err != nil {
-		s.out.Close()
-		output.Free(s.out.PoolAllocator)
+		s.out.sender.Close()
+		output.Free(s.out.allocator)
 		return err
 	}
 	if read != output.Length() {
 		output = output.Slice(0, read)
 	}
 
-	if !s.out.Send(ctx, fitting.Message{Signal: output, Mutations: ms}) {
-		s.out.Close()
+	if !s.out.sender.Send(ctx, fitting.Message{Signal: output, Mutations: ms}) {
+		s.out.sender.Close()
 		return io.EOF
 	}
 	return nil
 }
 
+func (p *Processor) connect(bufferSize int, fn fitting.New, prevOut out) {
+	p.in.insert(prevOut)
+	p.out = out{
+		allocator: p.SignalProperties.poolAllocator(bufferSize),
+		sender:    fn(),
+	}
+}
+
 // Execute does a single iteration of processor component. io.EOF is
 // returned if context is done.
-func (p Processor) execute(ctx context.Context) error {
-	m, ok := p.in.Receive(ctx)
+func (p *Processor) execute(ctx context.Context) error {
+	m, ok := p.in.receiver.Receive(ctx)
 	if !ok {
-		p.out.Close()
+		p.out.sender.Close()
 		return io.EOF
 	}
-	defer m.Signal.Free(p.in.PoolAllocator)
+	defer m.Signal.Free(p.in.allocator)
 
 	if err := m.Mutations.ApplyTo(p.Context); err != nil {
 		return err
 	}
 
-	output := p.out.Float64()
+	output := p.out.allocator.Float64()
 	if processed, err := p.ProcessFunc(m.Signal, output); err != nil {
-		p.out.Close()
+		p.out.sender.Close()
 		return err
-	} else if processed != p.out.Length {
+	} else if processed != p.out.allocator.Length {
 		output = output.Slice(0, processed)
 	}
 
-	if !p.out.Send(ctx, fitting.Message{Signal: output, Mutations: m.Mutations}) {
-		p.out.Close()
-		output.Free(p.out.PoolAllocator)
+	if !p.out.sender.Send(ctx, fitting.Message{Signal: output, Mutations: m.Mutations}) {
+		p.out.sender.Close()
+		output.Free(p.out.allocator)
 		return io.EOF
 	}
 	return nil
 }
 
+func (s *Sink) connect(bufferSize int, prevOut out) {
+	s.in.insert(prevOut)
+}
+
 // Execute does a single iteration of sink component. io.EOF is returned if
 // context is done.
-func (s Sink) execute(ctx context.Context) error {
-	m, ok := s.in.Receive(ctx)
+func (s *Sink) execute(ctx context.Context) error {
+	m, ok := s.in.receiver.Receive(ctx)
 	if !ok {
 		return io.EOF
 	}
-	defer m.Signal.Free(s.in.PoolAllocator)
+	defer m.Signal.Free(s.in.allocator)
 	if err := m.Mutations.ApplyTo(s.Context); err != nil {
 		return err
 	}

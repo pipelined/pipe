@@ -10,7 +10,7 @@ import (
 func TestPusher(t *testing.T) {
 	p := mutable.NewPusher()
 	ctx1 := mutable.Mutable()
-	d, _ := p.Destination(ctx1)
+	d := mutable.NewDestination()
 
 	p.AddDestination(ctx1, d)
 	var v int

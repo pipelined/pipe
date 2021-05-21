@@ -153,7 +153,7 @@ func TestSync(t *testing.T) {
 	assertEqual(t, "samples", source.Counter.Samples, 862*bufferSize)
 }
 
-func TestSyncMultiple(t *testing.T) {
+func TestMultiple(t *testing.T) {
 	source1 := &mock.Source{
 		Limit:    862 * bufferSize,
 		Channels: 2,
@@ -211,20 +211,16 @@ func TestLines(t *testing.T) {
 
 	testLines := func(assertFn assertFunc, mocks ...mockLine) func(*testing.T) {
 		return func(t *testing.T) {
-			lines := make([]*pipe.LineRunner, 0, len(mocks))
+			lines := make([]pipe.Line, 0, len(mocks))
 			for i := range mocks {
-				r, err := pipe.Line{
+				l := pipe.Line{
 					Source:     mocks[i].Source.Source(),
 					Processors: pipe.Processors(mocks[i].Processor.Processor()),
 					Sink:       mocks[i].Sink.Sink(),
-				}.Runner(bufferSize, nil)
-				assertNil(t, "runner error", err)
-				lines = append(lines, r)
+				}
+				lines = append(lines, l)
 			}
-			runner := pipe.MultiLineRunner{
-				Lines: lines,
-			}
-			err := runner.Run(context.Background())
+			err := pipe.Run(context.Background(), bufferSize, lines...)
 			assertFn(t, err, mocks...)
 		}
 	}
@@ -497,10 +493,10 @@ func TestAddLine(t *testing.T) {
 
 			// start
 			errc := p.Start(context.Background())
-			p.Push(p.AddLine(line2))
+			<-p.AddLine(line2)
 			assertNil(t, "error", err)
 
-			err = pipe.Wait(errc)
+			_ = pipe.Wait(errc)
 			assertEqual(t, "messages", sink1.Counter.Messages, 862)
 			assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
 			assertEqual(t, "messages", sink2.Counter.Messages, 862)
@@ -513,27 +509,35 @@ func TestAddLine(t *testing.T) {
 
 func TestAddLineMultiLine(t *testing.T) {
 	sink1 := &mock.Sink{Discard: true}
-	line1 := pipe.Line{
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-		}).Source(),
-		Sink: sink1.Sink(),
-	}
-
 	mut := mutable.Mutable()
 	sink2 := &mock.Sink{Discard: true}
-	line2 := pipe.Line{
-		Context: mut,
-		Source: (&mock.Source{
-			Limit:    862 * bufferSize,
-			Channels: 2,
-			Value:    2,
-		}).Source(),
-		Sink: sink2.Sink(),
-	}
+	p, err := pipe.New(
+		bufferSize,
+		pipe.Line{
+			Source: (&mock.Source{
+				Limit:    862 * bufferSize,
+				Channels: 2,
+			}).Source(),
+			Sink: sink1.Sink(),
+		},
+		pipe.Line{
+			Context: mut,
+			Source: (&mock.Source{
+				Limit:    862 * bufferSize,
+				Channels: 2,
+				Value:    2,
+			}).Source(),
+			Sink: sink2.Sink(),
+		},
+	)
+	assertNil(t, "pipe error", err)
+
+	errc := p.Start(context.Background())
+	assertNil(t, "start error", err)
+
 	sink3 := &mock.Sink{Discard: true}
-	line3 := pipe.Line{
+	sink4 := &mock.Sink{Discard: true}
+	<-p.AddLine(pipe.Line{
 		Context: mut,
 		Source: (&mock.Source{
 			Limit:    862 * bufferSize,
@@ -541,9 +545,8 @@ func TestAddLineMultiLine(t *testing.T) {
 			Value:    2,
 		}).Source(),
 		Sink: sink3.Sink(),
-	}
-	sink4 := &mock.Sink{Discard: true}
-	line4 := pipe.Line{
+	})
+	<-p.AddLine(pipe.Line{
 		Context: mut,
 		Source: (&mock.Source{
 			Limit:    862 * bufferSize,
@@ -551,21 +554,10 @@ func TestAddLineMultiLine(t *testing.T) {
 			Value:    2,
 		}).Source(),
 		Sink: sink4.Sink(),
-	}
-
-	p, err := pipe.New(
-		bufferSize,
-		line1,
-		line2,
-	)
-	assertNil(t, "error", err)
-
-	// start
-	errc := p.Start(context.Background())
-	p.Push(p.AddLine(line3), p.AddLine(line4))
-	assertNil(t, "error", err)
+	})
 
 	err = pipe.Wait(errc)
+	assertNil(t, "wait error", err)
 	assertEqual(t, "messages", sink1.Counter.Messages, 862)
 	assertEqual(t, "samples", sink1.Counter.Samples, 862*bufferSize)
 	assertEqual(t, "messages", sink2.Counter.Messages, 862)
@@ -576,78 +568,75 @@ func TestAddLineMultiLine(t *testing.T) {
 	assertEqual(t, "samples", sink4.Counter.Samples, 862*bufferSize)
 }
 
-// func TestInsertProcessor(t *testing.T) {
-// 	bufferSize := 2
-// 	testInsert := func(pos int) func(*testing.T) {
-// 		return func(t *testing.T) {
-// 			t.Helper()
-// 			p, err := pipe.New(bufferSize, pipe.Routing{
-// 				Source: (&mock.Source{
-// 					Limit:    500,
-// 					Channels: 2,
-// 				}).Source(),
-// 				Processors: pipe.Processors((&mock.Processor{}).Processor()),
-// 				Sink:       (&mock.Sink{Discard: true}).Sink(),
-// 			})
-// 			assertNil(t, "pipe error", err)
+func TestInsertProcessor(t *testing.T) {
+	bufferSize := 2
+	testInsert := func(pos int) func(*testing.T) {
+		return func(t *testing.T) {
+			t.Helper()
+			p, err := pipe.New(bufferSize, pipe.Line{
+				Source: (&mock.Source{
+					Limit:    500,
+					Channels: 2,
+				}).Source(),
+				Processors: pipe.Processors((&mock.Processor{}).Processor()),
+				Sink:       (&mock.Sink{Discard: true}).Sink(),
+			})
+			assertNil(t, "pipe error", err)
+			errc := p.Start(context.Background())
 
-// 			l := p.Lines[0]
-// 			a := p.Async(context.Background())
+			proc := &mock.Processor{}
+			<-p.InsertProcessor(0, pos, proc.Processor())
+			assertNil(t, "add error", err)
 
-// 			proc := &mock.Processor{}
-// 			err = l.InsertProcessor(pos, proc.Processor())
-// 			assertNil(t, "add error", err)
+			err = pipe.Wait(errc)
+			assertNil(t, "await error", err)
+			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
+		}
+	}
+	t.Run("before processor", testInsert(0))
+	t.Run("before sink", testInsert(1))
+}
 
-// 			<-a.StartProcessor(l, pos)
-// 			err = a.Await()
-// 			assertNil(t, "await error", err)
-// 			assertEqual(t, "processed", proc.Counter.Messages > 0, true)
-// 		}
-// 	}
-// 	t.Run("before processor", testInsert(0))
-// 	t.Run("before sink", testInsert(1))
-// }
+func TestInsertMultiple(t *testing.T) {
+	bufferSize := 2
+	insert := func(pos int, ctx mutable.Context) func(*testing.T) {
+		return func(t *testing.T) {
+			t.Helper()
+			samples := 500
+			sink := &mock.Sink{Discard: true}
+			p, err := pipe.New(bufferSize, pipe.Line{
+				Context: ctx,
+				Source: (&mock.Source{
+					Limit:    samples,
+					Channels: 2,
+				}).Source(),
+				Processors: pipe.Processors((&mock.Processor{}).Processor()),
+				Sink:       sink.Sink(),
+			})
+			assertNil(t, "pipe error", err)
 
-// func TestInsertMultiple(t *testing.T) {
-// 	bufferSize := 2
-// 	insert := func(pos int) func(*testing.T) {
-// 		return func(t *testing.T) {
-// 			t.Helper()
-// 			samples := 500
-// 			sink := &mock.Sink{Discard: true}
-// 			p, err := pipe.New(bufferSize, pipe.Routing{
-// 				Source: (&mock.Source{
-// 					Limit:    samples,
-// 					Channels: 2,
-// 				}).Source(),
-// 				Processors: pipe.Processors((&mock.Processor{}).Processor()),
-// 				Sink:       sink.Sink(),
-// 			})
-// 			assertNil(t, "pipe error", err)
+			errc := p.Start(context.Background())
 
-// 			l := p.Lines[0]
-// 			a := p.Async(context.Background())
+			proc1 := &mock.Processor{}
+			<-p.InsertProcessor(0, pos, proc1.Processor())
 
-// 			proc1 := &mock.Processor{}
-// 			err = l.InsertProcessor(pos, proc1.Processor())
-// 			assertNil(t, "add 1 error", err)
-// 			<-a.StartProcessor(l, pos)
+			proc2 := &mock.Processor{}
+			<-p.InsertProcessor(0, pos, proc2.Processor())
 
-// 			proc2 := &mock.Processor{}
-// 			err = l.InsertProcessor(pos, proc2.Processor())
-// 			assertNil(t, "add 2 error", err)
-// 			<-a.StartProcessor(l, pos)
+			err = pipe.Wait(errc)
+			assertNil(t, "await error", err)
+			assertEqual(t, "sink processed", sink.Counter.Samples, samples)
+			assertEqual(t, "processed 1", proc1.Counter.Messages > 0, true)
+			assertEqual(t, "processed 2", proc2.Counter.Messages > 0, true)
 
-// 			err = a.Await()
-// 			assertNil(t, "await error", err)
-// 			assertEqual(t, "sink processed", sink.Counter.Samples, samples)
-// 			assertEqual(t, "processed 1", proc1.Counter.Messages > 0, true)
-// 			assertEqual(t, "processed 2", proc2.Counter.Messages > 0, true)
-// 		}
-// 	}
-// 	t.Run("before processor", insert(0))
-// 	t.Run("before sink", insert(1))
-// }
+			// TODO: check hooks invocation
+		}
+	}
+	t.Run("async before processor", insert(0, mutable.Immutable()))
+	t.Run("async before sink", insert(1, mutable.Immutable()))
+	t.Run("sync before processor", insert(0, mutable.Mutable()))
+	t.Run("sync before sink", insert(1, mutable.Mutable()))
+}
 
 func waitPipe(t *testing.T, p *pipe.Pipe, timeout time.Duration, inits ...mutable.Mutation) {
 	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)

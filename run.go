@@ -9,76 +9,36 @@ import (
 )
 
 type (
-	// executor executes a single DSP operation.
+	// executor executes a single pipe operation.
 	executor interface {
+		// connectOutputs() // resets output fitting states
 		execute(context.Context) error
 		startHook(context.Context) error
 		flushHook(context.Context) error
 	}
 
-	// LineRunner is a sequence of bound and ready-to-run DSP components.
-	// It supports two execution modes: every component is running in its
-	// own goroutine (default) and running all components in a single
-	// goroutine.
-	LineRunner struct {
-		context   mutable.Context
+	// lineExecutor is a sequence of bound and ready-to-run DSP components.
+	// All components are running in a single goroutine.
+	lineExecutor struct {
+		route     int
 		started   int
 		executors []executor
 	}
 
-	// MultiLineRunner allows to run multiple sequences of DSP components
+	// multiLineExecutor allows to run multiple sequences of DSP components
 	// in the same goroutine.
-	MultiLineRunner struct {
-		Lines []*LineRunner
+	multiLineExecutor struct {
+		mutable.Context
+		mutable.Destination
+		executors []*lineExecutor
 	}
 )
 
-func (r *LineRunner) start(ctx context.Context, merger *errorMerger) {
-	r.bind()
-	for _, e := range r.executors {
-		merger.add(start(ctx, e))
-	}
-}
-
-func (r *MultiLineRunner) start(ctx context.Context, merger *errorMerger) {
-	r.bind()
-	merger.add(start(ctx, r))
-}
-
-func (r *LineRunner) bindContexts(p mutable.Pusher, d mutable.Destination) {
-	p.AddDestination(r.executors[0].(Source).Context, d)
-	// sync line shares context for all components
-	if !r.context.IsMutable() {
-		return
-	}
-
-	for i := 1; i < len(r.executors)-1; i++ {
-		p.AddDestination(r.executors[i].(Processor).Context, d)
-	}
-	p.AddDestination(r.executors[len(r.executors)-1].(Sink).Context, d)
-}
-
-func (r *LineRunner) bind() {
-	e := r.executors[0].(Source)
-	e.out.Sender.Bind()
-
-	for i := 1; i < len(r.executors)-1; i++ {
-		e := r.executors[i].(Processor)
-		e.out.Sender.Bind()
-	}
-}
-
-func (r *MultiLineRunner) bind() {
-	for i := range r.Lines {
-		r.Lines[i].bind()
-	}
-}
-
 // Execute all components of the line one-by-one.
-func (r *LineRunner) execute(ctx context.Context) error {
+func (le *lineExecutor) execute(ctx context.Context) error {
 	var err error
-	for _, e := range r.executors {
-		if err = e.execute(ctx); err == nil {
+	for i := 0; i < le.started; i++ {
+		if err = le.executors[i].execute(ctx); err == nil {
 			continue
 		}
 		if err == io.EOF {
@@ -91,47 +51,34 @@ func (r *LineRunner) execute(ctx context.Context) error {
 	return err
 }
 
-func (r *LineRunner) flushHook(ctx context.Context) error {
+func (le *lineExecutor) flushHook(ctx context.Context) error {
 	var errs execErrors
-	for i := 0; i < r.started; i++ {
-		if err := r.executors[i].flushHook(ctx); err != nil {
+	for i := 0; i < le.started; i++ {
+		if err := le.executors[i].flushHook(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errs.ret()
 }
 
-func (r *LineRunner) startHook(ctx context.Context) error {
+func (le *lineExecutor) startHook(ctx context.Context) error {
 	var errs execErrors
-	for _, e := range r.executors {
+	for _, e := range le.executors {
 		if err := e.startHook(ctx); err != nil {
 			errs = append(errs, err)
 			break
 		}
-		r.started++
+		le.started++
 	}
 	return errs.ret()
 }
 
-// Run executes line synchonously in a single goroutine.
-func (r *LineRunner) Run(ctx context.Context) error {
-	r.bind()
-	return run(ctx, r)
-}
-
-// Run executes multiple lines synchonously in a single
-// goroutine.
-func (r *MultiLineRunner) Run(ctx context.Context) error {
-	r.bind()
-	return run(ctx, r)
-}
-
 // startHook calls start for every line. If any line fails to start, it will
 // try to flush successfully started lines.
-func (r *MultiLineRunner) startHook(ctx context.Context) error {
+func (mle *multiLineExecutor) startHook(ctx context.Context) error {
 	var startErr execErrors
-	for i := range r.Lines {
-		if err := r.Lines[i].startHook(ctx); err != nil {
+	for i := range mle.executors {
+		if err := mle.executors[i].startHook(ctx); err != nil {
 			startErr = append(startErr, err)
 			break
 		}
@@ -144,7 +91,7 @@ func (r *MultiLineRunner) startHook(ctx context.Context) error {
 	// wrap start error
 	err := fmt.Errorf("error starting lines: %w", startErr.ret())
 	// need to flush sucessfully started components
-	flushErr := r.flushHook(ctx)
+	flushErr := mle.flushHook(ctx)
 	if flushErr != nil {
 		err = fmt.Errorf("error flushing lines: %w during start error: %v", flushErr, err)
 	}
@@ -152,9 +99,9 @@ func (r *MultiLineRunner) startHook(ctx context.Context) error {
 }
 
 // Flush flushes all lines.
-func (r *MultiLineRunner) flushHook(ctx context.Context) error {
+func (mle *multiLineExecutor) flushHook(ctx context.Context) error {
 	var flushErr execErrors
-	for _, l := range r.Lines {
+	for _, l := range mle.executors {
 		if err := l.flushHook(ctx); err != nil {
 			flushErr = append(flushErr, err)
 		}
@@ -163,25 +110,62 @@ func (r *MultiLineRunner) flushHook(ctx context.Context) error {
 }
 
 // Execute executes all lines.
-func (r *MultiLineRunner) execute(ctx context.Context) error {
+func (mle *multiLineExecutor) execute(ctx context.Context) error {
 	var err error
-	for i := 0; i < len(r.Lines); {
-		if err = r.Lines[i].execute(ctx); err == nil {
+	for i := 0; i < len(mle.executors); {
+		if err = mle.executors[i].execute(ctx); err == nil {
 			i++
 			continue
 		}
 		if err == io.EOF {
-			if flushErr := r.Lines[i].flushHook(ctx); flushErr != nil {
+			if flushErr := mle.executors[i].flushHook(ctx); flushErr != nil {
 				return flushErr
 			}
-			r.Lines = append(r.Lines[:i], r.Lines[i+1:]...)
-			if len(r.Lines) > 0 {
+			mle.executors = append(mle.executors[:i], mle.executors[i+1:]...)
+			if len(mle.executors) > 0 {
 				continue
 			}
 		}
 		return err
 	}
 	return nil
+}
+
+func (mle *multiLineExecutor) addRoute(ctx context.Context, r *route, routeIdx int, cancelFn context.CancelFunc) mutable.Mutation {
+	return mle.Context.Mutate(func() error {
+		le := r.executor(mle.Destination, routeIdx)
+		if err := le.startHook(ctx); err != nil {
+			return fmt.Errorf("line failed to start: %w", err)
+		}
+		mle.executors = append(mle.executors, le)
+		cancelFn()
+		return nil
+	})
+}
+
+func (mle *multiLineExecutor) startSyncProcessor(ctx context.Context, line, pos int, proc *Processor, cancelFn context.CancelFunc) mutable.Mutation {
+	return mle.Context.Mutate(func() error {
+		defer cancelFn()
+		for _, e := range mle.executors {
+			if e.route != line {
+				continue
+			}
+
+			inserter := e.executors[pos].(interface{ insert(out) })
+			inserter.insert(proc.out)
+
+			err := proc.startHook(ctx)
+			if err != nil {
+				return fmt.Errorf("error starting processor: %w", err)
+			}
+			e.executors = append(e.executors, nil)
+			copy(e.executors[pos+1:], e.executors[pos:])
+			e.executors[pos] = proc
+			e.started++
+			break
+		}
+		return nil
+	})
 }
 
 // start executes dsp component in an async context. For successfully
@@ -207,7 +191,6 @@ func start(ctx context.Context, e executor) <-chan error {
 		if err != io.EOF {
 			errc <- fmt.Errorf("error running: %w", err)
 		}
-		return
 	}()
 	return errc
 }
@@ -229,7 +212,6 @@ func run(ctx context.Context, e executor) (errExec error) {
 		}
 	}()
 
-	// var err error
 	for errExec == nil {
 		errExec = e.execute(ctx)
 	}
