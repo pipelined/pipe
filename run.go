@@ -143,7 +143,7 @@ func (mle *multiLineExecutor) addRoute(ctx context.Context, r *route, routeIdx i
 	})
 }
 
-func (mle *multiLineExecutor) insertProcessor(ctx context.Context, line, pos int, proc Processor, cancelFn context.CancelFunc) mutable.Mutation {
+func (mle *multiLineExecutor) startSyncProcessor(ctx context.Context, line, pos int, proc *Processor, cancelFn context.CancelFunc) mutable.Mutation {
 	return mle.Context.Mutate(func() error {
 		defer cancelFn()
 		for _, e := range mle.executors {
@@ -160,7 +160,7 @@ func (mle *multiLineExecutor) insertProcessor(ctx context.Context, line, pos int
 			}
 			e.executors = append(e.executors, nil)
 			copy(e.executors[pos+1:], e.executors[pos:])
-			e.executors[pos] = &proc
+			e.executors[pos] = proc
 			e.started++
 			break
 		}

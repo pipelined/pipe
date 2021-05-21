@@ -301,57 +301,67 @@ func (p *Pipe) InsertProcessor(line, pos int, procAlloc ProcessorAllocatorFunc) 
 	ctx, cancelFn := context.WithCancel(p.merger.ctx)
 	p.Push(p.mctx.Mutate(func() error {
 		r := p.routes[line]
-		// allocate and connect
-		prevProps, prevOut := r.prev(pos)
-		mctx := componentContext(r.context)
-		proc, err := procAlloc.allocate(mctx, p.bufferSize, prevProps)
+		proc, err := p.runtime.insertProcessor(p.bufferSize, r, pos, procAlloc)
 		if err != nil {
-			cancelFn()
-			return err
+			return fmt.Errorf("failed to insert processor: %w", err)
 		}
-
-		// insert proc to a sync line
-		if r.context.IsMutable() {
-			proc.connect(p.bufferSize, fitting.Sync, prevOut)
-			mle, ok := p.executors[r.context].(*multiLineExecutor)
-			if !ok {
-				panic("add processor to not running line")
-			}
-			p.pusher.Put(mle.insertProcessor(p.merger.ctx, line, pos+1, proc, cancelFn))
-			return nil
-		}
-
-		proc.connect(p.bufferSize, fitting.Async, prevOut)
-
-		// get ready for start
-		p.executors[mctx] = &proc
-		p.pusher.AddDestination(mctx, r.source.dest)
-		// add to route after this function returns
-		defer func() {
-			r.processors = append(r.processors, nil)
-			copy(r.processors[pos+1:], r.processors[pos:])
-			r.processors[pos] = &proc
-		}()
-		if pos == len(r.processors) {
-			p.pusher.Put(r.sink.Mutate((func() error {
-				r.sink.in.insert(proc.out)
-				p.merger.add(&proc)
-				cancelFn()
-				return nil
-			})))
-			return nil
-		}
-		nextProc := r.processors[pos]
-		p.pusher.Put(nextProc.Mutate((func() error {
-			nextProc.in.insert(proc.out)
-			p.merger.add(&proc)
-			cancelFn()
-			return nil
-		})))
-
+		p.pusher.Put(p.runtime.startProcessor(r, line, pos, proc, cancelFn))
 		return nil
 	}))
 	return ctx.Done()
+}
+
+func (rt *runtime) insertProcessor(bufferSize int, r *route, pos int, procAlloc ProcessorAllocatorFunc) (*Processor, error) {
+	// allocate and connect
+	prevProps, prevOut := r.prev(pos)
+	mctx := componentContext(r.context)
+	proc, err := procAlloc.allocate(mctx, bufferSize, prevProps)
+	if err != nil {
+		return nil, err
+	}
+	if r.context.IsMutable() {
+		proc.connect(bufferSize, fitting.Sync, prevOut)
+	} else {
+		proc.connect(bufferSize, fitting.Async, prevOut)
+		r.processors = append(r.processors, nil)
+		copy(r.processors[pos+1:], r.processors[pos:])
+		r.processors[pos] = &proc
+		rt.executors[mctx] = &proc
+		rt.pusher.AddDestination(mctx, r.source.dest)
+	}
+	return &proc, nil
+}
+
+func (rt *runtime) startProcessor(r *route, idx, pos int, proc *Processor, cancelFn context.CancelFunc) mutable.Mutation {
+	// insert proc to a sync line
+	if r.context.IsMutable() {
+		mle, ok := rt.executors[r.context].(*multiLineExecutor)
+		if !ok {
+			panic("add processor to not running line")
+		}
+		return mle.startSyncProcessor(rt.merger.ctx, idx, pos+1, proc, cancelFn)
+	}
+
+	return rt.startAsyncProcessor(r, pos+1, proc, cancelFn)
+}
+
+func (rt *runtime) startAsyncProcessor(r *route, nextPos int, proc *Processor, cancelFn context.CancelFunc) mutable.Mutation {
+	// get ready for start
+	if nextPos == len(r.processors) {
+		return r.sink.Mutate((func() error {
+			r.sink.in.insert(proc.out)
+			rt.merger.add(proc)
+			cancelFn()
+			return nil
+		}))
+	}
+	nextProc := r.processors[nextPos]
+	return nextProc.Mutate((func() error {
+		nextProc.in.insert(proc.out)
+		rt.merger.add(proc)
+		cancelFn()
+		return nil
+	}))
 }
 
 // Processors is a helper function to use in line constructors.
